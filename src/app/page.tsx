@@ -6,6 +6,7 @@
  * and links into /standings and /playoffs. When the league's current season is
  * an empty upcoming one, it also shows a "starts soon" note above the results.
  */
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -78,6 +79,14 @@ export default async function DashboardPage() {
         />
         <Container width="wide" as="div" className="relative py-16 sm:py-20 lg:py-24">
           <div className="flex max-w-2xl flex-col gap-6">
+            <Image
+              src="/keylehr-wordmark.png"
+              alt="KeyLehr Gaming"
+              width={909}
+              height={227}
+              priority
+              className="h-20 w-auto drop-shadow-lg sm:h-24"
+            />
             <Badge variant="accent" className="w-fit">
               {heroLabel}
             </Badge>

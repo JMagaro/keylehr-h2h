@@ -2,8 +2,8 @@
  * SiteFooter — brand, the primary nav links, and operator/legal line. Server
  * component (no interactivity); shares NAV_LINKS with the top nav.
  */
+import Image from 'next/image';
 import Link from 'next/link';
-import { Trophy } from 'lucide-react';
 import { Container } from '@/components/container';
 import { NAV_LINKS } from '@/components/nav-links';
 
@@ -15,10 +15,14 @@ export function SiteFooter() {
       <Container width="wide" as="div" className="flex flex-col gap-8 py-10">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex max-w-sm flex-col gap-2">
-            <Link href="/" className="flex items-center gap-2 font-semibold text-foreground">
-              <span className="flex size-7 items-center justify-center rounded-lg bg-accent text-accent-fg">
-                <Trophy className="size-4" aria-hidden="true" />
-              </span>
+            <Link href="/" className="flex items-center gap-2.5 font-semibold text-foreground">
+              <Image
+                src="/keylehr-shield.png"
+                alt=""
+                width={32}
+                height={25}
+                className="h-7 w-auto"
+              />
               KeyLehr <span className="text-accent">H2H</span>
             </Link>
             <p className="text-sm text-muted">
