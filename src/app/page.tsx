@@ -85,7 +85,7 @@ export default async function DashboardPage() {
               width={909}
               height={227}
               priority
-              className="h-20 w-auto drop-shadow-lg sm:h-24"
+              className="h-20 w-auto self-start drop-shadow-lg sm:h-24"
             />
             <Badge variant="accent" className="w-fit">
               {heroLabel}
