@@ -67,6 +67,25 @@
       <div id="status" class="status" role="status" aria-live="polite"></div>
       <div id="lastSynced" class="last-synced" hidden></div>
 
+      <!-- ============================ LIVE SYNC ============================ -->
+      <div class="live" id="liveCard">
+        <div class="live-head">
+          <label class="live-toggle">
+            <input id="liveToggle" type="checkbox" />
+            <span>Live Sync</span>
+          </label>
+          <label class="live-interval">
+            every
+            <input id="liveInterval" type="number" min="1" max="60" step="1" value="5" />
+            min
+          </label>
+        </div>
+        <div id="liveStatus" class="live-status" role="status" aria-live="polite">
+          Live Sync off — toggle on to keep scores updating during games.
+        </div>
+        <button id="liveStopBtn" class="secondary live-stop" type="button" hidden>Stop Live Sync</button>
+      </div>
+
       <details id="pasteExpander" class="expander">
         <summary>Paste manually</summary>
         <label>

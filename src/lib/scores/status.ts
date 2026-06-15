@@ -274,3 +274,15 @@ export async function getSeasonSyncStatus(
 
   return { seasonId, regularSeasonWeeks, weeks, summary };
 }
+
+/**
+ * The week numbers whose NFL games are over but scores are still missing or partial
+ * (`needs_sync` or `partial`) — i.e. real, actionable gaps. Excludes `upcoming` weeks
+ * (games haven't happened yet) and `no_schedule` weeks, which are not problems. Returned
+ * in ascending week order for direct display in a callout, e.g. "Incomplete weeks: 3, 7".
+ */
+export function incompleteWeeks(status: SeasonSyncStatus): number[] {
+  return status.weeks
+    .filter((w) => w.health === 'needs_sync' || w.health === 'partial')
+    .map((w) => w.week);
+}

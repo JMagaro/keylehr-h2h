@@ -3,7 +3,10 @@
   "name": "KeyLehr H2H — DraftKings Sync",
   "version": "1.0.0",
   "description": "Capture the shared DraftKings contest leaderboard from your logged-in session and sync it to the KeyLehr H2H app.",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "alarms"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "host_permissions": [
     "https://*.draftkings.com/*",
     "http://localhost:3000/*"

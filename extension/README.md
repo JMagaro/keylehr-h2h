@@ -201,6 +201,59 @@ Use this if Sync can't reach the endpoint (not logged in, DK changed something, 
 
 ---
 
+### 3. Live Sync  *(keep scores updating during games)*
+
+The one-click **Sync** above is a single snapshot. **Live Sync** re-runs that same capture+POST
+automatically every few minutes so the leaderboard keeps updating while games are in progress —
+and it **stops itself when the contest is final**.
+
+**How to start it:**
+
+1. Log in to DraftKings and open the contest's **`/contest/gamecenter/{contestId}`**
+   **Standings / Leaderboard** tab. **Leave this DK tab open** (see the requirement below).
+2. Open the popup, make sure the contest is detected and the **Season** + **Week** are correct.
+3. In the **Live Sync** card, set the cadence (**every N min**, default **5**, min **1**) and flip
+   the **Live Sync** toggle **ON**. It runs the first sync immediately, then repeats on a
+   `chrome.alarms` timer.
+
+Once on, the popup shows live status and the toolbar icon gets a badge:
+
+- **`live`** badge · `● Live: last synced Week N at HH:MM (32 matched) · next in Mm` — running.
+- **`⏸`** badge · `⏸ Paused — open your DraftKings contest tab to resume.` — no DK contest tab
+  was found; the loop keeps retrying and resumes the moment you reopen the tab.
+- **`✓`** badge · `✓ Completed — live sync stopped` — the contest finished; one final sync ran.
+
+You can stop it any time with the toggle or the **Stop Live Sync** button. State is persisted in
+`chrome.storage`, so reopening the popup reflects the current status, and the worker pushes updates
+to an open popup after each poll.
+
+**Why an open DK tab is required.** The credentialed leaderboard fetch must run in the DK page's
+**MAIN world** so your DraftKings session cookies are sent (SameSite — a bare service-worker fetch
+would not carry them). Each poll uses `chrome.scripting.executeScript({ world: 'MAIN' })` to run
+the same `fetch(...&embed=leaderboard, { credentials: 'include' })` + extractor **inside an open
+gamecenter tab**, then the background worker POSTs the result to `/api/ingest/draftkings`. So Live
+Sync needs a `*.draftkings.com/contest/gamecenter/*` tab open. If none is found it pauses (above)
+rather than failing.
+
+**Auto-stop (contest completed).** After each poll the worker inspects the leaderboard data and
+stops when the contest is final — detected by **either** an explicit contest *status* field reading
+completed/final/finished/closed, **or** every entry showing **no time/points remaining** (DK's
+`pmr` / `timeRemaining` / points-remaining fields are `0` for all entries that carry them). On
+completion it does one final sync, clears the alarm, sets the **`✓`** badge, and shows
+**"✓ Completed — live sync stopped"**.
+
+> **Tip — testing.** A fast-resolving DraftKings **Madden** contest is ideal for exercising Live
+> Sync end-to-end (open tab → toggle on → watch it poll → auto-stop on completion) without waiting
+> for a full NFL Sunday.
+
+**Sleep-honest (the tradeoff).** `chrome.alarms` only fire while **Chrome is running and the
+computer is awake**. If the machine **sleeps** or you **quit Chrome**, the alarm **pauses** and
+**resumes** when Chrome is awake again — it does not catch up missed ticks while asleep. This is
+the accepted tradeoff for the **no-stored-credentials** model: the credentialed DK fetch runs in
+*your* live browser session (via the open DK tab), so nothing runs when your browser isn't. For
+unattended 24/7 polling you'd need a stored-credentials server pull, which this project
+deliberately avoids. Keep the machine awake / Chrome open during the window you want covered.
+
 ## Result messages
 
 The popup always shows a prominent banner reporting **how many entries were captured before the
@@ -245,7 +298,8 @@ The app matches each `entryName` (case-insensitive, trimmed) to `owner_seasons.d
 
 | File                | Role                                                                       |
 | ------------------- | -------------------------------------------------------------------------- |
-| `manifest.json`     | MV3 manifest (permissions, content script, popup).                         |
-| `popup.html/.css/.js` | The popup UI + the two sync paths + result banners.                      |
+| `manifest.json`     | MV3 manifest (permissions, content script, popup, background service worker). |
+| `popup.html/.css/.js` | The popup UI + the two sync paths + the Live Sync card + result banners. |
+| `background.js`     | MV3 service worker. Drives **Live Sync**: a `chrome.alarms` poll that runs the credentialed capture in an open DK tab's MAIN world (`chrome.scripting.executeScript`), POSTs to ingest, and auto-stops when the contest is completed. Reflects state via `chrome.storage` + badge. |
 | `content-script.js` | Injects the page hook; bridges the popup's capture request ⇄ the hook; reads the contest name from the gamecenter DOM (`DETECT_CONTEST`). |
 | `page-hook.js`      | Runs in the page's MAIN world; authenticated fetch of the embed endpoint + robust entry extraction. |

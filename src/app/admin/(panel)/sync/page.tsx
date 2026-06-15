@@ -15,9 +15,11 @@ import { SeasonSelector } from '@/components/season-selector';
 import { StatTile } from '@/components/stat-tile';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/data-table';
 import { requireAdmin } from '@/lib/auth-helpers';
+import { cn } from '@/lib/utils';
 import { getDefaultStandingsSeasonId, getSeasonOptions } from '@/lib/standings/query';
 import {
   getSeasonSyncStatus,
+  incompleteWeeks,
   type SyncHealth,
   type WeekSyncStatus,
 } from '@/lib/scores/status';
@@ -44,6 +46,61 @@ const HEALTH_META: Record<
 function HealthBadge({ health }: { health: SyncHealth }) {
   const meta = HEALTH_META[health];
   return <Badge variant={meta.variant}>{meta.label}</Badge>;
+}
+
+/** Color-coded cell styling for the at-a-glance week grid, keyed by health. */
+const GRID_CELL: Record<SyncHealth, string> = {
+  // green — fully scored, clean run
+  complete: 'border-win/40 bg-win-soft text-win hover:border-win/70',
+  // amber — final but partial scores
+  partial: 'border-tie/40 bg-tie-soft text-tie hover:border-tie/70',
+  // amber — in progress
+  live: 'border-tie/40 bg-tie-soft text-tie hover:border-tie/70',
+  // red — final but missing / failed
+  needs_sync: 'border-loss/40 bg-loss-soft text-loss hover:border-loss/70',
+  // gray — games not yet played
+  upcoming: 'border-border bg-surface text-subtle hover:border-border-strong',
+  // hollow / dashed — no matchups generated yet
+  no_schedule:
+    'border-dashed border-border-strong bg-transparent text-subtle hover:border-foreground/40',
+};
+
+/** One compact, focusable, anchor-linked cell in the week status grid. */
+function WeekGridCell({ week }: { week: WeekSyncStatus }) {
+  const meta = HEALTH_META[week.health];
+  const counts =
+    week.health === 'no_schedule'
+      ? '—'
+      : `${week.scoredOwners}/${week.expectedOwners}`;
+  const label = `Week ${week.week} — ${meta.label.toLowerCase()}, ${counts}`;
+
+  return (
+    <a
+      href={`#week-${week.week}`}
+      title={label}
+      aria-label={label}
+      className={cn(
+        'flex flex-col items-center justify-center gap-0.5 rounded-lg border px-2 py-2 text-center transition-colors',
+        'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        GRID_CELL[week.health],
+      )}
+    >
+      <span className="text-sm font-bold tabular-nums leading-none">{week.week}</span>
+      <span className="text-[10px] font-medium tabular-nums leading-none opacity-90">
+        {counts}
+      </span>
+    </a>
+  );
+}
+
+/** Tiny legend swatch + label, mirroring the grid cell colors. */
+function LegendItem({ swatch, label }: { swatch: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+      <span className={cn('inline-block size-3 rounded-sm border', swatch)} aria-hidden="true" />
+      {label}
+    </span>
+  );
 }
 
 /** The "detail" cell: unmatched names / error, or a re-sync hint when needed. */
@@ -108,6 +165,7 @@ export default async function AdminSyncPage({
   const needingAttention = status?.summary.weeksNeedingAttention ?? 0;
   const lastSyncAt = status?.summary.lastSyncAt ?? null;
   const weeksComplete = status?.summary.byHealth.complete ?? 0;
+  const incomplete = status ? incompleteWeeks(status) : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -130,24 +188,63 @@ export default async function AdminSyncPage({
         />
       ) : (
         <>
-          {needingAttention > 0 ? (
-            <Card className="border-loss/40 bg-loss-soft">
-              <CardBody className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-loss">
-                  ⚠️ {needingAttention} week{needingAttention === 1 ? '' : 's'} need a re-sync
-                </p>
-                <p className="text-xs text-muted">
-                  Re-pull the affected weeks&rsquo; DraftKings contests from the extension.
-                </p>
-              </CardBody>
-            </Card>
-          ) : (
-            <Card className="border-win/40 bg-win-soft">
-              <CardBody>
-                <p className="text-sm font-semibold text-win">All weeks synced ✓</p>
-              </CardBody>
-            </Card>
-          )}
+          {/* At-a-glance week status grid + the impossible-to-miss callout. */}
+          <Card>
+            <CardBody className="flex flex-col gap-4">
+              {incomplete.length > 0 ? (
+                <div className="rounded-lg border border-loss/40 bg-loss-soft px-4 py-3">
+                  <p className="text-sm font-semibold text-loss">
+                    ⚠️ Incomplete weeks:{' '}
+                    {incomplete.map((wk, i) => (
+                      <span key={wk}>
+                        {i > 0 ? ', ' : ''}
+                        <a
+                          href={`#week-${wk}`}
+                          className="underline decoration-loss/40 underline-offset-2 hover:decoration-loss"
+                        >
+                          {wk}
+                        </a>
+                      </span>
+                    ))}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    These weeks&rsquo; NFL games are final but scores are missing or partial —
+                    re-pull their DraftKings contests from the extension.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-win/40 bg-win-soft px-4 py-3">
+                  <p className="text-sm font-semibold text-win">All weeks complete ✓</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    Every week whose games are over is fully scored. Nothing to re-sync.
+                  </p>
+                </div>
+              )}
+
+              <div
+                className="grid grid-cols-6 gap-2 sm:grid-cols-9 lg:grid-cols-[repeat(18,minmax(0,1fr))]"
+                role="list"
+                aria-label="Week sync status grid"
+              >
+                {status.weeks.map((week) => (
+                  <div role="listitem" key={week.week}>
+                    <WeekGridCell week={week} />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <LegendItem swatch="border-win/40 bg-win-soft" label="Complete" />
+                <LegendItem swatch="border-tie/40 bg-tie-soft" label="Partial / live" />
+                <LegendItem swatch="border-loss/40 bg-loss-soft" label="Needs sync" />
+                <LegendItem swatch="border-border bg-surface" label="Upcoming" />
+                <LegendItem
+                  swatch="border-dashed border-border-strong bg-transparent"
+                  label="No schedule"
+                />
+              </div>
+            </CardBody>
+          </Card>
 
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
             <StatTile
@@ -184,7 +281,7 @@ export default async function AdminSyncPage({
             </THead>
             <TBody>
               {status.weeks.map((week) => (
-                <TR key={week.week}>
+                <TR key={week.week} id={`week-${week.week}`} className="scroll-mt-24 target:bg-accent/5">
                   <TD align="center" className="tabular-nums font-semibold">
                     {week.week}
                   </TD>

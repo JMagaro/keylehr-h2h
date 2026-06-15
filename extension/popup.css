@@ -356,6 +356,88 @@ button.big {
   display: none;
 }
 
+/* ---- live sync card ---- */
+.live {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-2);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.live-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.live-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.live-toggle input {
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.live-interval {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.live-interval input {
+  width: 48px;
+  margin: 0;
+  padding: 4px 6px;
+  text-align: center;
+}
+
+.live-status {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.live-status.on {
+  color: var(--ok);
+}
+
+.live-status.paused {
+  color: var(--amber);
+}
+
+.live-status.done {
+  color: var(--ok);
+}
+
+.live-status.err {
+  color: var(--error);
+}
+
+.live-stop {
+  margin-top: 8px;
+}
+
+.live-stop[hidden] {
+  display: none;
+}
+
 /* ---- paste expander ---- */
 .expander {
   margin-top: 14px;

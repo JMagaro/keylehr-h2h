@@ -49,6 +49,11 @@ const els = {
   lastSynced: document.getElementById('lastSynced'),
   pasteJson: document.getElementById('pasteJson'),
   pasteBtn: document.getElementById('pasteBtn'),
+  // live sync
+  liveToggle: document.getElementById('liveToggle'),
+  liveInterval: document.getElementById('liveInterval'),
+  liveStatus: document.getElementById('liveStatus'),
+  liveStopBtn: document.getElementById('liveStopBtn'),
 };
 
 // In-memory popup state.
@@ -192,6 +197,7 @@ function showMain() {
   renderLastSynced();
   refreshChipAndSeasons();
   detectContest();
+  refreshLive();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -702,6 +708,146 @@ async function onPaste() {
 }
 
 /* -------------------------------------------------------------------------- */
+/* (c) Live Sync (background polling via the service worker)                    */
+/* -------------------------------------------------------------------------- */
+/*
+ * The popup just configures + reflects state; the actual polling runs in background.js so it
+ * keeps going after the popup closes. We send LIVE_START/LIVE_STOP messages and render the
+ * persisted `liveSync` state, refreshing when the worker broadcasts LIVE_STATE_CHANGED.
+ */
+
+function sendBg(message) {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(message, (resp) => {
+        if (chrome.runtime.lastError) return resolve(null);
+        resolve(resp || null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+function liveIntervalMinutes() {
+  const n = Number(els.liveInterval.value);
+  return Number.isInteger(n) && n >= 1 ? n : 5;
+}
+
+function fmtClock(ms) {
+  const t = new Date(ms);
+  return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Render the Live Sync card from a persisted `liveSync` state object (or null). */
+function renderLive(live) {
+  const on = Boolean(live && live.on);
+  els.liveToggle.checked = on;
+  els.liveStopBtn.hidden = !on && !(live && live.phase === 'completed');
+
+  if (live && live.intervalMinutes && !on) {
+    els.liveInterval.value = String(live.intervalMinutes);
+  }
+  els.liveInterval.disabled = on;
+
+  if (!live || (!on && live.phase !== 'completed')) {
+    els.liveStatus.className = 'live-status';
+    els.liveStatus.textContent =
+      'Live Sync off — toggle on to keep scores updating during games.';
+    return;
+  }
+
+  const ls = live.lastSync;
+  const synced = ls
+    ? `last synced Week ${ls.week} at ${fmtClock(ls.time)}` +
+      (typeof ls.matched === 'number' ? ` (${ls.matched} matched)` : '')
+    : 'no sync yet';
+
+  if (live.phase === 'completed') {
+    els.liveStatus.className = 'live-status done';
+    els.liveStatus.textContent = `✓ Completed — live sync stopped · ${synced}`;
+    return;
+  }
+  if (live.phase === 'paused') {
+    els.liveStatus.className = 'live-status paused';
+    els.liveStatus.textContent = '⏸ Paused — open your DraftKings contest tab to resume.';
+    return;
+  }
+
+  // running
+  let next = '';
+  if (live.nextRunAt && live.nextRunAt > Date.now()) {
+    const mins = Math.max(1, Math.round((live.nextRunAt - Date.now()) / 60000));
+    next = ` · next in ${mins}m`;
+  }
+  const errNote = live.lastError ? `\n⚠ ${live.lastError}` : '';
+  els.liveStatus.className = 'live-status' + (live.lastError ? ' err' : ' on');
+  els.liveStatus.textContent = `● Live: ${synced}${next}${errNote}`;
+}
+
+async function refreshLive() {
+  const resp = await sendBg({ type: 'LIVE_GET_STATE' });
+  renderLive(resp && resp.live);
+}
+
+async function onLiveToggle() {
+  if (els.liveToggle.checked) {
+    // Validate the same prerequisites Sync needs.
+    if (!isConfigured()) {
+      els.liveToggle.checked = false;
+      return setResultBanner('❌ Not configured', ['Open Settings first.'], 'err');
+    }
+    const season = selectedSeason();
+    const week = currentWeek();
+    if (!season || week == null || !state.contest) {
+      els.liveToggle.checked = false;
+      return setResultBanner(
+        '❌ Can’t start Live Sync',
+        ['Detect a DK contest, pick a season, and set the week first.'],
+        'err',
+      );
+    }
+    // Ensure host permission for the app origin (within this gesture).
+    const perm = await ensureOriginPermission(appBase());
+    if (!perm.ok) {
+      els.liveToggle.checked = false;
+      return setResultBanner('❌ Permission needed', [perm.error], 'err');
+    }
+
+    const tab = await getActiveTab();
+    const config = {
+      intervalMinutes: liveIntervalMinutes(),
+      seasonId: season.id,
+      week,
+      contestId: state.contest.id,
+      tabId: tab && tab.id ? tab.id : null,
+      appBaseUrl: appBase(),
+      ingestToken: state.settings.ingestToken,
+    };
+    clearBanner();
+    setBanner(`Live Sync starting — polling every ${config.intervalMinutes} min…`, 'info');
+    const resp = await sendBg({ type: 'LIVE_START', config });
+    renderLive(resp && resp.live);
+  } else {
+    const resp = await sendBg({ type: 'LIVE_STOP' });
+    renderLive(resp && resp.live);
+  }
+}
+
+async function onLiveStop() {
+  const resp = await sendBg({ type: 'LIVE_STOP' });
+  renderLive(resp && resp.live);
+}
+
+// The background worker broadcasts when state changes (a poll ran, paused, completed, etc.).
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg && msg.type === 'LIVE_STATE_CHANGED') {
+    refreshLive();
+  }
+  return undefined;
+});
+
+/* -------------------------------------------------------------------------- */
 /* "Test connection" + Save (settings screen)                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -890,6 +1036,8 @@ els.testBtn.addEventListener('click', onTest);
 els.saveBtn.addEventListener('click', onSave);
 els.syncBtn.addEventListener('click', onSync);
 els.pasteBtn.addEventListener('click', onPaste);
+els.liveToggle.addEventListener('change', onLiveToggle);
+els.liveStopBtn.addEventListener('click', onLiveStop);
 
 // Chip click → open Settings when not connected.
 els.statusChip.addEventListener('click', () => {
