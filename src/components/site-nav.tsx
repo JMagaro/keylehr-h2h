@@ -12,9 +12,10 @@
  */
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, Trophy, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Container } from '@/components/container';
 import { NAV_LINKS } from '@/components/nav-links';
@@ -56,11 +57,17 @@ export function SiteNav() {
         {/* Brand */}
         <Link
           href="/"
-          className="flex items-center gap-2 font-semibold tracking-tight text-foreground"
+          aria-label="KeyLehr DFS — home"
+          className="flex items-center gap-2.5 font-semibold tracking-tight text-foreground"
         >
-          <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-accent-fg">
-            <Trophy className="size-4" aria-hidden="true" />
-          </span>
+          <Image
+            src="/keylehr-shield.png"
+            alt=""
+            width={36}
+            height={29}
+            priority
+            className="h-8 w-auto drop-shadow-sm"
+          />
           <span className="text-base">
             KeyLehr <span className="text-accent">DFS</span>
           </span>

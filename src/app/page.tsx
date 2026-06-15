@@ -70,8 +70,8 @@ export default async function DashboardPage() {
 
   return (
     <>
-      {/* Hero */}
-      <section className="relative overflow-hidden border-b border-border bg-surface">
+      {/* Hero — transparent so the stadium backdrop shows through strongest here. */}
+      <section className="relative overflow-hidden border-b border-border/60">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_color-mix(in_oklab,_var(--color-accent)_18%,_transparent),_transparent_60%)]"
