@@ -21,7 +21,7 @@
  * Idempotent: scores upsert on the `(ownerSeasonId, week)` unique index, and re-running
  * converges. Every call also writes a `scoreImportRuns` audit row.
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import {
   db,

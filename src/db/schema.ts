@@ -382,6 +382,43 @@ export const playoffMatchups = pgTable('playoff_matchups', {
 });
 
 /* -------------------------------------------------------------------------- */
+/* Playoff odds (538-style "odds over time")                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Per-week playoff-probability snapshots for each owner, produced by the
+ * Monte-Carlo odds engine (`src/lib/odds/simulate.ts`) and persisted by
+ * `scripts/compute-odds.ts`. One row per (season, week, owner): the owner's
+ * probability — as a percent 0..100 — of making the playoff field given games
+ * played through that week. The `/playoffs` page renders these as a multi-line
+ * trend chart. The unique index makes the compute script an idempotent upsert.
+ */
+export const playoffOddsSnapshots = pgTable(
+  'playoff_odds_snapshots',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    seasonId: integer()
+      .notNull()
+      .references(() => seasons.id, { onDelete: 'cascade' }),
+    week: integer().notNull(),
+    ownerSeasonId: integer()
+      .notNull()
+      .references(() => ownerSeasons.id, { onDelete: 'cascade' }),
+    /** Playoff probability as a percent, 0.00..100.00. */
+    oddsPct: numeric({ precision: 5, scale: 2 }).notNull(),
+    computedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('playoff_odds_snapshots_season_week_owner_uq').on(
+      t.seasonId,
+      t.week,
+      t.ownerSeasonId,
+    ),
+    index('playoff_odds_snapshots_season_idx').on(t.seasonId),
+  ],
+);
+
+/* -------------------------------------------------------------------------- */
 /* Relations (for the Drizzle relational query API)                            */
 /* -------------------------------------------------------------------------- */
 
@@ -473,3 +510,5 @@ export type SeasonAward = typeof seasonAwards.$inferSelect;
 export type NewSeasonAward = typeof seasonAwards.$inferInsert;
 export type PlayoffMatchup = typeof playoffMatchups.$inferSelect;
 export type NewPlayoffMatchup = typeof playoffMatchups.$inferInsert;
+export type PlayoffOddsSnapshot = typeof playoffOddsSnapshots.$inferSelect;
+export type NewPlayoffOddsSnapshot = typeof playoffOddsSnapshots.$inferInsert;

@@ -18,7 +18,9 @@
     "admin:hash": "tsx scripts/hash-password.ts",
     "admin:create": "tsx scripts/create-admin.ts",
     "schedule:pull": "tsx scripts/pull-schedule.ts",
-    "team:meta": "tsx scripts/update-team-meta.ts"
+    "team:meta": "tsx scripts/update-team-meta.ts",
+    "odds:compute": "tsx scripts/compute-odds.ts",
+    "playoffs:import-2025": "tsx scripts/import-playoffs-2025.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

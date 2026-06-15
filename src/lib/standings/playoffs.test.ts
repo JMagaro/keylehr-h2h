@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { advanceBracket, seedInitialBracket } from './playoffs';
-import type { Conference, PlayoffGameResult, SeededOwner } from './types';
+import type { Conference, PlayoffConfig, PlayoffGameResult, SeededOwner } from './types';
 
 /** Build a conference's 7 seeds with ownerSeasonId = `base + seed`. */
 function seedsFor(conference: Conference, base: number): SeededOwner[] {
@@ -186,5 +186,54 @@ describe('advanceBracket — winner derivation from points', () => {
     const conf = advanceBracket('divisional', divResults).filter((g) => g.conference === 'AFC');
     // Advancing: seed 4 (owner 4) and seed 2 (owner 2) -> reseed 2v4.
     expect(conf[0]).toMatchObject({ highSeed: 2, lowSeed: 4, highOwnerSeasonId: 2, lowOwnerSeasonId: 4 });
+  });
+});
+
+describe('config-driven brackets — 6 teams / 2 byes', () => {
+  // 6-team field per conference, top 2 seeds bye. Wild card plays seeds 3..6.
+  const SIX_TEAM: PlayoffConfig = {
+    teamsPerConference: 6,
+    divisionWinnersPerConference: 4,
+    wildCardsPerConference: 2,
+    topSeedByes: 2,
+  };
+
+  // Reuse seedsFor (ids 1..7 for AFC) but only seeds 1..6 are in this field.
+  const SIX_SEEDS: Record<Conference, SeededOwner[]> = {
+    AFC: seedsFor('AFC', 0).slice(0, 6),
+    NFC: seedsFor('NFC', 100).slice(0, 6),
+  };
+
+  it('wild-card round pairs 3v6 and 4v5, with seeds 1 & 2 on bye', () => {
+    const games = seedInitialBracket(SIX_SEEDS, SIX_TEAM);
+    const afc = games.filter((g) => g.conference === 'AFC');
+    expect(afc.map((g) => [g.highSeed, g.lowSeed])).toEqual([
+      [3, 6],
+      [4, 5],
+    ]);
+    // No bye seed (1 or 2) appears in any game.
+    expect(games.every((g) => g.highSeed > 2 && g.lowSeed > 2)).toBe(true);
+    // 2 games per conference × 2 conferences.
+    expect(games).toHaveLength(4);
+  });
+
+  it('re-enters BOTH bye seeds at the divisional round and reseeds [1,2,3,4]', () => {
+    // AFC: seeds 3 and 4 win their wild-card games.
+    const wcResults: PlayoffGameResult[] = [
+      result('AFC', 3, 6, 3, 6, 3),
+      result('AFC', 4, 5, 4, 5, 4),
+    ];
+    const byes: Record<Conference, SeededOwner[]> = {
+      AFC: [SIX_SEEDS.AFC[0], SIX_SEEDS.AFC[1]], // seeds 1 & 2
+      NFC: [SIX_SEEDS.NFC[0], SIX_SEEDS.NFC[1]],
+    };
+    const div = advanceBracket('wild_card', wcResults, byes).filter((g) => g.conference === 'AFC');
+    // Divisional field [1,2,3,4] -> reseed 1v4, 2v3.
+    expect(div.map((g) => [g.highSeed, g.lowSeed])).toEqual([
+      [1, 4],
+      [2, 3],
+    ]);
+    expect(div[0].highOwnerSeasonId).toBe(1);
+    expect(div[0].lowOwnerSeasonId).toBe(4);
   });
 });

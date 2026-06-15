@@ -19,13 +19,15 @@
  *
  * Pure: no DB, no I/O.
  */
-import type {
-  AdvancingOwner,
-  Conference,
-  PlayoffGame,
-  PlayoffGameResult,
-  PlayoffRound,
-  SeededOwner,
+import {
+  DEFAULT_PLAYOFF_CONFIG,
+  type AdvancingOwner,
+  type Conference,
+  type PlayoffConfig,
+  type PlayoffGame,
+  type PlayoffGameResult,
+  type PlayoffRound,
+  type SeededOwner,
 } from './types';
 
 const CONFERENCES: Conference[] = ['AFC', 'NFC'];
@@ -66,30 +68,41 @@ interface Seeded {
 /**
  * Build the initial (wild-card) bracket from the conference seeds.
  *
- * For each conference produces three games — #2 v #7, #3 v #6, #4 v #5 — in
- * that order. The #1 seed is omitted (bye). Conferences are emitted in
- * AFC-then-NFC order.
+ * Config-driven: the top `topSeedByes` seeds sit out (byes) and the remaining
+ * seeds (`topSeedByes+1 .. teamsPerConference`) are paired best-vs-worst inward.
+ * For today's default (7 teams, 1 bye) this yields the classic #2 v #7,
+ * #3 v #6, #4 v #5. Omitting `config` uses {@link DEFAULT_PLAYOFF_CONFIG}, so
+ * existing callers are unchanged. Conferences are emitted AFC-then-NFC.
  *
- * @param seeds Per-conference seeded owners (seeds 1..7), e.g. the output of
- *              `computeConferenceSeeds`.
+ * @param seeds  Per-conference seeded owners (seeds 1..N), e.g. the output of
+ *               `computeConferenceSeeds`.
+ * @param config Optional playoff structure; defaults to today's 7/4/3/1 format.
  * @returns The wild-card-round games.
  */
-export function seedInitialBracket(seeds: Record<Conference, SeededOwner[]>): PlayoffGame[] {
+export function seedInitialBracket(
+  seeds: Record<Conference, SeededOwner[]>,
+  config: PlayoffConfig = DEFAULT_PLAYOFF_CONFIG,
+): PlayoffGame[] {
   const games: PlayoffGame[] = [];
   for (const conf of CONFERENCES) {
     const bySeed = new Map<number, SeededOwner>();
     for (const s of seeds[conf]) bySeed.set(s.seed, s);
-    // 2v7, 3v6, 4v5
-    const pairs: [number, number][] = [
-      [2, 7],
-      [3, 6],
-      [4, 5],
-    ];
-    for (const [hi, lo] of pairs) {
-      const high = bySeed.get(hi);
-      const low = bySeed.get(lo);
-      if (!high || !low) continue;
-      games.push(pairGame('wild_card', conf, high, low));
+
+    // Seeds that actually play in the wild-card round: everyone past the byes,
+    // up to the field size. Pair best-vs-worst inward (lowest seed # vs highest).
+    const playing: SeededOwner[] = [];
+    for (let seed = config.topSeedByes + 1; seed <= config.teamsPerConference; seed++) {
+      const s = bySeed.get(seed);
+      if (s) playing.push(s);
+    }
+    playing.sort((a, b) => a.seed - b.seed);
+
+    let lo = 0;
+    let hi = playing.length - 1;
+    while (lo < hi) {
+      games.push(pairGame('wild_card', conf, playing[lo], playing[hi]));
+      lo++;
+      hi--;
     }
   }
   return games;
@@ -137,22 +150,28 @@ function resolveWinner(r: PlayoffGameResult): AdvancingOwner {
  * pair best-vs-worst inward (1st v last, 2nd v 2nd-last, ...).
  *
  * Round transitions:
- *  - `wild_card` → `divisional`: per conference, the 3 wild-card winners + the
- *    #1 seed (supplied via `byeSeeds`) are reseeded into 2 games.
- *  - `divisional` → `conference`: per conference, the 2 winners → 1 game.
+ *  - `wild_card` → `divisional`: per conference, the wild-card winners + the
+ *    bye seed(s) (supplied via `byeSeeds`) are reseeded into games.
+ *  - `divisional` → `conference`: per conference, reseed the winners into the
+ *    next round's games.
  *  - `conference` → `championship`: the AFC & NFC champions → 1 cross-
  *    conference game (`conference: null`, seeds preserved for display).
  *
+ * Config-aware: supplying more than one bye seed per conference (a format with
+ * `topSeedByes > 1`) is handled — all byes re-enter at the divisional round and
+ * are reseeded with the wild-card winners.
+ *
  * @param round    The round whose results are supplied.
  * @param results  The completed games of `round`.
- * @param byeSeeds Required only for the `wild_card → divisional` transition:
- *                 the #1 seed of each conference re-entering from its bye.
+ * @param byeSeeds Required only for the `wild_card → divisional` transition: the
+ *                 bye seed(s) of each conference re-entering. Accepts a single
+ *                 seed or an array (for `topSeedByes > 1`).
  * @returns The next round's games, or `[]` if `round` is the championship.
  */
 export function advanceBracket(
   round: PlayoffRound,
   results: PlayoffGameResult[],
-  byeSeeds?: Record<Conference, SeededOwner>,
+  byeSeeds?: Record<Conference, SeededOwner | SeededOwner[]>,
 ): PlayoffGame[] {
   const next = nextRound(round);
   if (next === null) return [];
@@ -174,10 +193,13 @@ export function advanceBracket(
   for (const conf of CONFERENCES) {
     const advancing = winners.filter((w) => w.conference === conf);
 
-    // Re-add the bye seed when moving out of the wild-card round.
+    // Re-add the bye seed(s) when moving out of the wild-card round.
     if (round === 'wild_card' && byeSeeds && byeSeeds[conf]) {
-      const bye = byeSeeds[conf];
-      advancing.push({ ownerSeasonId: bye.ownerSeasonId, seed: bye.seed, conference: conf });
+      const raw = byeSeeds[conf];
+      const byes = Array.isArray(raw) ? raw : [raw];
+      for (const bye of byes) {
+        advancing.push({ ownerSeasonId: bye.ownerSeasonId, seed: bye.seed, conference: conf });
+      }
     }
 
     if (advancing.length < 2) continue;

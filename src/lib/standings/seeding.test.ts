@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { computeConferenceSeeds, computeDivisionStandings } from './seeding';
-import type { Conference, Division, MatchupResult, OwnerEntry } from './types';
+import type { Conference, Division, MatchupResult, OwnerEntry, PlayoffConfig } from './types';
 
 const DIVS: Division[] = ['East', 'North', 'South', 'West'];
 
@@ -202,5 +202,55 @@ describe('computeConferenceSeeds — division winners & wild cards', () => {
     // Exactly one bye per conference, on seed 1.
     expect(seeds.AFC.filter((x) => x.isBye).map((x) => x.seed)).toEqual([1]);
     expect(seeds.NFC.filter((x) => x.isBye).map((x) => x.seed)).toEqual([1]);
+  });
+});
+
+describe('computeConferenceSeeds — config-driven structure', () => {
+  /** A non-default format: 6 teams / 4 division winners / 2 wild cards / 2 byes. */
+  const SIX_TEAM: PlayoffConfig = {
+    teamsPerConference: 6,
+    divisionWinnersPerConference: 4,
+    wildCardsPerConference: 2,
+    topSeedByes: 2,
+  };
+
+  it('honors a 6-team / 2-bye format: 4 winners + 2 wild cards, byes on seeds 1-2', () => {
+    const entries = buildEntries();
+    const s = new Schedule();
+
+    // Division winners, descending so they seed 1>2>3>4.
+    s.beatsDoormat(1, 200, 12);
+    s.beatsDoormat(5, 201, 11);
+    s.beatsDoormat(9, 202, 10);
+    s.beatsDoormat(13, 203, 9);
+    // Wild-card contenders — best two become seeds 5,6; the third is excluded.
+    s.beatsDoormat(2, 200, 10).losesTo(2, 1, 2); // seed 5
+    s.beatsDoormat(6, 201, 9).losesTo(6, 1, 2); // seed 6
+    s.beatsDoormat(3, 200, 8).losesTo(3, 1, 2); // excluded (only 2 WC slots)
+
+    const afc = computeConferenceSeeds(entries, s.build(), SIX_TEAM).AFC;
+
+    // Field size is exactly teamsPerConference.
+    expect(afc).toHaveLength(6);
+    expect(afc.map((x) => x.seed)).toEqual([1, 2, 3, 4, 5, 6]);
+
+    // 4 division winners, 2 wild cards.
+    expect(afc.filter((x) => x.kind === 'division_winner').map((x) => x.seed)).toEqual([1, 2, 3, 4]);
+    expect(afc.filter((x) => x.kind === 'wild_card').map((x) => x.seed)).toEqual([5, 6]);
+
+    // TWO byes now, on seeds 1 and 2.
+    expect(afc.filter((x) => x.isBye).map((x) => x.seed)).toEqual([1, 2]);
+
+    // The third-best wild card (owner 3) did not make the smaller field.
+    expect(afc.some((x) => x.ownerSeasonId === 3)).toBe(false);
+  });
+
+  it('defaults to the 7/4/3/1 format when no config is passed', () => {
+    const entries = buildEntries();
+    const s = new Schedule();
+    [1, 5, 9, 13].forEach((id, i) => s.beatsDoormat(id, AFC_DOORMATS[i], 5 - i + 1));
+    const afc = computeConferenceSeeds(entries, s.build()).AFC;
+    expect(afc).toHaveLength(7);
+    expect(afc.filter((x) => x.isBye).map((x) => x.seed)).toEqual([1]);
   });
 });

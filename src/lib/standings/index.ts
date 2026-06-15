@@ -15,10 +15,13 @@ export type {
   RankedStandingRow,
   SeedKind,
   SeededOwner,
+  PlayoffConfig,
   PlayoffGame,
   PlayoffGameResult,
   AdvancingOwner,
 } from './types';
+
+export { DEFAULT_PLAYOFF_CONFIG } from './types';
 
 export { computeStandings } from './standings';
 

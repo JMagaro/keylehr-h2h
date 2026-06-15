@@ -115,6 +115,39 @@ export interface RankedStandingRow extends StandingRow {
   division: Division;
 }
 
+/**
+ * Per-season playoff structure the seeding/bracket engine reads instead of
+ * hardcoding. Mirrors the `playoffs` block of the season rules
+ * (`src/lib/rules/schema.ts`) so the commissioner can change the format from
+ * the admin Settings page and the engine follows.
+ *
+ * The tie rule itself (`regular_season_pf` vs `higher_seed`) is supplied
+ * separately per-game via {@link PlayoffGameResult} and is intentionally NOT
+ * part of this config — see {@link advanceBracket}.
+ */
+export interface PlayoffConfig {
+  /** Total seeds per conference (e.g. 7 → seeds 1..7). */
+  teamsPerConference: number;
+  /** How many division winners auto-qualify and seed at the top. */
+  divisionWinnersPerConference: number;
+  /** How many wild cards fill the remaining seeds. */
+  wildCardsPerConference: number;
+  /** How many top seeds receive a first-round bye. */
+  topSeedByes: number;
+}
+
+/**
+ * Today's league defaults (7 teams, 4 division winners, 3 wild cards, 1 bye).
+ * Used whenever a {@link PlayoffConfig} is not supplied, so existing callers and
+ * tests are unaffected.
+ */
+export const DEFAULT_PLAYOFF_CONFIG: PlayoffConfig = {
+  teamsPerConference: 7,
+  divisionWinnersPerConference: 4,
+  wildCardsPerConference: 3,
+  topSeedByes: 1,
+};
+
 /** Why an owner earned their playoff seed. */
 export type SeedKind = 'division_winner' | 'wild_card';
 

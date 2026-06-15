@@ -9,7 +9,11 @@
       "Bash(npm install *)",
       "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\({deps:p.dependencies, dev:p.devDependencies}, null, 2\\)\\)\")",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:apidog.com)"
+      "WebFetch(domain:apidog.com)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(npx tsx -e ' *)",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }

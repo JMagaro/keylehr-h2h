@@ -1,11 +1,19 @@
 /**
- * Playoff Picture — Server Component. Renders the LIVE "as if the season ended
- * today" seeding for the selected season: 7 seeds per conference in order, with
- * DIV / WC tags and a first-round bye for the #1 seed. Season is chosen via
- * `?season=<id>`, defaulting to the most recent season that has data.
+ * Playoffs — Server Component. The public postseason hub for the selected season,
+ * composing three pieces top to bottom:
+ *
+ *   1. Playoff Picture — the LIVE "as if the season ended today" seeding: 7 seeds
+ *      per conference, each tagged DIV / WC / Bye.
+ *   2. Odds Tracker — each owner's playoff probability by week, from the
+ *      Monte-Carlo odds simulation (538-style multi-line chart).
+ *   3. Bracket — the round-by-round bracket once it's generated, ending in the
+ *      Champion. Until generated, a friendly empty state.
+ *
+ * Season is chosen via `?season=<id>`, defaulting to the most recent season that
+ * has data.
  */
 import type { Metadata } from "next";
-import { Trophy } from "lucide-react";
+import { GitFork, LineChart, Trophy } from "lucide-react";
 
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
@@ -13,6 +21,8 @@ import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/badge";
 import { SeasonSelector } from "@/components/season-selector";
 import { TeamLogo } from "@/components/team-logo";
+import { PlayoffBracket } from "@/components/playoff-bracket";
+import { PlayoffOddsChart } from "@/components/playoff-odds-chart";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/data-table";
 import {
   getSeasonOptions,
@@ -20,18 +30,36 @@ import {
   getPlayoffPicture,
   type PlayoffSeedRow,
 } from "@/lib/standings/query";
+import { getPlayoffBracket } from "@/lib/playoffs/service";
+import { getOddsTrend } from "@/lib/odds/query";
 import type { Conference } from "@/lib/standings";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "Playoff Picture",
+  title: "Playoffs",
   description:
-    "The KeyLehr H2H playoff picture — NFL-style seeding with four division winners and three wild cards per conference, and a bye for the #1 seed, computed live from the standings.",
+    "The KeyLehr H2H postseason — live playoff seeding, each owner's playoff odds by week from a Monte-Carlo simulation, and the round-by-round bracket through to the champion.",
 };
 
 const CONFERENCES: Conference[] = ["AFC", "NFC"];
+
+/** A section heading shared by the three composed blocks. */
+function SectionHeading({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <h2 className="text-xl font-bold tracking-tight text-foreground">{title}</h2>
+      <p className="max-w-2xl text-sm text-muted">{description}</p>
+    </div>
+  );
+}
 
 function SeedTag({ row }: { row: PlayoffSeedRow }) {
   if (row.isBye) return <Badge variant="bye">Bye</Badge>;
@@ -49,7 +77,7 @@ function ConferenceSeeds({
   return (
     <section aria-label={`${conference} playoff seeding`} className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
-        <h2 className="text-xl font-bold tracking-tight text-foreground">{conference}</h2>
+        <h3 className="text-lg font-bold tracking-tight text-foreground">{conference}</h3>
         <Badge variant="accent">7 Seeds</Badge>
       </div>
       <Table>
@@ -117,17 +145,39 @@ export default async function PlayoffsPage({
   const selectedId = validRequested ? requestedId : (defaultId ?? seasons[0]?.id);
 
   const selectedSeason = seasons.find((s) => s.id === selectedId) ?? null;
-  const picture =
+
+  // Load the three sections in parallel for the selected season.
+  const [picture, bracket, trend] =
     selectedId !== undefined
-      ? await getPlayoffPicture(selectedId)
-      : { hasData: false } as Awaited<ReturnType<typeof getPlayoffPicture>>;
+      ? await Promise.all([
+          getPlayoffPicture(selectedId),
+          getPlayoffBracket(selectedId),
+          getOddsTrend(selectedId),
+        ])
+      : ([
+          { hasData: false, byConference: { AFC: [], NFC: [] } },
+          {
+            hasData: false,
+            rounds: [],
+            championOwnerSeasonId: null,
+            championOwnerName: null,
+            championTeamName: null,
+          },
+          { weeks: [], owners: [] },
+        ] as [
+          Awaited<ReturnType<typeof getPlayoffPicture>>,
+          Awaited<ReturnType<typeof getPlayoffBracket>>,
+          Awaited<ReturnType<typeof getOddsTrend>>,
+        ]);
+
+  const hasOdds = trend.weeks.length > 0 && trend.owners.length > 0;
 
   return (
-    <Container width="wide" as="div" className="flex flex-col gap-8 py-10">
+    <Container width="wide" as="div" className="flex flex-col gap-12 py-10">
       <PageHeader
-        eyebrow={selectedSeason ? selectedSeason.name : "Playoff Picture"}
-        title="Playoff Picture"
-        description="Seven seeds per conference — four division winners and three wild cards. The #1 seed earns a first-round bye. Shown as if the season ended today."
+        eyebrow={selectedSeason ? selectedSeason.name : "Playoffs"}
+        title="Playoffs"
+        description="The live playoff picture, each owner's playoff odds by week, and the round-by-round bracket through to the champion."
         actions={
           selectedId !== undefined ? (
             <SeasonSelector seasons={seasons} selectedId={selectedId} />
@@ -135,19 +185,60 @@ export default async function PlayoffsPage({
         }
       />
 
-      {!picture.hasData ? (
-        <EmptyState
-          icon={Trophy}
-          title="No playoff picture yet for this season"
-          description="This season has no owners or scored games yet. Pick another season above, or check back as the playoff race develops."
+      {/* 1. Playoff Picture — live seeding. */}
+      <section aria-label="Playoff picture" className="flex flex-col gap-6">
+        <SectionHeading
+          title="Playoff Picture"
+          description="Seven seeds per conference — four division winners and three wild cards. The #1 seed earns a first-round bye. Shown as if the season ended today."
         />
-      ) : (
-        <div className="grid gap-8 lg:grid-cols-2">
-          {CONFERENCES.map((conf) => (
-            <ConferenceSeeds key={conf} conference={conf} seeds={picture.byConference[conf]} />
-          ))}
-        </div>
-      )}
+        {!picture.hasData ? (
+          <EmptyState
+            icon={Trophy}
+            title="No playoff picture yet for this season"
+            description="This season has no owners or scored games yet. Pick another season above, or check back as the playoff race develops."
+          />
+        ) : (
+          <div className="grid gap-8 lg:grid-cols-2">
+            {CONFERENCES.map((conf) => (
+              <ConferenceSeeds key={conf} conference={conf} seeds={picture.byConference[conf]} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 2. Odds Tracker — playoff probability by week. */}
+      <section aria-label="Playoff odds tracker" className="flex flex-col gap-6">
+        <SectionHeading
+          title="Odds Tracker"
+          description="Each team's playoff probability by week, from a Monte-Carlo simulation. Search or hover a team to highlight its line; filter by conference to cut the clutter."
+        />
+        {!hasOdds ? (
+          <EmptyState
+            icon={LineChart}
+            title="No playoff-odds snapshots yet"
+            description="Odds are computed once the season has scored games. They'll appear here as the simulation runs each week."
+          />
+        ) : (
+          <PlayoffOddsChart trend={trend} />
+        )}
+      </section>
+
+      {/* 3. Bracket — round-by-round through to the champion. */}
+      <section aria-label="Playoff bracket" className="flex flex-col gap-6">
+        <SectionHeading
+          title="Bracket"
+          description="Wild Card through the Championship, filling in round by round as games are scored — ending with the league champion."
+        />
+        {!bracket.hasData ? (
+          <EmptyState
+            icon={GitFork}
+            title="No bracket yet for this season"
+            description="The bracket will appear once the regular season ends and the bracket is generated."
+          />
+        ) : (
+          <PlayoffBracket bracket={bracket} />
+        )}
+      </section>
     </Container>
   );
 }
