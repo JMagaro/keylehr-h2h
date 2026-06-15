@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KeyLehr H2H — DraftKings Sync</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="appbar">
+      <h1>KeyLehr H2H — DK Sync</h1>
+      <button id="gearBtn" class="icon-btn" type="button" title="Settings" aria-label="Settings">
+        ⚙
+      </button>
+    </header>
+
+    <!-- ============================ SETTINGS SCREEN ============================ -->
+    <section id="settingsScreen" class="screen" hidden>
+      <p class="lede">Connect this extension to your KeyLehr H2H app.</p>
+
+      <label>
+        App Base URL
+        <input id="appBaseUrl" type="url" placeholder="http://localhost:3000" />
+      </label>
+      <label>
+        Ingest Token
+        <input id="ingestToken" type="password" placeholder="INGEST_TOKEN from .env" />
+      </label>
+
+      <div id="testResult" class="test-result" role="status" aria-live="polite"></div>
+
+      <div class="btn-row">
+        <button id="testBtn" class="secondary" type="button">Test connection</button>
+        <button id="saveBtn" type="button">Save</button>
+      </div>
+    </section>
+
+    <!-- ============================== MAIN SCREEN ============================= -->
+    <section id="mainScreen" class="screen" hidden>
+      <button id="statusChip" class="chip" type="button" aria-live="polite">
+        <span class="dot"></span><span id="chipText">Checking…</span>
+      </button>
+
+      <div class="card" id="contestCard">
+        <div class="card-title">Detected contest</div>
+        <div id="contestBody" class="card-body">Checking the active tab…</div>
+      </div>
+
+      <div class="field-row">
+        <label class="grow">
+          Season
+          <select id="seasonSelect">
+            <option value="">Loading…</option>
+          </select>
+        </label>
+        <label class="week-field">
+          Week
+          <input id="week" type="number" min="1" max="25" step="1" placeholder="1" />
+        </label>
+      </div>
+
+      <button id="syncBtn" class="primary big" type="button" disabled>
+        <span id="syncSpinner" class="spinner" hidden></span>
+        <span id="syncLabel">Sync</span>
+      </button>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <div id="lastSynced" class="last-synced" hidden></div>
+
+      <details id="pasteExpander" class="expander">
+        <summary>Paste manually</summary>
+        <label>
+          Paste leaderboard JSON
+          <textarea
+            id="pasteJson"
+            rows="5"
+            placeholder='Paste DK leaderboard JSON — a raw array like [{"userName":"...","fantasyPoints":241.68,"rank":1}, ...] or {"entries":[{"entryName":"...","points":241.68}]}'
+          ></textarea>
+        </label>
+        <button id="pasteBtn" class="secondary" type="button">Paste JSON &amp; Sync</button>
+      </details>
+    </section>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

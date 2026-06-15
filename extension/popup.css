@@ -1,0 +1,388 @@
+:root {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --panel-2: #172033;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #22c55e;
+  --accent-2: #334155;
+  --error: #f87171;
+  --ok: #4ade80;
+  --amber: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 360px;
+  margin: 0;
+  padding: 0;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ---- app bar ---- */
+.appbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--accent-2);
+}
+
+h1 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.icon-btn {
+  width: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.icon-btn:hover,
+.icon-btn:focus-visible {
+  color: var(--text);
+  border-color: var(--accent-2);
+  outline: none;
+}
+
+/* ---- screens ---- */
+.screen {
+  padding: 12px 14px 16px;
+}
+
+.screen[hidden] {
+  display: none;
+}
+
+.lede {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---- form basics ---- */
+label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+input,
+textarea,
+select {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+  padding: 7px 8px;
+  border: 1px solid var(--accent-2);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+textarea {
+  resize: vertical;
+}
+
+select {
+  appearance: none;
+  cursor: pointer;
+}
+
+/* ---- buttons ---- */
+button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #052e16;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  color: #052e16;
+}
+
+button.secondary {
+  background: var(--accent-2);
+  color: var(--text);
+  font-weight: 500;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.big {
+  padding: 12px 10px;
+  font-size: 14px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.btn-row button {
+  flex: 1;
+}
+
+/* ---- spinner ---- */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(5, 46, 22, 0.35);
+  border-top-color: #052e16;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+.spinner[hidden] {
+  display: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- connection status chip ---- */
+.chip {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  margin-bottom: 12px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--accent-2);
+  color: var(--text);
+  font-weight: 500;
+  font-size: 12px;
+  text-align: left;
+}
+
+.chip .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.chip.ok .dot {
+  background: var(--ok);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
+}
+
+.chip.bad {
+  cursor: pointer;
+}
+
+.chip.bad .dot {
+  background: var(--error);
+}
+
+.chip.checking .dot {
+  background: var(--amber);
+}
+
+/* ---- detected-contest card ---- */
+.card {
+  background: var(--panel-2);
+  border: 1px solid var(--accent-2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.card-body {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.card-body .contest-name {
+  font-weight: 600;
+}
+
+.card-body .contest-id {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.card-body .prompt {
+  color: var(--muted);
+}
+
+.card.detected {
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+/* ---- field row (season + week) ---- */
+.field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.field-row .grow {
+  flex: 1;
+}
+
+.week-field {
+  width: 84px;
+  flex: none;
+}
+
+/* ---- result banner (kept from original) ---- */
+.status {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: none;
+}
+
+.status.show {
+  display: block;
+}
+
+.status::first-line {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.status.ok {
+  background: rgba(34, 197, 94, 0.18);
+  border: 1px solid rgba(34, 197, 94, 0.55);
+  color: #bbf7d0;
+}
+
+.status.warn {
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.6);
+  color: #d9f99d;
+}
+
+.status.err {
+  background: rgba(248, 113, 113, 0.18);
+  border: 1px solid rgba(248, 113, 113, 0.6);
+  color: #fecaca;
+}
+
+.status.info {
+  background: var(--panel);
+  border: 1px solid var(--accent-2);
+  color: var(--muted);
+}
+
+/* ---- test-connection result (settings screen) ---- */
+.test-result {
+  font-size: 12px;
+  margin: 2px 0 10px;
+  min-height: 16px;
+}
+
+.test-result.ok {
+  color: var(--ok);
+}
+
+.test-result.bad {
+  color: var(--error);
+}
+
+.test-result.checking {
+  color: var(--amber);
+}
+
+/* ---- last synced line ---- */
+.last-synced {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.last-synced[hidden] {
+  display: none;
+}
+
+/* ---- paste expander ---- */
+.expander {
+  margin-top: 14px;
+  border-top: 1px solid var(--accent-2);
+  padding-top: 10px;
+}
+
+.expander summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
+  list-style: none;
+  user-select: none;
+}
+
+.expander summary::-webkit-details-marker {
+  display: none;
+}
+
+.expander summary::before {
+  content: "▸ ";
+}
+
+.expander[open] summary::before {
+  content: "▾ ";
+}
+
+.expander label {
+  margin-top: 10px;
+}

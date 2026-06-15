@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Read(//private/tmp/**)",
+      "Bash(rm -rf keylehr-dfs-scaffold)",
+      "Bash(npx --yes create-next-app@latest keylehr-dfs-scaffold --typescript --tailwind --app --src-dir --eslint --import-alias \"@/*\" --use-npm --no-turbopack --yes)",
+      "Bash(npm pkg *)",
+      "Bash(npm install *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\({deps:p.dependencies, dev:p.devDependencies}, null, 2\\)\\)\")",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:apidog.com)"
+    ]
+  }
+}
