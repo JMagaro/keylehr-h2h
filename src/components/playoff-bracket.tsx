@@ -301,7 +301,7 @@ export function PlayoffBracket({ bracket, className }: PlayoffBracketProps) {
       : null;
 
   return (
-    <div className={cn('flex flex-col gap-6', className)}>
+    <div className={cn('flex min-w-0 flex-col gap-6', className)}>
       {/* Horizontally scrollable on small screens; lays out as columns on desktop. */}
       <div className="-mx-2 overflow-x-auto px-2 pb-2">
         <div className="flex min-w-max items-stretch gap-8">

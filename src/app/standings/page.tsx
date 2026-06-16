@@ -59,7 +59,7 @@ function DivisionTable({
 }) {
   const caption = `${conference} ${division}`;
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex min-w-0 flex-col gap-2">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-subtle">
         {division}
       </h3>
@@ -71,14 +71,20 @@ function DivisionTable({
               #
             </TH>
             <TH>Team &amp; Owner</TH>
-            <TH>DK Entry</TH>
+            <TH className="hidden sm:table-cell">DK Entry</TH>
             <TH align="right">W</TH>
             <TH align="right">L</TH>
             <TH align="right">T</TH>
-            <TH align="right">PCT</TH>
+            <TH align="right" className="hidden sm:table-cell">
+              PCT
+            </TH>
             <TH align="right">PF</TH>
-            <TH align="right">PA</TH>
-            <TH align="right">STRK</TH>
+            <TH align="right" className="hidden sm:table-cell">
+              PA
+            </TH>
+            <TH align="right" className="hidden sm:table-cell">
+              STRK
+            </TH>
           </TR>
         </THead>
         <TBody>
@@ -99,7 +105,9 @@ function DivisionTable({
                   <PlayoffBadge tag={r.playoff} />
                 </div>
               </TD>
-              <TD className="text-muted">{r.dkEntryName ?? "—"}</TD>
+              <TD className="hidden text-muted sm:table-cell">
+                {r.dkEntryName ?? "—"}
+              </TD>
               <TD align="right" className="tabular-nums font-medium">
                 {r.wins}
               </TD>
@@ -109,16 +117,16 @@ function DivisionTable({
               <TD align="right" className="tabular-nums">
                 {r.ties}
               </TD>
-              <TD align="right" className="tabular-nums">
+              <TD align="right" className="hidden tabular-nums sm:table-cell">
                 {r.winPct.toFixed(3)}
               </TD>
               <TD align="right" className="tabular-nums">
                 {formatPoints(r.pointsFor)}
               </TD>
-              <TD align="right" className="tabular-nums">
+              <TD align="right" className="hidden tabular-nums sm:table-cell">
                 {formatPoints(r.pointsAgainst)}
               </TD>
-              <TD align="right" className="tabular-nums">
+              <TD align="right" className="hidden tabular-nums sm:table-cell">
                 {r.streak || "—"}
               </TD>
             </TR>

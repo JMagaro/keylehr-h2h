@@ -69,7 +69,7 @@ export function TH({ align = 'left', className, children, ...rest }: CellProps) 
     <th
       scope="col"
       className={cn(
-        'whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-subtle',
+        'whitespace-nowrap px-3 py-3 text-xs font-semibold uppercase tracking-wide text-subtle sm:px-4',
         ALIGN[align],
         className,
       )}
@@ -83,7 +83,7 @@ export function TH({ align = 'left', className, children, ...rest }: CellProps) 
 export function TD({ align = 'left', className, children, ...rest }: CellProps) {
   return (
     <td
-      className={cn('whitespace-nowrap px-4 py-3 text-foreground', ALIGN[align], className)}
+      className={cn('whitespace-nowrap px-3 py-3 text-foreground sm:px-4', ALIGN[align], className)}
       {...rest}
     >
       {children}

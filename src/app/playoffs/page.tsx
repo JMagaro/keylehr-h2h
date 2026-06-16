@@ -75,7 +75,7 @@ function ConferenceSeeds({
   seeds: PlayoffSeedRow[];
 }) {
   return (
-    <section aria-label={`${conference} playoff seeding`} className="flex flex-col gap-4">
+    <section aria-label={`${conference} playoff seeding`} className="flex min-w-0 flex-col gap-4">
       <div className="flex items-center gap-3">
         <h3 className="text-lg font-bold tracking-tight text-foreground">{conference}</h3>
         <Badge variant="accent">7 Seeds</Badge>

@@ -162,7 +162,7 @@ function LeaderTable({
   valueOf: (l: AllTimeLeader) => string;
 }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-2">
         <Icon className="size-4 text-accent" aria-hidden="true" />
         <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
@@ -251,7 +251,7 @@ function RivalryTable({
   rows: Rivalry[];
 }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
       <p className="text-xs text-muted">{description}</p>
       <Table>

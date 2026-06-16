@@ -186,7 +186,7 @@ export default async function DashboardPage() {
 
       {/* Live overview */}
       <section aria-label="League overview">
-        <Container width="wide" as="div" className="grid gap-6 pb-16 lg:grid-cols-2">
+        <Container width="wide" as="div" className="grid gap-6 pb-16 [&>*]:min-w-0 lg:grid-cols-2">
           {/* Top of the standings */}
           <Card>
             <CardHeader>

@@ -385,8 +385,13 @@ export function PlayoffOddsChart({ trend, className }: PlayoffOddsChartProps) {
         )}
       </ul>
 
-      {/* Screen-reader data-table fallback: final-week odds for every owner. */}
-      <table className="sr-only">
+      {/* Screen-reader data-table fallback: final-week odds for every owner.
+          Wrapped in an sr-only DIV (not on the table itself) — `sr-only`'s
+          width:1px is ignored by <table>, which then expands to its content
+          width and, being position:absolute, would extend the page's scroll
+          region. The div clips it via overflow:hidden. */}
+      <div className="sr-only">
+      <table>
         <caption>Final-week playoff odds by owner (week {weeks[lastIdx]})</caption>
         <thead>
           <tr>
@@ -407,6 +412,7 @@ export function PlayoffOddsChart({ trend, className }: PlayoffOddsChartProps) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
