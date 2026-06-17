@@ -57,6 +57,11 @@ export function PlayerCard({ data, slotLabel, showFit = false, className }: Play
             {data.position}
           </span>
           <span className="shrink-0 text-[11px] tabular-nums text-subtle">{data.teamKey}</span>
+          {data.salary != null ? (
+            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-accent">
+              ${data.salary.toLocaleString('en-US')}
+            </span>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-1">
           {data.reasons.map((r, i) => (

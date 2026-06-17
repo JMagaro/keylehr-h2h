@@ -273,26 +273,23 @@ const EMPTY_POS: Record<FantasyPosition, Recommendation[]> = {
 };
 
 /**
- * Produce the full recommendation set for one risk profile.
+ * Score every eligible player (eligibility decided by `isEligible`), excluding the
+ * injured-out, and return them sorted by fit desc. Positional ranks are computed over the
+ * FULL `relevant` pool so a "WR8" label is stable regardless of who's eligible this week.
  *
- * @param relevant The full relevant player pool (used for positional ranks + fades).
- * @param ctx      Week matchups + trending maps.
- * @param risk     The chosen risk profile.
- * @param perPosition How many targets to keep per position (default 6).
+ * Two eligibility predicates are used by callers:
+ *   • signal mode  — `p => ctx.matchups.has(p.teamKey)` (team plays this week / not on bye)
+ *   • salary mode  — `p => salaryById.has(p.id)` (player is on the DraftKings slate)
  */
-export function recommend(
+export function scoreEligible(
   relevant: SleeperPlayer[],
   ctx: RecommendContext,
   risk: RiskLevel,
-  perPosition = 6,
-): RecommendResult {
+  isEligible: (p: SleeperPlayer) => boolean,
+): Recommendation[] {
   const posRanks = assignPositionalRanks(relevant);
-
-  // Players whose team actually plays this week (not on bye) are lineup-eligible.
-  const eligible = relevant.filter((p) => ctx.matchups.has(p.teamKey));
-
-  const scored: Recommendation[] = eligible
-    .filter((p) => !isInactiveTag(p.injuryStatus))
+  return relevant
+    .filter((p) => isEligible(p) && !isInactiveTag(p.injuryStatus))
     .map((p) => {
       const posRank = posRanks.get(p.id) ?? 999;
       const s = scorePlayer(p, posRank, ctx, risk);
@@ -309,8 +306,14 @@ export function recommend(
       };
     })
     .sort((a, b) => b.fit - a.fit || a.posRank - b.posRank);
+}
 
-  const targetsByPosition: Record<FantasyPosition, Recommendation[]> = {
+/** Group scored recs into per-position shortlists (top `perPosition` each, best first). */
+export function groupTargets(
+  scored: Recommendation[],
+  perPosition = 6,
+): Record<FantasyPosition, Recommendation[]> {
+  const out: Record<FantasyPosition, Recommendation[]> = {
     ...EMPTY_POS,
     QB: [],
     RB: [],
@@ -320,22 +323,30 @@ export function recommend(
     DST: [],
   };
   for (const rec of scored) {
-    const bucket = targetsByPosition[rec.player.position];
+    const bucket = out[rec.player.position];
     if (bucket.length < perPosition) bucket.push(rec);
   }
+  return out;
+}
 
-  // Greedy lineup: fill each slot with the best unused eligible player it allows.
+/** Greedy lineup fill: best unused player per slot. Used by the signal-only mode. */
+export function fillLineupGreedy(
+  scored: Recommendation[],
+): { slot: string; pick: Recommendation | null }[] {
   const used = new Set<string>();
-  const suggestedLineup = LINEUP_SLOTS.map(({ slot, positions }) => {
+  return LINEUP_SLOTS.map(({ slot, positions }) => {
     const allowed = new Set(positions);
     const pick =
       scored.find((r) => !used.has(r.player.id) && allowed.has(r.player.position)) ?? null;
     if (pick) used.add(pick.player.id);
     return { slot, pick };
   });
+}
 
-  // Fades: notable names (good positional rank) with a red flag this week.
-  const fades: Recommendation[] = relevant
+/** Notable names (good positional rank) with a red flag this week: hurt, dropped, or on bye. */
+export function computeFades(relevant: SleeperPlayer[], ctx: RecommendContext): Recommendation[] {
+  const posRanks = assignPositionalRanks(relevant);
+  return relevant
     .map((p) => {
       const posRank = posRanks.get(p.id) ?? 999;
       const onBye = !ctx.matchups.has(p.teamKey);
@@ -367,6 +378,23 @@ export function recommend(
     .filter((r): r is Recommendation => r !== null)
     .sort((a, b) => a.posRank - b.posRank)
     .slice(0, 8);
+}
 
-  return { targetsByPosition, suggestedLineup, fades };
+/**
+ * Produce the full recommendation set for one risk profile (signal-only mode: eligibility
+ * = the player's NFL team plays this week). Salary mode composes the helpers above with
+ * the cap optimizer instead — see src/lib/players/query.ts.
+ */
+export function recommend(
+  relevant: SleeperPlayer[],
+  ctx: RecommendContext,
+  risk: RiskLevel,
+  perPosition = 6,
+): RecommendResult {
+  const scored = scoreEligible(relevant, ctx, risk, (p) => ctx.matchups.has(p.teamKey));
+  return {
+    targetsByPosition: groupTargets(scored, perPosition),
+    suggestedLineup: fillLineupGreedy(scored),
+    fades: computeFades(relevant, ctx),
+  };
 }

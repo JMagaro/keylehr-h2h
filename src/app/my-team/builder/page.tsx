@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CalendarOff,
+  CircleDollarSign,
   Info,
   ListChecks,
   Sparkles,
@@ -37,6 +38,7 @@ import {
   type RiskLevel,
 } from '@/lib/players/query';
 import { RISK_META } from '@/lib/players/recommend';
+import { DK_CLASSIC_SALARY_CAP } from '@/lib/draftkings/draftables';
 
 export const metadata: Metadata = {
   title: 'Lineup Builder',
@@ -105,7 +107,12 @@ export default async function LineupBuilderPage({
     ? (reqRisk as RiskLevel)
     : 'balanced';
 
-  const data = await getBuilderData(season, week, risk);
+  // Optional ?dg=<draftGroupId> to try a DraftKings slate before it's saved in admin.
+  const dgOverride = param(sp, 'dg') ?? null;
+
+  const data = await getBuilderData(season, week, risk, dgOverride);
+  const salary = data.salary;
+  const money = (n: number) => `$${n.toLocaleString('en-US')}`;
 
   const controls = (
     <LineupBuilderControls
@@ -145,10 +152,67 @@ export default async function LineupBuilderPage({
             <p className="text-xs text-subtle">
               Built from free public sources — Sleeper consensus ranks, waiver add/drop trends and
               injury tags, plus the NFL schedule. These reflect availability &amp; momentum, not
-              precise point projections or DraftKings salaries, so treat it as a smart shortlist to
-              pair with DK&apos;s salary view.
+              precise point projections{salary.enabled ? '' : ' or DraftKings salaries'}, so treat
+              it as a smart shortlist{salary.enabled ? '.' : ' to pair with DK’s salary view.'}
             </p>
           </div>
+        </CardBody>
+      </Card>
+
+      {/* Salary / cap status */}
+      <Card className={salary.enabled ? 'border-accent/30' : undefined}>
+        <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+          <span
+            className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
+              salary.enabled ? 'bg-win-soft text-win' : 'bg-surface text-subtle'
+            }`}
+          >
+            <CircleDollarSign className="size-5" aria-hidden="true" />
+          </span>
+          {salary.enabled ? (
+            <div className="flex flex-1 flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+                <p className="text-sm font-semibold text-foreground">
+                  Salary-cap optimized · DraftKings Classic
+                </p>
+                <span className="text-sm tabular-nums text-muted">
+                  <span className="font-semibold text-foreground">{money(salary.totalSalary)}</span>{' '}
+                  / {money(salary.salaryCap)} ·{' '}
+                  <span className={salary.remaining >= 0 ? 'text-win' : 'text-loss'}>
+                    {money(salary.remaining)} left
+                  </span>
+                </span>
+              </div>
+              <p className="text-xs text-subtle">
+                The suggested lineup is a valid roster under the {money(salary.salaryCap)} cap,
+                maximizing model fit. Salaries pulled live from the DraftKings slate
+                {salary.source === 'auto'
+                  ? ' (auto-detected main NFL slate)'
+                  : salary.source === 'admin'
+                    ? ' (pinned in Admin → Slates)'
+                    : ' (via ?dg= override)'}{' '}
+                · draft group {salary.draftGroupId} · matched {salary.matched}/{salary.matchTotal}{' '}
+                players.
+                {!salary.feasible
+                  ? ' ⚠️ Not enough cheap options on this slate to fill every slot under the cap — showing the closest valid attempt.'
+                  : ''}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-foreground">Salary-cap optimization is off</p>
+              <p className="text-sm text-muted">
+                We auto-detect DraftKings&apos; main NFL slate for the live week, but there&apos;s no
+                slate to optimize against right now (the offseason gap, or a week that isn&apos;t the
+                current one). The lineup below is a best-plays shortlist, not yet a cap-valid{' '}
+                {money(DK_CLASSIC_SALARY_CAP)} roster.
+              </p>
+              <p className="text-xs text-subtle">
+                To force one now: pin a draft group in <strong>Admin → Slates</strong>, or append{' '}
+                <code className="rounded bg-surface px-1">?dg=&lt;id&gt;</code> to this URL.
+              </p>
+            </div>
+          )}
         </CardBody>
       </Card>
 
@@ -176,8 +240,11 @@ export default async function LineupBuilderPage({
                 <div className="flex flex-col gap-0.5">
                   <CardTitle>Suggested lineup</CardTitle>
                   <CardDescription>
-                    A full DraftKings Classic roster (QB · RB · RB · WR · WR · WR · TE · FLEX · DST),
-                    filled by best fit for the {data.riskMeta.label.toLowerCase()} profile.
+                    A full DraftKings Classic roster (QB · RB · RB · WR · WR · WR · TE · FLEX · DST)
+                    for the {data.riskMeta.label.toLowerCase()} profile
+                    {salary.enabled
+                      ? ` — optimized under the ${money(salary.salaryCap)} cap (${money(salary.totalSalary)} used).`
+                      : ', filled by best fit.'}
                   </CardDescription>
                 </div>
               </div>

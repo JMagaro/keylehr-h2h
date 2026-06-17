@@ -11,7 +11,7 @@
  */
 import { and, desc, eq } from 'drizzle-orm';
 
-import { db, nflGames, nflTeams, seasons } from '@/db';
+import { db, nflGames, nflTeams, seasons, weeklyContests } from '@/db';
 import {
   getSleeperPlayers,
   getSleeperTrending,
@@ -20,14 +20,26 @@ import {
 } from './sleeper';
 import { getLeagueNews, type NewsHeadline } from './espn-news';
 import {
+  computeFades,
+  fillLineupGreedy,
+  groupTargets,
   isInactiveTag,
+  LINEUP_SLOTS,
   recommend,
   RISK_META,
+  scoreEligible,
   type Reason,
   type Recommendation,
   type RiskLevel,
   type WeekMatchup,
 } from './recommend';
+import { optimizeLineup } from './optimize';
+import {
+  DK_CLASSIC_SALARY_CAP,
+  fetchDraftables,
+  getMainNflDraftGroupId,
+} from '@/lib/draftkings/draftables';
+import { matchSalaries } from '@/lib/draftkings/match';
 
 /* -------------------------------------------------------------------------- */
 /* Season / week selection                                                    */
@@ -144,9 +156,15 @@ export interface PlayerCardData {
   isHome: boolean;
   addCount: number;
   dropCount: number;
+  /** DraftKings salary when a slate is attached, else null. */
+  salary: number | null;
 }
 
-function toCard(rec: Recommendation, teamLogoByKey: Map<string, string | null>): PlayerCardData {
+function toCard(
+  rec: Recommendation,
+  teamLogoByKey: Map<string, string | null>,
+  salaryById?: Map<string, number>,
+): PlayerCardData {
   return {
     id: rec.player.id,
     name: rec.player.name,
@@ -161,6 +179,7 @@ function toCard(rec: Recommendation, teamLogoByKey: Map<string, string | null>):
     isHome: rec.isHome,
     addCount: rec.addCount,
     dropCount: rec.dropCount,
+    salary: salaryById?.get(rec.player.id) ?? null,
   };
 }
 
@@ -174,6 +193,22 @@ function teamLogoMap(teamMeta: Map<number, TeamMeta>): Map<string, string | null
 /* Builder data                                                               */
 /* -------------------------------------------------------------------------- */
 
+export interface SalaryInfo {
+  /** True when a DraftKings slate was attached and the lineup is cap-optimized. */
+  enabled: boolean;
+  /** Where the draft-group id came from, for the UI to explain. */
+  source: 'admin' | 'override' | 'auto' | null;
+  draftGroupId: string | null;
+  salaryCap: number;
+  totalSalary: number;
+  remaining: number;
+  /** Cap-valid lineup actually achievable from the slate. */
+  feasible: boolean;
+  /** Sleeper players matched to a DK salary / total considered. */
+  matched: number;
+  matchTotal: number;
+}
+
 export interface BuilderResult {
   season: BuilderSeason;
   week: number;
@@ -183,6 +218,7 @@ export interface BuilderResult {
   gameCount: number;
   byeTeams: string[];
   signalsAvailable: boolean;
+  salary: SalaryInfo;
   lineup: { slot: string; pick: PlayerCardData | null }[];
   targetsByPosition: { position: FantasyPosition; label: string; players: PlayerCardData[] }[];
   fades: PlayerCardData[];
@@ -199,36 +235,118 @@ const POSITION_LABELS: Record<FantasyPosition, string> = {
 
 const BUILDER_POSITIONS: FantasyPosition[] = ['QB', 'RB', 'WR', 'TE', 'DST'];
 
+/** Look up the DraftKings draft-group id for a season+week (admin-set), if any. */
+async function getDraftGroupId(seasonId: number, week: number): Promise<string | null> {
+  const [row] = await db
+    .select({ dg: weeklyContests.dkDraftGroupId })
+    .from(weeklyContests)
+    .where(and(eq(weeklyContests.seasonId, seasonId), eq(weeklyContests.week, week)))
+    .limit(1);
+  return row?.dg ?? null;
+}
+
 export async function getBuilderData(
   season: BuilderSeason,
   week: number,
   risk: RiskLevel,
+  /** Optional ?dg= override so a slate can be tried before it's saved in admin. */
+  draftGroupOverride?: string | null,
 ): Promise<BuilderResult> {
   const teamMeta = await getTeamMeta();
-  const [{ matchups, byeKeys }, players, trendingAdd, trendingDrop] = await Promise.all([
+
+  // Resolve the slate: explicit ?dg= override → admin-pinned → auto-detected main slate.
+  // Auto-detection only applies to the live (current) week, since DK only exposes the
+  // upcoming slate — never a past or far-future week's prices.
+  const adminDg = await getDraftGroupId(season.id, week);
+  let draftGroupId: string | null = (draftGroupOverride && draftGroupOverride.trim()) || adminDg;
+  let dgSource: SalaryInfo['source'] = draftGroupOverride?.trim()
+    ? 'override'
+    : adminDg
+      ? 'admin'
+      : null;
+  if (!draftGroupId && week === season.currentWeek) {
+    const auto = await getMainNflDraftGroupId();
+    if (auto) {
+      draftGroupId = auto;
+      dgSource = 'auto';
+    }
+  }
+
+  const [{ matchups, byeKeys }, players, trendingAdd, trendingDrop, draftables] = await Promise.all([
     getWeekMatchups(season.id, week, teamMeta),
     getSleeperPlayers(),
     getSleeperTrending('add'),
     getSleeperTrending('drop'),
+    draftGroupId ? fetchDraftables(draftGroupId) : Promise.resolve({ players: [], rawCount: 0 }),
   ]);
 
   const signalsAvailable = players.length > 0;
   const logoByKey = teamLogoMap(teamMeta);
+  const ctx = { matchups, trendingAdd, trendingDrop };
 
-  const result = recommend(players, { matchups, trendingAdd, trendingDrop }, risk);
+  // Salary mode requires a slate that actually matched some players.
+  const match = draftables.players.length ? matchSalaries(players, draftables.players) : null;
+  const salaryById = match && match.matched > 0 ? match.salaryBySleeperId : null;
+  const salaryMode = salaryById !== null;
 
-  const lineup = result.suggestedLineup.map((s) => ({
-    slot: s.slot,
-    pick: s.pick ? toCard(s.pick, logoByKey) : null,
-  }));
+  let lineup: BuilderResult['lineup'];
+  let targetsByPosition: BuilderResult['targetsByPosition'];
+  let fades: PlayerCardData[];
+  const salary: SalaryInfo = {
+    enabled: salaryMode,
+    source: salaryMode ? dgSource : null,
+    draftGroupId: salaryMode ? draftGroupId : null,
+    salaryCap: DK_CLASSIC_SALARY_CAP,
+    totalSalary: 0,
+    remaining: DK_CLASSIC_SALARY_CAP,
+    feasible: false,
+    matched: match?.matched ?? 0,
+    matchTotal: match?.total ?? 0,
+  };
 
-  const targetsByPosition = BUILDER_POSITIONS.map((position) => ({
-    position,
-    label: POSITION_LABELS[position],
-    players: result.targetsByPosition[position].map((r) => toCard(r, logoByKey)),
-  })).filter((g) => g.players.length > 0);
+  if (salaryMode && salaryById) {
+    // Eligibility = on the DK slate (the true set of playable players for DFS).
+    const scored = scoreEligible(players, ctx, risk, (p) => salaryById.has(p.id));
+    const byId = new Map(scored.map((r) => [r.player.id, r]));
 
-  const fades = result.fades.map((r) => toCard(r, logoByKey));
+    const opt = optimizeLineup(
+      scored.map((r) => ({
+        id: r.player.id,
+        position: r.player.position,
+        fit: r.fit,
+        salary: salaryById.get(r.player.id) ?? 0,
+      })),
+      LINEUP_SLOTS,
+      DK_CLASSIC_SALARY_CAP,
+    );
+    salary.totalSalary = opt.totalSalary;
+    salary.remaining = DK_CLASSIC_SALARY_CAP - opt.totalSalary;
+    salary.feasible = opt.feasible;
+
+    lineup = opt.lineup.map(({ slot, id }) => {
+      const rec = id ? byId.get(id) : undefined;
+      return { slot, pick: rec ? toCard(rec, logoByKey, salaryById) : null };
+    });
+    targetsByPosition = BUILDER_POSITIONS.map((position) => ({
+      position,
+      label: POSITION_LABELS[position],
+      players: groupTargets(scored)[position].map((r) => toCard(r, logoByKey, salaryById)),
+    })).filter((g) => g.players.length > 0);
+    fades = computeFades(players, ctx).map((r) => toCard(r, logoByKey, salaryById));
+  } else {
+    // Signal-only mode: eligibility = the player's NFL team plays this week.
+    const result = recommend(players, ctx, risk);
+    lineup = result.suggestedLineup.map((s) => ({
+      slot: s.slot,
+      pick: s.pick ? toCard(s.pick, logoByKey) : null,
+    }));
+    targetsByPosition = BUILDER_POSITIONS.map((position) => ({
+      position,
+      label: POSITION_LABELS[position],
+      players: result.targetsByPosition[position].map((r) => toCard(r, logoByKey)),
+    })).filter((g) => g.players.length > 0);
+    fades = result.fades.map((r) => toCard(r, logoByKey));
+  }
 
   return {
     season,
@@ -238,6 +356,7 @@ export async function getBuilderData(
     gameCount: matchups.size / 2,
     byeTeams: byeKeys,
     signalsAvailable,
+    salary,
     lineup,
     targetsByPosition,
     fades,
@@ -349,6 +468,7 @@ function spotlightCard(
     isHome: false,
     addCount: counts.addCount,
     dropCount: counts.dropCount,
+    salary: null,
   };
 }
 
