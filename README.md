@@ -91,12 +91,17 @@ npm run dev             # http://localhost:3000
 | `npm run db:push`        | `drizzle-kit push`            | Push the schema directly (dev convenience, no migration file).          |
 | `npm run db:studio`      | `drizzle-kit studio`          | Open Drizzle Studio (DB browser).                                       |
 | `npm run db:seed`        | `tsx src/db/seed/index.ts`    | Seed NFL teams + the current season (idempotent).                       |
-| `npm run admin:hash`     | `tsx scripts/hash-password.ts`| Hash an admin password for `ADMIN_PASSWORD_HASH`. **Planned (Phase 1)** — script not yet present. |
+| `npm run admin:hash`     | `tsx scripts/hash-password.ts`| Hash an admin password for `ADMIN_PASSWORD_HASH`.                       |
+| `npm run admin:create`   | `tsx scripts/create-admin.ts` | Create/update a commissioner login in the `users` table.                |
 | `npm run schedule:pull`  | `tsx scripts/pull-schedule.ts`| Pull the NFL schedule from ESPN and generate owner matchups.            |
+| `npm run odds:compute`   | `tsx scripts/compute-odds.ts` | Monte-Carlo playoff-odds snapshots for the `/playoffs` trend chart.     |
+| `npm run verify`         | `tsx scripts/verify.ts`       | **Full verification gate** — typecheck · lint · tests · production build · ESPN health · engine invariants · 2025 ground-truth replay. Exits non-zero on any failure. |
+| `npm run verify:quick`   | `tsx scripts/verify.ts --quick`| Same, minus the slow build + ground-truth replay (no DB writes).       |
+| `npm run verify:ground-truth` | `tsx scripts/import-season3.ts` | Replay the 2025 season vs the league's published standings.        |
 
-> **Note:** `npm run admin:hash` is declared in `package.json` but its script
-> (`scripts/hash-password.ts`) is **not yet in the repo**; running it currently fails. It is
-> part of the planned auth work (Phase 1). See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+> **Run `npm run verify` before pushing.** Its production `build` step catches production-only
+> errors (e.g. invalid `'use server'` exports) that `dev`, `typecheck`, and `lint` all let through —
+> exactly the class of bug that can silently block a Vercel deploy.
 
 ## Project structure
 
@@ -132,22 +137,22 @@ DailyFantasy/
 
 ## Status / roadmap
 
-The build is organized into phases P0–P5. Current state:
-
 | Phase  | Scope                                                                  | Status                                                                                          |
 | ------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| **P0** | Scaffold + deploy (Next 16, Tailwind v4, Vercel)                      | **Done** — project scaffolded; default landing page still present.                              |
-| **P1** | Data model + admin CRUD + schedule auto-pull + matchup generation     | **Largely done.** DB schema, seed, ESPN schedule sync, and matchup generation are implemented. Admin CRUD UI and the auth/`admin:hash` tooling are **not yet built**. |
-| **P2** | Public pages (standings, schedule, dashboards)                        | **Planned.** A pure `computeStandings` engine exists; no public UI yet.                          |
-| **P3** | DraftKings pipeline + Vercel Cron + manual fallback                   | **Planned.** Schema (`weekly_contests`, `scores`, `score_import_runs`) is in place; no pipeline code yet. See [`docs/DRAFTKINGS.md`](docs/DRAFTKINGS.md). |
-| **P4** | Playoffs / history / rivalry pages                                    | **Planned.** Playoff types are defined in `src/lib/standings/types.ts`; seeding/bracket logic and UI are not yet implemented. |
-| **P5** | Migrate 3 prior seasons from the Google Sheet                         | **Planned.**                                                                                     |
+| **P0** | Scaffold + deploy (Next 16, Tailwind v4, Vercel)                      | **Done.** Deployed on Vercel, auto-deploy from `main`; KeyLehr branding + landing dashboard.    |
+| **P1** | Data model + admin panel + schedule auto-pull + matchup generation    | **Done.** Schema, seed, ESPN sync (batched upserts), matchup generation, and the commissioner admin panel (assignments, owners, users, settings, schedule, playoffs, sync, data-status) with NextAuth login. |
+| **P2** | Public pages                                                          | **Done.** Dashboard, Standings, Playoffs (picture + odds chart + bracket), History, **Rules (rules-driven)**, and the **per-team My Team dashboard**. Mobile-friendly. |
+| **P3** | DraftKings scoring pipeline + manual fallback                        | **Done.** Ingest API + the **Chrome extension** (live sync) feed `scores`; standings/seeding honor the season's configured rules. |
+| **P4** | Playoffs / history                                                    | **Done.** Config-driven seeding + bracket, history/all-time pages, playoff-odds Monte-Carlo.    |
+| **P5** | Migrate prior season(s) from the Google Sheet                         | **Done for 2025** — `scripts/import-season3.ts` replays it and is wired into `npm run verify` as a ground-truth regression check. |
+| **Next** | **My Team Phase B** — Sleeper/ESPN team-builder wizard + player-news strip | **Not started.** See [`docs/HANDOFF.md`](docs/HANDOFF.md). |
 
 ## Documentation
 
+- [`docs/HANDOFF.md`](docs/HANDOFF.md) — **current state, what's next, and gotchas — start here.**
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture and data flow.
 - [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — every table, constraint, and relationship.
-- [`docs/DRAFTKINGS.md`](docs/DRAFTKINGS.md) — the scoring pipeline design (Planned, Phase 3).
+- [`docs/DRAFTKINGS.md`](docs/DRAFTKINGS.md) — the DraftKings scoring pipeline design.
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deploying to Vercel + Neon, env vars, cron.
 - [`docs/NEXTJS16_NOTES.md`](docs/NEXTJS16_NOTES.md) — Next.js 16 conventions and gotchas.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev workflow, conventions, and migrations.

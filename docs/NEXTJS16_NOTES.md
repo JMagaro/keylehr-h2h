@@ -80,6 +80,15 @@ export async function createOwner(formData: FormData) {
 
 Use from a `<form action={createOwner}>` or via `useActionState` in a client component.
 
+> ⚠️ **A `'use server'` file may export ONLY async functions.** Exporting anything else from it —
+> an `export const` object (e.g. an initial-state value), a class, etc. — is a **hard production
+> build error** (`A "use server" file can only export async functions, found object`). It is only a
+> *warning* in `next dev`, and `tsc`/ESLint don't catch it, so it sails through local checks and
+> then **fails the Vercel build, silently blocking every deploy**. (`export type` is fine — types
+> are erased.) Put shared state values / types in a **separate plain module** and import them into
+> both the actions file and the client component. This is why `npm run verify` includes a full
+> production build — it's the only local check that catches this.
+
 ## 5. Data fetching & caching (cacheComponents OFF)
 
 - `fetch()` is not cached by default. Control with `{ cache: 'no-store' }`,

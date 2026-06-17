@@ -17,14 +17,21 @@ database, `cp .env.example .env.local`, then `npm install` → `db:migrate` → 
 
 ```bash
 npm run dev          # local server at http://localhost:3000
-npm run typecheck    # tsc --noEmit — must pass
-npm run lint         # eslint (eslint-config-next) — must pass
-npm run test         # vitest run
+npm run verify       # the full gate — run this before every push (see below)
 ```
 
-> There is **no test suite yet** (no `*.test.ts` files exist), but Vitest is configured and the
-> `src/lib/` modules (especially the pure `standings` engine) are written to be unit-testable.
-> New logic in `src/lib/` should ship with tests; place them next to the code as `*.test.ts`.
+`npm run verify` runs typecheck · lint · the test suite · **production build** · ESPN health ·
+standings/seeding invariants · the 2025 ground-truth replay, and exits non-zero on any failure.
+Use `npm run verify:quick` to skip the slow build + replay while iterating.
+
+> **Do not skip the production build.** It catches a class of errors that `dev`, `typecheck`, and
+> `lint` all let through — most notably that a **`'use server'` file may only export async
+> functions** (an `export const`/object there fails the Vercel build, silently blocking deploys).
+> Keep non-function values (state objects, types-as-values) in a separate plain module.
+
+> The pure `src/lib/` modules (especially the `standings` engine) are unit-tested with Vitest
+> (`*.test.ts` next to the code). New logic in `src/lib/` should ship with tests, and the
+> `standings` engine is additionally anchored by the 2025 ground-truth replay in `verify`.
 
 ## Code style & conventions
 
@@ -54,6 +61,15 @@ npm run test         # vitest run
 - **Idempotency.** Sync/generation/seed code is written to be safely re-runnable via upserts on a
   stable unique key. Preserve that property when extending it.
 - **Use inferred types** from `@/db` (`Season`, `NewScore`, etc.) instead of redefining row shapes.
+- **Neon HTTP driver → batch writes.** Each query is one network round-trip, so never loop per-row
+  upserts (it times out a serverless function). Use chunked multi-row
+  `insert().onConflictDoUpdate()` deduped by the conflict key.
+- **Per-season rules drive the engine.** Tiebreaker order, bye-week handling, and the playoff field
+  flow from `seasons.rules` through `getSeasonStandingsData()` (which returns `rankingOptions` +
+  `playoffConfig`). Any new standings/seeding/odds consumer must pass those through, not hardcode.
+- **Mobile: tables inside a flex/grid need `min-w-0` on the wrapping item.** Otherwise the table's
+  no-wrap content blows out the page width instead of letting the inner `overflow-x-auto` scroll.
+  Verify pages have zero horizontal overflow down to ~320px.
 
 ## Environment variables
 
