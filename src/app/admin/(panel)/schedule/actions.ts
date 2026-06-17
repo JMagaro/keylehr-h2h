@@ -13,14 +13,9 @@ import { requireAdmin } from '@/lib/auth-helpers';
 import { getCurrentSeason } from '@/lib/season';
 import { syncSeasonSchedule } from '@/lib/schedule/sync';
 import { generateMatchups } from '@/lib/matchups/generate';
-
-/** Result surfaced back to the user after an action runs. */
-export type ScheduleActionState =
-  | { status: 'idle' }
-  | { status: 'success'; message: string }
-  | { status: 'error'; message: string };
-
-export const INITIAL_SCHEDULE_STATE: ScheduleActionState = { status: 'idle' };
+// A `'use server'` file may export ONLY async functions, so the shared state type
+// and its initial value live in a plain module (./state) and are imported here.
+import type { ScheduleActionState } from './state';
 
 /**
  * Pull / refresh the NFL schedule for the current season from ESPN.

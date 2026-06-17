@@ -10,12 +10,8 @@ import { useActionState } from 'react';
 
 import { SubmitButton } from '@/components/ui/submit-button';
 
-import {
-  pullScheduleAction,
-  generateMatchupsAction,
-  INITIAL_SCHEDULE_STATE,
-  type ScheduleActionState,
-} from './actions';
+import { pullScheduleAction, generateMatchupsAction } from './actions';
+import { INITIAL_SCHEDULE_STATE, type ScheduleActionState } from './state';
 
 function ResultBanner({ state }: { state: ScheduleActionState }) {
   if (state.status === 'idle') return null;
