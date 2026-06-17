@@ -533,7 +533,7 @@ async function highestWeeklyScore(
 /* main                                                                       */
 /* -------------------------------------------------------------------------- */
 
-async function main(): Promise<void> {
+async function main(): Promise<boolean> {
   console.log(`\n=== Backfill & validate ${SEASON_NAME} ===\n`);
 
   console.log('[a] Upserting season ...');
@@ -620,10 +620,13 @@ async function main(): Promise<void> {
   }
   const overall = failCount === 0 && balanceOk;
   console.log(`OVERALL: ${overall ? 'PASS' : 'FAIL'}`);
+  return overall;
 }
 
 main()
-  .then(() => process.exit(0))
+  // Exit non-zero when the ground-truth comparison fails so CI / the periodic
+  // validator actually detects an engine regression (it previously always exited 0).
+  .then((ok) => process.exit(ok ? 0 : 1))
   .catch((err: unknown) => {
     console.error('\nimport-season3 failed:');
     console.error(err instanceof Error ? (err.stack ?? err.message) : err);
