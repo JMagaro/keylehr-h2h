@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { CalendarDays } from 'lucide-react';
+import { CalendarClock, CalendarDays, Download, ListChecks } from 'lucide-react';
 import { sql } from 'drizzle-orm';
 
 import { db, nflGames, matchups, ownerSeasons } from '@/db';
@@ -15,6 +15,10 @@ import { PipelineActions } from './pipeline-actions';
 
 export const metadata: Metadata = { title: 'Schedule & matchups', robots: { index: false } };
 export const dynamic = 'force-dynamic';
+// Safety margin for the ESPN pull + matchup generation server actions hosted on
+// this route. With batched upserts they finish in ~1s, but the explicit ceiling
+// (vs. the 10s Hobby default) protects against a slow ESPN response or cold DB.
+export const maxDuration = 60;
 
 export default async function SchedulePage() {
   await requireAdmin();
@@ -101,12 +105,77 @@ export default async function SchedulePage() {
         <CardHeader>
           <CardTitle>Run the pipeline</CardTitle>
           <CardDescription>
-            Pull the schedule whenever the NFL revises it (upserts are idempotent). Generate
-            matchups after the schedule loads and team assignments are complete — games where a
-            team is unassigned are skipped until that owner is set.
+            Build <span className="font-medium text-foreground">{season.name}</span> from the real
+            NFL schedule, then turn it into owner head-to-head matchups. These actions only affect
+            the season shown above ({season.name}).
           </CardDescription>
         </CardHeader>
-        <CardBody>
+        <CardBody className="flex flex-col gap-5">
+          {/* What the button does + when to use it. */}
+          <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 text-sm">
+            <div className="flex gap-3">
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent">
+                <Download className="size-4" aria-hidden="true" />
+              </span>
+              <div className="flex flex-col gap-1">
+                <p className="font-semibold text-foreground">
+                  What &ldquo;Pull / refresh NFL schedule&rdquo; does
+                </p>
+                <p className="text-muted">
+                  Fetches the full NFL regular season ({season.regularSeasonWeeks} weeks, ~272 games)
+                  for {season.name} from ESPN and saves it here. Your owner matchups, weekly byes,
+                  and the standings are all derived from this schedule — so it&rsquo;s the first step
+                  every season, and nothing downstream works until it&rsquo;s loaded.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent">
+                <CalendarClock className="size-4" aria-hidden="true" />
+              </span>
+              <div className="flex flex-col gap-1">
+                <p className="font-semibold text-foreground">When to run it</p>
+                <ul className="flex list-disc flex-col gap-1 pl-4 text-muted">
+                  <li>
+                    Once when a new season starts, after the NFL publishes its schedule (usually
+                    mid-May).
+                  </li>
+                  <li>
+                    Again whenever the NFL revises a game (flex scheduling, postponements). Re-running
+                    is safe — it updates kickoff times and opponents in place and never creates
+                    duplicates.
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* The order the two steps must run in. */}
+          <div className="flex gap-3 text-sm">
+            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent">
+              <ListChecks className="size-4" aria-hidden="true" />
+            </span>
+            <div className="flex flex-col gap-1">
+              <p className="font-semibold text-foreground">The order that matters</p>
+              <ol className="flex list-decimal flex-col gap-1 pl-4 text-muted">
+                <li>
+                  <span className="font-medium text-foreground">Pull / refresh NFL schedule</span> —
+                  the button below (targets {season.name}).
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">Finish team assignments</span> — every
+                  one of the 32 owners needs a team before matchups can be complete.
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">Generate owner matchups</span> —
+                  converts each NFL game into an owner-vs-owner matchup. Games where a team
+                  isn&rsquo;t assigned yet are skipped until you set that owner, so re-run this after
+                  finishing assignments.
+                </li>
+              </ol>
+            </div>
+          </div>
+
           <PipelineActions />
         </CardBody>
       </Card>

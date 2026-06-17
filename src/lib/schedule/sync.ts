@@ -85,13 +85,23 @@ export async function syncSeasonSchedule(
     weeksSeen.add(game.week);
   }
 
-  // 4. Upsert. Drizzle batches a multi-row VALUES insert; the conflict target is the
-  //    (season, week, home team) unique index. We update the volatile fields only.
-  let gamesUpserted = 0;
-  for (const row of rows) {
+  // 4. Upsert idempotently. The Neon HTTP driver turns every query into its own
+  //    network round-trip, so a one-row-at-a-time loop would fire ~272 sequential
+  //    round-trips per pull — enough to blow a serverless function's time budget
+  //    (it was the cause of the admin pull 500ing on Vercel). Instead we send a few
+  //    chunked multi-row INSERT…ON CONFLICT statements. Dedupe by the conflict key
+  //    first: Postgres rejects a single statement that would touch the same target
+  //    row twice (two rows sharing season+week+home team).
+  const byKey = new Map<string, NewNflGame>();
+  for (const row of rows) byKey.set(`${row.seasonId}-${row.week}-${row.homeTeamId}`, row);
+  const deduped = [...byKey.values()];
+
+  const UPSERT_BATCH = 100;
+  for (let i = 0; i < deduped.length; i += UPSERT_BATCH) {
+    const batch = deduped.slice(i, i + UPSERT_BATCH);
     await db
       .insert(nflGames)
-      .values(row)
+      .values(batch)
       .onConflictDoUpdate({
         target: [nflGames.seasonId, nflGames.week, nflGames.homeTeamId],
         set: {
@@ -101,12 +111,11 @@ export async function syncSeasonSchedule(
           status: sql`excluded.status`,
         },
       });
-    gamesUpserted += 1;
   }
 
   return {
     weeksProcessed: weeksSeen.size,
-    gamesUpserted,
+    gamesUpserted: deduped.length,
     unmappedEspnTeamIds: [...unmapped],
   };
 }

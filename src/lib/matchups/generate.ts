@@ -102,12 +102,22 @@ export async function generateMatchups(seasonId: number): Promise<GenerateSummar
     playing.add(awayOwnerSeasonId);
   }
 
-  // 4. Upsert matchups idempotently.
-  let matchupsUpserted = 0;
-  for (const row of rows) {
+  // 4. Upsert matchups idempotently, in a few chunked multi-row statements rather
+  //    than one round-trip per row. The Neon HTTP driver makes every query a
+  //    network round-trip, so a per-row loop (~256 of them once all teams are
+  //    assigned) would exceed a serverless function's time budget — the same
+  //    failure mode that broke the schedule pull. Dedupe by the conflict key first
+  //    (Postgres rejects touching the same target row twice in one statement).
+  const byKey = new Map<string, NewMatchup>();
+  for (const row of rows) byKey.set(`${row.seasonId}-${row.week}-${row.homeOwnerSeasonId}`, row);
+  const deduped = [...byKey.values()];
+
+  const UPSERT_BATCH = 100;
+  for (let i = 0; i < deduped.length; i += UPSERT_BATCH) {
+    const batch = deduped.slice(i, i + UPSERT_BATCH);
     await db
       .insert(matchups)
-      .values(row)
+      .values(batch)
       .onConflictDoUpdate({
         target: [matchups.seasonId, matchups.week, matchups.homeOwnerSeasonId],
         set: {
@@ -115,8 +125,8 @@ export async function generateMatchups(seasonId: number): Promise<GenerateSummar
           nflGameId: sql`excluded.nfl_game_id`,
         },
       });
-    matchupsUpserted += 1;
   }
+  const matchupsUpserted = deduped.length;
 
   // 5. Compute byes: for every week that has games, any assigned owner who is not in
   //    that week's playing set is on a bye. We only count weeks that actually appear
