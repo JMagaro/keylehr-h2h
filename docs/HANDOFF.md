@@ -22,32 +22,33 @@ _Last updated: 2026-06-17._
 Goal: backfill the 2023 and 2024 seasons into the DB the same way 2025 was done
 (`scripts/import-season3.ts`), each validated against its sheet's published `Standings` tab.
 
-Two source Google Sheets the user provided:
-- **Sheet B = `1kWMn8Zbk4K7JitaOqxMjII_LKVsKRyqaeXhIJPFkJl8`** — **PUBLIC + ready.** Verified its
-  structure matches the 2025 format exactly: `Owners` header `["","DK Entry Name","NFL Team","Owner","Paid?","Email Address"]`,
-  `Master Scores` = `Week 1..Week 18`, `Standings` = AFC block cols 1–9 / NFC block cols 12–19
-  (Team, Owner, DK, W, L, T, PF, PA, STRK). The 2025 parsers work on it unchanged. (In it Josh Lehr
-  has the **Bills**, so it's a prior year.)
-- **Sheet A = `15KWmUsWkQuRgdOCJWUBfaImXZjGxnFp9Lv4UsNikDaA`** — **BLOCKED: not publicly shared.**
-  Fetching it returns a Google login page. **User must set it to "Anyone with the link → Viewer"**
-  (like the 2025 + Sheet B sheets) before it can be imported.
-
-Also TO CONFIRM with the user: **which sheet is 2023 vs 2024.** The `--year` matters (the importer
-syncs that year's ESPN schedule → matchups; wrong year → validation fails). Don't guess.
+Both sheets are now **public + accessible**. Year mapping confirmed from their titles:
+- **2024 = Sheet `1kWMn8Zbk4K7JitaOqxMjII_LKVsKRyqaeXhIJPFkJl8`** ("2024 DFS H2H Fantasy Football").
+  **Matches the 2025 format exactly** — the `import-season3.ts` parsers work on it unchanged:
+  - `Owners` header: `["","DK Entry Name","NFL Team","Owner","Paid?","Email Address"]` → DK=col1, team=col2, owner=col3, email=col5.
+  - `Standings`: AFC block base col 1, NFC block base col 12; per block: Team@base, Owner@base+1, **DK@base+2**, W@base+3, L@+4, T@+5, PF@+6, PA@+7, STRK@+8.
+- **2023 = Sheet `15KWmUsWkQuRgdOCJWUBfaImXZjGxnFp9Lv4UsNikDaA`** ("2023 DFS H2H Fantasy Football").
+  ⚠️ **DIFFERENT column layout** — the parsers must be adapted:
+  - `Owners` header: `["DK Entry Name","NFL Team","Owner","Paid?","Email Address",""]` (NO leading blank col) → DK=col0, team=col1, owner=col2, email=col4.
+  - `Standings`: **NO DK-entry column**. AFC block base col 1, NFC block **base col 11** (not 12); per block: Team@base, Owner@base+1, W@base+2, L@+3, T@+4, PF@+5, PA@+6, STRK@+7.
+- `Master Scores` is the **same in both**: team@col0, `Week 1..Week 18` at cols 1..18.
 
 **Plan (write a NEW generic importer; do NOT modify `import-season3.ts` — it's the verify anchor):**
 1. Create `scripts/import-season.ts`, parameterized via CLI: `--year=YYYY --sheet=ID --name="YYYY Season" [--weeks=18]`.
-   Reuse `import-season3.ts`'s proven helpers verbatim (CSV fetch/parse, `parseOwners`,
-   `upsertOwners`, `parseMasterScores`/`backfillScores`, `markForfeits`, `parseExpectedStandings`,
-   `compareStandings`) — only the hardcoded constants change.
+   Reuse `import-season3.ts`'s logic, but make the `Owners` + `Standings` parsing **header-driven**
+   (locate columns by their header text: "DK Entry Name"/"NFL Team"/"Owner"/"Email Address"; and in
+   Standings locate each division-label column then detect whether a "DK Entry Name" column precedes
+   W) so it handles BOTH layouts above. `Master Scores`/`backfillScores`/`markForfeits` reuse as-is.
 2. **Generic validation** (drop the 2025-specific assertions): compare record + PF + PA vs the
    `Standings` tab; assert league (losses − wins) is **even and ≥ 0** (= N double-losses; no fixed
    count); report highest weekly score + seeding without a hardcoded expectation. Exit non-zero on
    any per-owner FAIL or odd/negative balance.
-3. Add npm script `import:season`. Run for each year; confirm `OVERALL: PASS`.
+3. Add npm script `import:season`. Run for **2024 first** (easy, matches 2025 parsers) then **2023**
+   (validate the header-driven parsing). Confirm `OVERALL: PASS` for each.
 4. Gotchas: owners are GLOBAL (deduped by email then name) so cross-season reuse is fine; ESPN has
-   2023/2024 schedules (games come back `STATUS_FINAL`); team names in the sheet must match
-   `nfl_teams.name`. Writes to the prod DB but idempotent.
+   2023/2024 schedules (games return `STATUS_FINAL`); sheet team names must match `nfl_teams.name`.
+   Writes to the prod DB but idempotent. Sheet Standings PF/PA are rounded to 1 decimal (tolerance
+   ~0.2; forfeit-opponent weeks may need a ~3.0 PA residual tolerance like 2025).
 
 ## Then — Phase B: team-builder wizard + player news (NOT started)
 
