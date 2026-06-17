@@ -34,6 +34,7 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/data-table";
 import { SeasonSelector } from "@/components/season-selector";
 import { TeamSelector } from "@/components/team-selector";
 import { WeeklyScoresChart, TrendLineChart, type TrendPoint } from "@/components/team-charts";
+import { ExpandableChart } from "@/components/expandable-chart";
 import {
   getSeasonOptions,
   getDefaultStandingsSeasonId,
@@ -218,7 +219,9 @@ export default async function MyTeamPage({
           </div>
         </CardHeader>
         <CardBody>
-          <WeeklyScoresChart weeks={dashboard.weeks} />
+          <ExpandableChart title="Weekly scores vs. league average">
+            <WeeklyScoresChart weeks={dashboard.weeks} />
+          </ExpandableChart>
         </CardBody>
       </Card>
 
@@ -237,13 +240,17 @@ export default async function MyTeamPage({
             </div>
           </CardHeader>
           <CardBody>
-            <TrendLineChart
-              data={rankTrend}
-              min={1}
-              max={Math.max(teamCount, 2)}
-              invert
-              ariaLabel="League rank over the season"
-            />
+            <ExpandableChart title="League rank over the season">
+              <TrendLineChart
+                data={rankTrend}
+                min={1}
+                max={Math.max(teamCount, 2)}
+                invert
+                valuePrefix="#"
+                seriesLabel="Rank"
+                ariaLabel="League rank over the season"
+              />
+            </ExpandableChart>
           </CardBody>
         </Card>
 
@@ -261,13 +268,16 @@ export default async function MyTeamPage({
           </CardHeader>
           <CardBody>
             {oddsTrend ? (
-              <TrendLineChart
-                data={oddsTrend}
-                min={0}
-                max={100}
-                valueSuffix="%"
-                ariaLabel="Playoff odds trend"
-              />
+              <ExpandableChart title="Playoff odds trend">
+                <TrendLineChart
+                  data={oddsTrend}
+                  min={0}
+                  max={100}
+                  valueSuffix="%"
+                  seriesLabel="Playoff odds"
+                  ariaLabel="Playoff odds trend"
+                />
+              </ExpandableChart>
             ) : (
               <p className="text-sm text-muted">No playoff-odds snapshots for this season yet.</p>
             )}

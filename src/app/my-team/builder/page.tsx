@@ -9,16 +9,13 @@
  * and every pick shows the reasons it surfaced.
  */
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import {
   AlertTriangle,
-  ArrowLeft,
   CalendarOff,
   CircleDollarSign,
   Info,
   ListChecks,
   Sparkles,
-  Trophy,
   Users,
 } from 'lucide-react';
 
@@ -28,6 +25,7 @@ import { EmptyState } from '@/components/empty-state';
 import { Badge } from '@/components/badge';
 import { Card, CardBody, CardHeader, CardTitle, CardDescription } from '@/components/card';
 import { PlayerCard } from '@/components/player-card';
+import { ModelPerformancePanel } from '@/components/model-performance';
 import {
   LineupBuilderControls,
   type RiskOption,
@@ -72,20 +70,10 @@ export default async function LineupBuilderPage({
   const sp = await searchParams;
   const seasons = await getBuilderSeasons();
 
-  const backLink = (
-    <Link
-      href="/my-team"
-      className="inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
-    >
-      <ArrowLeft className="size-4" aria-hidden="true" />
-      Back to My Team
-    </Link>
-  );
-
   if (seasons.length === 0) {
     return (
       <Container width="wide" as="div" className="flex flex-col gap-8 py-10">
-        <PageHeader eyebrow="My Team" title="Lineup Builder" actions={backLink} />
+        <PageHeader eyebrow="My Team" title="Lineup Builder" />
         <EmptyState
           icon={Sparkles}
           title="No seasons yet"
@@ -139,7 +127,6 @@ export default async function LineupBuilderPage({
         eyebrow={`${season.name} · Week ${week}`}
         title="Lineup Builder"
         description="Pick a week and a risk level — get a DraftKings lineup shortlist built from live, free public signals."
-        actions={backLink}
       />
 
       <Card>
@@ -152,7 +139,7 @@ export default async function LineupBuilderPage({
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
             <Info className="size-5" aria-hidden="true" />
           </span>
-          <div className="flex flex-col gap-1">
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-semibold text-foreground">
                 {model.codename} <span className="text-subtle">v{model.version}</span>
@@ -169,6 +156,7 @@ export default async function LineupBuilderPage({
               precise point projections{salary.enabled ? '' : ' or DraftKings salaries'}, so treat
               it as a smart shortlist{salary.enabled ? '.' : ' to pair with DK’s salary view.'}
             </p>
+            <ModelPerformancePanel performance={performance} />
           </div>
         </CardBody>
       </Card>
@@ -356,57 +344,6 @@ export default async function LineupBuilderPage({
           </div>
         </>
       )}
-
-      {/* Model performance — accumulates as weeks are graded against actual results */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-              <Trophy className="size-5" aria-hidden="true" />
-            </span>
-            <div className="flex flex-col gap-0.5">
-              <CardTitle>Model performance</CardTitle>
-              <CardDescription>
-                How each model&apos;s lineups actually scored, graded against real player results.
-                These are versioned <strong>heuristic</strong> models today; once a season of results
-                is collected they&apos;ll be trained on that data and graduate to <strong>v1.0</strong>.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardBody>
-          {performance.every((m) => m.weeksGraded === 0) ? (
-            <p className="text-sm text-muted">
-              No graded weeks yet — tracking begins once the season&apos;s slates go live and a week is
-              snapshotted &amp; graded (Admin → Models). Each model&apos;s actual results will show here.
-            </p>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-3">
-              {performance.map((m) => (
-                <div key={m.risk} className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-foreground">
-                      {m.codename} <span className="text-subtle">v{m.version}</span>
-                    </span>
-                    <Badge variant={m.stage === 'trained' ? 'accent' : 'neutral'}>{m.stage}</Badge>
-                  </div>
-                  <span className="text-2xl font-bold tabular-nums text-foreground">
-                    {m.avgActual == null ? '—' : m.avgActual.toFixed(1)}
-                    <span className="ml-1 text-sm font-normal text-subtle">avg pts</span>
-                  </span>
-                  <span className="text-xs text-muted">
-                    {m.weeksGraded} week{m.weeksGraded === 1 ? '' : 's'} graded
-                    {m.avgOptimalPct != null ? ` · ${m.avgOptimalPct.toFixed(0)}% of optimal` : ''}
-                    {m.avgVsChalk != null
-                      ? ` · ${m.avgVsChalk >= 0 ? '+' : ''}${m.avgVsChalk.toFixed(1)} vs chalk`
-                      : ''}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardBody>
-      </Card>
     </Container>
   );
 }
