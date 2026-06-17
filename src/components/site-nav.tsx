@@ -20,14 +20,29 @@ import { cn } from '@/lib/utils';
 import { Container } from '@/components/container';
 import { NAV_LINKS } from '@/components/nav-links';
 
-/** True when `href` is the active route (exact for "/", prefix otherwise). */
-function isActive(pathname: string, href: string): boolean {
+/** True when `href` is a prefix-match of the current route (exact for "/"). */
+function matchesHref(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/';
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/**
+ * The single nav href that should highlight: the LONGEST matching prefix. This keeps a
+ * nested route (e.g. /my-team/builder) from also lighting up its parent (/my-team).
+ */
+function activeNavHref(pathname: string): string | null {
+  let best: string | null = null;
+  for (const link of NAV_LINKS) {
+    if (matchesHref(pathname, link.href) && (best === null || link.href.length > best.length)) {
+      best = link.href;
+    }
+  }
+  return best;
+}
+
 export function SiteNav() {
   const pathname = usePathname();
+  const activeHref = activeNavHref(pathname);
   const [open, setOpen] = useState(false);
 
   // Close the mobile menu whenever the route changes. Done during render (React's
@@ -74,9 +89,9 @@ export function SiteNav() {
         </Link>
 
         {/* Desktop links */}
-        <ul className="hidden items-center gap-1 md:flex">
+        <ul className="hidden items-center gap-1 lg:flex">
           {NAV_LINKS.map((link) => {
-            const active = isActive(pathname, link.href);
+            const active = link.href === activeHref;
             return (
               <li key={link.href}>
                 <Link
@@ -103,7 +118,7 @@ export function SiteNav() {
           aria-expanded={open}
           aria-controls="mobile-nav"
           aria-label={open ? 'Close menu' : 'Open menu'}
-          className="inline-flex size-10 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-foreground md:hidden"
+          className="inline-flex size-10 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-foreground lg:hidden"
         >
           {open ? (
             <X className="size-5" aria-hidden="true" />
@@ -115,10 +130,10 @@ export function SiteNav() {
 
       {/* Mobile disclosure panel */}
       {open ? (
-        <div id="mobile-nav" className="border-t border-border bg-elevated md:hidden">
+        <div id="mobile-nav" className="border-t border-border bg-elevated lg:hidden">
           <Container width="wide" as="ul" className="flex flex-col gap-1 py-3">
             {NAV_LINKS.map((link) => {
-              const active = isActive(pathname, link.href);
+              const active = link.href === activeHref;
               return (
                 <li key={link.href}>
                   <Link

@@ -3,7 +3,7 @@
 A running "where things stand" doc so a fresh Claude/context window (or contributor) can pick up
 without re-deriving everything. Update the **Next up** and **Recent work** sections as you go.
 
-_Last updated: 2026-06-17 (2023 + 2024 seasons imported & validated)._
+_Last updated: 2026-06-17 (Phase B lineup builder + player news shipped)._
 
 ---
 
@@ -49,24 +49,35 @@ Key facts captured while doing this (useful if a 2022-or-earlier season is added
   team can't hide. The engine's value is the *more* defensible one (consistent all season); the
   app's standings use it.
 
-## Next up — Phase B: team-builder wizard + player news (NOT started)
+## ✅ DONE — Phase B: lineup builder + player news (shipped)
 
-The `/my-team` page now has the analytics dashboard (Phase A). The remaining feature the user wants:
+The first external **player-level** integration. Free sources only (Sleeper + ESPN; no key, no
+paid projections), with the honest caveat carried into the UI: these are availability / waiver /
+consensus signals, **not** point projections or DK salaries. Code lives under `src/lib/players/`:
+- `sleeper.ts` — keyless Sleeper client. Player dictionary (`/players/nfl`, ~5 MB) is memoized
+  in-process (12 h TTL) because it exceeds Next's 2 MB fetch-cache limit; trending add/drop lists go
+  through the normal Next Data Cache (hourly). Normalizes Sleeper team abbrs to our `nfl_teams.key`
+  (the one mismatch is **WAS → WSH**). Never throws — degrades to "signals unavailable".
+- `recommend.ts` — **pure, unit-tested** risk-weighted engine (`safe` / `balanced` / `boom`). Ranks
+  on consensus (Sleeper search rank → positional rank), availability (injury tags), role (depth
+  order), waiver momentum (add/drop), light home/away edge. Gates out injured-out + bye players,
+  fills a DK Classic lineup (QB/RB×2/WR×3/TE/FLEX/DST), and produces fades. Every pick carries the
+  reasons it surfaced. 9 tests in `recommend.test.ts`.
+- `espn-news.ts` — ESPN NFL headlines (30-min cache).
+- `query.ts` — orchestration: joins signals to the synced NFL schedule (`nfl_games`) for the chosen
+  season+week to get each player's opponent / bye, then runs the engine. `getSpotlightData()` feeds
+  the My Team strip; `getBuilderData()` feeds the wizard.
 
-- **Player-news strip** on `/my-team`: injuries / trending adds-drops (Sleeper API — free, no key) +
-  ESPN news, framed as "in the spotlight / fade risks."
-- **Team-builder wizard**: a step flow — pick week → choose **risk level** (safe / balanced /
-  boom-or-bust) → suggests players to target/avoid weighting recent news + injury status + matchup.
+UI: `PlayerNewsStrip` (spotlight / fade risks / ESPN news + builder CTA) is on `/my-team`;
+`/my-team/builder` is the wizard (season → week → risk via `LineupBuilderControls`, all query-param
+driven + server-rendered). Shared presentational `PlayerCard`. Nav gained **Lineup Builder** (and the
+home hero + Explore hub link to it); the nav now uses longest-prefix active matching so
+`/my-team/builder` doesn't also light up `/my-team`, and the desktop bar switches to the hamburger
+below `lg` (7 items). Verified: `npm run verify` 7/7 (54 unit tests).
 
-**Decisions already made with the user (don't re-ask):**
-- Data source: **free sources first** — Sleeper API + ESPN. (Paid projection APIs were declined.)
-- "X sources" meant **various reputable sources**, not X/Twitter specifically.
-- Honest caveat to carry into the UI: free sources are strong on **injuries/news/trends** but weak
-  on true weekly **point projections**, so v1 leans on news + matchup signals, made transparent.
-
-Note: the app has **no player-level data today** — it only tracks team-owner DraftKings lineup
-*totals*. Phase B introduces the first external player-data integration (Sleeper is the place to
-start; it's public, keyless: player metadata, injury_status, trending players).
+Possible Phase B+ follow-ups (not requested yet): DK salary cap awareness (needs DK slate data —
+not free/keyless), snapshotting trends so the builder works for *past* weeks too (Sleeper trending is
+"now" only), and a "build for my matchup" mode tying the suggestion to the owner's H2H opponent.
 
 ## Open action items (need the USER, not code)
 
@@ -105,6 +116,10 @@ start; it's public, keyless: player metadata, injury_status, trending players).
 
 ## Recent work (this session, newest first)
 
+- **Phase B — lineup builder + player news** (`src/lib/players/*`, `/my-team/builder`,
+  `PlayerNewsStrip`, `PlayerCard`, `LineupBuilderControls`): first player-level integration, free
+  sources (Sleeper + ESPN), risk-weighted pure engine with 9 tests. Nav + home page updated to
+  surface it (longest-prefix active matching; desktop nav now `lg`). See the DONE section above.
 - **2023 + 2024 season backfill** (`scripts/import-season.ts`, npm `import:season`): a generic,
   header-driven importer that handled both sheet layouts; both seasons replayed to 32/32 ground-truth
   PASS. Surfaced + scoped a cross-season forfeit-opponent PA convention difference (see the DONE
@@ -138,6 +153,8 @@ start; it's public, keyless: player metadata, injury_status, trending players).
 - DB adapter feeding the engine: `src/lib/standings/query.ts` (`getSeasonStandingsData` is the hub —
   returns `rankingOptions` + `playoffConfig`)
 - Per-team dashboard data: `src/lib/team/query.ts`
+- Player signals + lineup builder: `src/lib/players/{sleeper,espn-news,recommend,query}.ts`
+  (`recommend.ts` is the pure engine; `query.ts` is the DB/schedule orchestration hub)
 - Playoffs bracket service: `src/lib/playoffs/service.ts` · Odds sim: `src/lib/odds/`
 - Rules schema (single source of truth): `src/lib/rules/schema.ts`
 - DraftKings ingest: `src/lib/scores/`, `src/app/api/ingest/draftkings/` · Chrome ext: `extension/`

@@ -14,7 +14,9 @@ import {
   Flame,
   ListOrdered,
   Trophy,
+  UserRound,
   Users,
+  Wand2,
 } from "lucide-react";
 
 import { Container } from "@/components/container";
@@ -107,6 +109,13 @@ export default async function DashboardPage() {
               >
                 View standings
                 <ArrowRight className="size-4" aria-hidden="true" />
+              </Link>
+              <Link
+                href="/my-team/builder"
+                className="inline-flex items-center gap-2 rounded-lg border border-border-strong bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface"
+              >
+                <Wand2 className="size-4 text-accent" aria-hidden="true" />
+                Build a lineup
               </Link>
               <Link
                 href="/playoffs"
@@ -254,12 +263,12 @@ export default async function DashboardPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
-                <CardTitle>Explore the season</CardTitle>
+                <CardTitle>Explore the league</CardTitle>
                 <Badge variant="accent">Live</Badge>
               </div>
               <CardDescription>
-                Full standings and the current playoff picture, computed live from
-                weekly DraftKings scores.
+                Standings and the playoff picture computed live from weekly DraftKings
+                scores — plus team analytics and a weekly lineup builder.
               </CardDescription>
             </CardHeader>
             <CardBody className="flex flex-col gap-3">
@@ -295,6 +304,46 @@ export default async function DashboardPage() {
                     <span className="font-semibold text-foreground">Playoff picture</span>
                     <span className="text-sm text-muted">
                       Seven seeds per conference, as if today.
+                    </span>
+                  </span>
+                </span>
+                <ArrowRight
+                  className="size-4 text-muted transition-transform group-hover:translate-x-0.5"
+                  aria-hidden="true"
+                />
+              </Link>
+              <Link
+                href="/my-team"
+                className="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-border-strong hover:bg-surface"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-accent/10 text-accent">
+                    <UserRound className="size-5" aria-hidden="true" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="font-semibold text-foreground">My Team</span>
+                    <span className="text-sm text-muted">
+                      Per-team scores, trends &amp; results for any owner.
+                    </span>
+                  </span>
+                </span>
+                <ArrowRight
+                  className="size-4 text-muted transition-transform group-hover:translate-x-0.5"
+                  aria-hidden="true"
+                />
+              </Link>
+              <Link
+                href="/my-team/builder"
+                className="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-border-strong hover:bg-surface"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-accent/10 text-accent">
+                    <Wand2 className="size-5" aria-hidden="true" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="font-semibold text-foreground">Lineup builder</span>
+                    <span className="text-sm text-muted">
+                      Weekly target &amp; fade picks by risk level.
                     </span>
                   </span>
                 </span>
