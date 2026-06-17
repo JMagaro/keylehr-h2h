@@ -17,7 +17,39 @@ _Last updated: 2026-06-17._
   handoff (typecheck · lint · 45 tests · production build · ESPN health · engine invariants ·
   2025 ground-truth replay).
 
-## Next up — Phase B: team-builder wizard + player news (NOT started)
+## Next up (do FIRST) — import 2023 + 2024 seasons
+
+Goal: backfill the 2023 and 2024 seasons into the DB the same way 2025 was done
+(`scripts/import-season3.ts`), each validated against its sheet's published `Standings` tab.
+
+Two source Google Sheets the user provided:
+- **Sheet B = `1kWMn8Zbk4K7JitaOqxMjII_LKVsKRyqaeXhIJPFkJl8`** — **PUBLIC + ready.** Verified its
+  structure matches the 2025 format exactly: `Owners` header `["","DK Entry Name","NFL Team","Owner","Paid?","Email Address"]`,
+  `Master Scores` = `Week 1..Week 18`, `Standings` = AFC block cols 1–9 / NFC block cols 12–19
+  (Team, Owner, DK, W, L, T, PF, PA, STRK). The 2025 parsers work on it unchanged. (In it Josh Lehr
+  has the **Bills**, so it's a prior year.)
+- **Sheet A = `15KWmUsWkQuRgdOCJWUBfaImXZjGxnFp9Lv4UsNikDaA`** — **BLOCKED: not publicly shared.**
+  Fetching it returns a Google login page. **User must set it to "Anyone with the link → Viewer"**
+  (like the 2025 + Sheet B sheets) before it can be imported.
+
+Also TO CONFIRM with the user: **which sheet is 2023 vs 2024.** The `--year` matters (the importer
+syncs that year's ESPN schedule → matchups; wrong year → validation fails). Don't guess.
+
+**Plan (write a NEW generic importer; do NOT modify `import-season3.ts` — it's the verify anchor):**
+1. Create `scripts/import-season.ts`, parameterized via CLI: `--year=YYYY --sheet=ID --name="YYYY Season" [--weeks=18]`.
+   Reuse `import-season3.ts`'s proven helpers verbatim (CSV fetch/parse, `parseOwners`,
+   `upsertOwners`, `parseMasterScores`/`backfillScores`, `markForfeits`, `parseExpectedStandings`,
+   `compareStandings`) — only the hardcoded constants change.
+2. **Generic validation** (drop the 2025-specific assertions): compare record + PF + PA vs the
+   `Standings` tab; assert league (losses − wins) is **even and ≥ 0** (= N double-losses; no fixed
+   count); report highest weekly score + seeding without a hardcoded expectation. Exit non-zero on
+   any per-owner FAIL or odd/negative balance.
+3. Add npm script `import:season`. Run for each year; confirm `OVERALL: PASS`.
+4. Gotchas: owners are GLOBAL (deduped by email then name) so cross-season reuse is fine; ESPN has
+   2023/2024 schedules (games come back `STATUS_FINAL`); team names in the sheet must match
+   `nfl_teams.name`. Writes to the prod DB but idempotent.
+
+## Then — Phase B: team-builder wizard + player news (NOT started)
 
 The `/my-team` page now has the analytics dashboard (Phase A). The remaining feature the user wants:
 
