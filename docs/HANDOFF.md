@@ -3,7 +3,7 @@
 A running "where things stand" doc so a fresh Claude/context window (or contributor) can pick up
 without re-deriving everything. Update the **Next up** and **Recent work** sections as you go.
 
-_Last updated: 2026-06-17._
+_Last updated: 2026-06-17 (2023 + 2024 seasons imported & validated)._
 
 ---
 
@@ -17,40 +17,39 @@ _Last updated: 2026-06-17._
   handoff (typecheck · lint · 45 tests · production build · ESPN health · engine invariants ·
   2025 ground-truth replay).
 
-## Next up (do FIRST) — import 2023 + 2024 seasons
+## ✅ DONE — 2023 + 2024 seasons imported & validated
 
-Goal: backfill the 2023 and 2024 seasons into the DB the same way 2025 was done
-(`scripts/import-season3.ts`), each validated against its sheet's published `Standings` tab.
+Both seasons are now backfilled into the prod DB and pass a full ground-truth replay against their
+published `Standings` tabs. Done via a **new generic importer** `scripts/import-season.ts` (npm
+script `import:season`); `import-season3.ts` was left untouched (it stays the `npm run verify`
+anchor). To re-run (idempotent):
 
-Both sheets are now **public + accessible**. Year mapping confirmed from their titles:
-- **2024 = Sheet `1kWMn8Zbk4K7JitaOqxMjII_LKVsKRyqaeXhIJPFkJl8`** ("2024 DFS H2H Fantasy Football").
-  **Matches the 2025 format exactly** — the `import-season3.ts` parsers work on it unchanged:
-  - `Owners` header: `["","DK Entry Name","NFL Team","Owner","Paid?","Email Address"]` → DK=col1, team=col2, owner=col3, email=col5.
-  - `Standings`: AFC block base col 1, NFC block base col 12; per block: Team@base, Owner@base+1, **DK@base+2**, W@base+3, L@+4, T@+5, PF@+6, PA@+7, STRK@+8.
-- **2023 = Sheet `15KWmUsWkQuRgdOCJWUBfaImXZjGxnFp9Lv4UsNikDaA`** ("2023 DFS H2H Fantasy Football").
-  ⚠️ **DIFFERENT column layout** — the parsers must be adapted:
-  - `Owners` header: `["DK Entry Name","NFL Team","Owner","Paid?","Email Address",""]` (NO leading blank col) → DK=col0, team=col1, owner=col2, email=col4.
-  - `Standings`: **NO DK-entry column**. AFC block base col 1, NFC block **base col 11** (not 12); per block: Team@base, Owner@base+1, W@base+2, L@+3, T@+4, PF@+5, PA@+6, STRK@+7.
-- `Master Scores` is the **same in both**: team@col0, `Week 1..Week 18` at cols 1..18.
+```
+npm run import:season -- --year=2024 --sheet=1kWMn8Zbk4K7JitaOqxMjII_LKVsKRyqaeXhIJPFkJl8 --name="2024 Season"
+npm run import:season -- --year=2023 --sheet=15KWmUsWkQuRgdOCJWUBfaImXZjGxnFp9Lv4UsNikDaA --name="2023 Season"
+```
 
-**Plan (write a NEW generic importer; do NOT modify `import-season3.ts` — it's the verify anchor):**
-1. Create `scripts/import-season.ts`, parameterized via CLI: `--year=YYYY --sheet=ID --name="YYYY Season" [--weeks=18]`.
-   Reuse `import-season3.ts`'s logic, but make the `Owners` + `Standings` parsing **header-driven**
-   (locate columns by their header text: "DK Entry Name"/"NFL Team"/"Owner"/"Email Address"; and in
-   Standings locate each division-label column then detect whether a "DK Entry Name" column precedes
-   W) so it handles BOTH layouts above. `Master Scores`/`backfillScores`/`markForfeits` reuse as-is.
-2. **Generic validation** (drop the 2025-specific assertions): compare record + PF + PA vs the
-   `Standings` tab; assert league (losses − wins) is **even and ≥ 0** (= N double-losses; no fixed
-   count); report highest weekly score + seeding without a hardcoded expectation. Exit non-zero on
-   any per-owner FAIL or odd/negative balance.
-3. Add npm script `import:season`. Run for **2024 first** (easy, matches 2025 parsers) then **2023**
-   (validate the header-driven parsing). Confirm `OVERALL: PASS` for each.
-4. Gotchas: owners are GLOBAL (deduped by email then name) so cross-season reuse is fine; ESPN has
-   2023/2024 schedules (games return `STATUS_FINAL`); sheet team names must match `nfl_teams.name`.
-   Writes to the prod DB but idempotent. Sheet Standings PF/PA are rounded to 1 decimal (tolerance
-   ~0.2; forfeit-opponent weeks may need a ~3.0 PA residual tolerance like 2025).
+Results: **2024 → 32/32 PASS** (records + PF exact; 3 forfeit-opponent PA differences explained,
+see below). **2023 → 32/32 PASS** (records + PF exact; 2 small AVERAGE() PA residuals). Seeding and
+the double-loss balance (2024: 1; 2023: 2) all check out.
 
-## Then — Phase B: team-builder wizard + player news (NOT started)
+Key facts captured while doing this (useful if a 2022-or-earlier season is added later):
+- The importer's `Owners`/`Standings` parsing is **header-driven** — it finds columns by header text
+  ("NFL Team"/"Owner"/"DK Entry Name"/"Email Address"; in Standings it finds each `W,L,T,PF,PA` run
+  and walks left to the nearest "Owner", so the team column = Owner−1). This absorbed BOTH layouts
+  with no per-sheet code: 2024 has a leading blank column in Owners + a DK column in Standings; 2023
+  has neither (so W/L/T/PF/PA sit one column left and the NFC block starts earlier).
+- **Forfeit-opponent PA is a known cross-season inconsistency.** The engine consistently charges a
+  forfeit's *opponent* the week's **league average** as Points Against (the documented rule; what
+  2025 used everywhere). Some sheets are sloppier: for a forfeit opponent who clearly **won**, the
+  2024 maintainer left that week's PA as the forfeiter's actual **0** (wk15 Colts, wk18 Commanders).
+  Records + PF + the W/L (double-loss) result still match exactly; only PA differs by ~one week's
+  average. The validator accepts this **only for confirmed forfeit-opponent owner-weeks**, capped at
+  `FORFEIT_OPP_WEEK_PA_CAP` (200) pts/week, and reports it as `PASS†` — so a real PA bug on any other
+  team can't hide. The engine's value is the *more* defensible one (consistent all season); the
+  app's standings use it.
+
+## Next up — Phase B: team-builder wizard + player news (NOT started)
 
 The `/my-team` page now has the analytics dashboard (Phase A). The remaining feature the user wants:
 
@@ -106,6 +105,10 @@ start; it's public, keyless: player metadata, injury_status, trending players).
 
 ## Recent work (this session, newest first)
 
+- **2023 + 2024 season backfill** (`scripts/import-season.ts`, npm `import:season`): a generic,
+  header-driven importer that handled both sheet layouts; both seasons replayed to 32/32 ground-truth
+  PASS. Surfaced + scoped a cross-season forfeit-opponent PA convention difference (see the DONE
+  section above). `import-season3.ts` (2025 anchor) untouched; `npm run verify` still 7/7 green.
 - **My Team dashboard** (`/my-team`, `src/lib/team/query.ts`, `src/components/team-*.tsx`):
   browse-any-team dropdown + season selector; stat tiles; custom-SVG charts (weekly scores vs
   league avg, rank-over-time, playoff-odds trend); schedule & results table. **Forfeits are flagged**

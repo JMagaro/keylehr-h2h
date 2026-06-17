@@ -23,7 +23,8 @@
     "playoffs:import-2025": "tsx scripts/import-playoffs-2025.ts",
     "verify": "tsx scripts/verify.ts",
     "verify:quick": "tsx scripts/verify.ts --quick",
-    "verify:ground-truth": "tsx scripts/import-season3.ts"
+    "verify:ground-truth": "tsx scripts/import-season3.ts",
+    "import:season": "tsx scripts/import-season.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
