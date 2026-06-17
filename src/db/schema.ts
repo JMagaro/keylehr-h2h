@@ -419,6 +419,58 @@ export const playoffOddsSnapshots = pgTable(
 );
 
 /* -------------------------------------------------------------------------- */
+/* Lineup-model performance tracking                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row per (season, week, risk model): a snapshot of the lineup the model recommended
+ * for that week, plus — once the games are played — how it actually performed. This is the
+ * data that lets the three models be graded over time (and, eventually, trained).
+ *
+ * `lineup` is the recommended 9-man DraftKings roster; `pool` is the broader set of players
+ * the model considered (used to compute the hindsight-best lineup at grade time). The graded
+ * columns stay null until `gradeWeek` fills them from actual player results.
+ */
+export const modelSnapshots = pgTable(
+  'model_snapshots',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    seasonId: integer()
+      .notNull()
+      .references(() => seasons.id, { onDelete: 'cascade' }),
+    week: integer().notNull(),
+    /** 'safe' | 'balanced' | 'boom'. */
+    risk: varchar({ length: 16 }).notNull(),
+    /** Model version tag at snapshot time, e.g. "Floor@0.1.0". */
+    modelVersion: varchar({ length: 32 }).notNull(),
+    /** DraftKings draft group the salaries came from (null in signal-only mode). */
+    draftGroupId: varchar({ length: 64 }),
+    salaryMode: boolean().notNull().default(false),
+    salaryCap: integer(),
+    /** Recommended roster: [{ slot, playerId, name, position, teamKey, fit, salary }]. */
+    lineup: jsonb().notNull(),
+    /** Considered players for hindsight grading: [{ playerId, position, salary, fit }]. */
+    pool: jsonb().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    /* --- graded after the games (null until then) --- */
+    gradedAt: timestamp({ withTimezone: true }),
+    /** Actual fantasy points the recommended lineup scored. */
+    actualPoints: numeric({ precision: 8, scale: 2 }),
+    /** Best achievable points from the considered pool under the cap (hindsight ceiling). */
+    optimalPoints: numeric({ precision: 8, scale: 2 }),
+    /** Points a naive "pay up" (most-expensive) lineup from the pool would have scored. */
+    chalkPoints: numeric({ precision: 8, scale: 2 }),
+    /** How many of the 9 rostered players had an actual stat line. */
+    playersGraded: integer(),
+    gradeMeta: jsonb(),
+  },
+  (t) => [
+    uniqueIndex('model_snapshots_season_week_risk_uq').on(t.seasonId, t.week, t.risk),
+    index('model_snapshots_season_idx').on(t.seasonId),
+  ],
+);
+
+/* -------------------------------------------------------------------------- */
 /* Relations (for the Drizzle relational query API)                            */
 /* -------------------------------------------------------------------------- */
 
@@ -512,3 +564,5 @@ export type PlayoffMatchup = typeof playoffMatchups.$inferSelect;
 export type NewPlayoffMatchup = typeof playoffMatchups.$inferInsert;
 export type PlayoffOddsSnapshot = typeof playoffOddsSnapshots.$inferSelect;
 export type NewPlayoffOddsSnapshot = typeof playoffOddsSnapshots.$inferInsert;
+export type ModelSnapshot = typeof modelSnapshots.$inferSelect;
+export type NewModelSnapshot = typeof modelSnapshots.$inferInsert;

@@ -17,6 +17,7 @@ const ADMIN_NAV = [
   { href: '/admin/sync', label: 'Sync' },
   { href: '/admin/playoffs', label: 'Playoffs' },
   { href: '/admin/slates', label: 'Slates' },
+  { href: '/admin/models', label: 'Models' },
   { href: '/admin/settings', label: 'Settings' },
   { href: '/admin/users', label: 'Users' },
 ] as const;

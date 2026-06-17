@@ -40,16 +40,19 @@ import {
   getHighestWeeklyScore,
 } from "@/lib/standings/query";
 import { getCurrentSeason } from "@/lib/season";
+import { PlayerNewsStrip } from "@/components/player-news-strip";
+import { getSpotlightData } from "@/lib/players/query";
 import { formatPoints } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export default async function DashboardPage() {
-  const [currentSeason, dataSeasonId, seasons] = await Promise.all([
+  const [currentSeason, dataSeasonId, seasons, spotlight] = await Promise.all([
     getCurrentSeason(),
     getDefaultStandingsSeasonId(),
     getSeasonOptions(),
+    getSpotlightData(),
   ]);
 
   const dataSeason = seasons.find((s) => s.id === dataSeasonId) ?? null;
@@ -354,6 +357,13 @@ export default async function DashboardPage() {
               </Link>
             </CardBody>
           </Card>
+        </Container>
+      </section>
+
+      {/* Around the league — live player news / waiver signals + builder CTA */}
+      <section aria-label="Around the league" className="border-t border-border/60 bg-surface/30">
+        <Container width="wide" as="div" className="py-12">
+          <PlayerNewsStrip data={spotlight} />
         </Container>
       </section>
     </>

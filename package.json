@@ -24,7 +24,9 @@
     "verify": "tsx scripts/verify.ts",
     "verify:quick": "tsx scripts/verify.ts --quick",
     "verify:ground-truth": "tsx scripts/import-season3.ts",
-    "import:season": "tsx scripts/import-season.ts"
+    "import:season": "tsx scripts/import-season.ts",
+    "models:snapshot": "tsx scripts/models.ts --action=snapshot",
+    "models:grade": "tsx scripts/models.ts --action=grade"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

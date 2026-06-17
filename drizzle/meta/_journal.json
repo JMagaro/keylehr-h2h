@@ -43,6 +43,13 @@
       "when": 1781564341973,
       "tag": "0005_early_venom",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781731563698,
+      "tag": "0006_daffy_scourge",
+      "breakpoints": true
     }
   ]
 }

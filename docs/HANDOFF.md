@@ -116,6 +116,19 @@ not free/keyless), snapshotting trends so the builder works for *past* weeks too
 
 ## Recent work (this session, newest first)
 
+- **Lineup models: versioning + performance tracker** (`src/lib/players/models.ts`, `grade.ts`,
+  `performance.ts`, `model_snapshots` table, Admin → Models, `models:snapshot`/`models:grade`
+  scripts). The 3 risk profiles are now **versioned models** — `Floor`/`Blend`/`Ceiling` v0.1.0,
+  stage `heuristic`. Honest framing agreed with the user: they're hand-weighted heuristics today and
+  will **graduate to trained (ML) v1.0** once a season of graded results exists. The tracker is
+  forward-looking (inputs only exist "now", so no backtest): `snapshotWeek` records each model's
+  lineup near lock; `gradeWeek` scores it vs actual player results (Sleeper stats, PPR proxy) and
+  computes hindsight-optimal + chalk baselines (reusing the cap optimizer). Performance shows on the
+  builder + Admin → Models. Also: **"Around the league" strip moved from My Team to the home-page
+  bottom.**
+- **DraftKings salary + cap optimization** (`src/lib/draftkings/*`, `optimize.ts`): builder lineups
+  are cap-valid DK Classic rosters. Salaries auto-detected from DK's main slate (lobby API) →
+  admin-pinned (Admin → Slates) → `?dg=` override; falls back to signal-only when no salaries posted.
 - **Phase B — lineup builder + player news** (`src/lib/players/*`, `/my-team/builder`,
   `PlayerNewsStrip`, `PlayerCard`, `LineupBuilderControls`): first player-level integration, free
   sources (Sleeper + ESPN), risk-weighted pure engine with 9 tests. Nav + home page updated to
@@ -155,6 +168,10 @@ not free/keyless), snapshotting trends so the builder works for *past* weeks too
 - Per-team dashboard data: `src/lib/team/query.ts`
 - Player signals + lineup builder: `src/lib/players/{sleeper,espn-news,recommend,query}.ts`
   (`recommend.ts` is the pure engine; `query.ts` is the DB/schedule orchestration hub)
+- DraftKings salaries + cap optimizer: `src/lib/draftkings/{draftables,match}.ts`, `src/lib/players/optimize.ts`
+- Lineup-model versioning + performance: `src/lib/players/{models,grade,performance}.ts`
+  (`grade.ts` is the pure grading math; `performance.ts` adds DB + Sleeper-stats I/O). Cmds:
+  `npm run models:snapshot -- --season=<id> --week=<n>` and `models:grade`. Admin → Models drives it.
 - Playoffs bracket service: `src/lib/playoffs/service.ts` · Odds sim: `src/lib/odds/`
 - Rules schema (single source of truth): `src/lib/rules/schema.ts`
 - DraftKings ingest: `src/lib/scores/`, `src/app/api/ingest/draftkings/` · Chrome ext: `extension/`

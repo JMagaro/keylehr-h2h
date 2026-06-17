@@ -34,13 +34,11 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/data-table";
 import { SeasonSelector } from "@/components/season-selector";
 import { TeamSelector } from "@/components/team-selector";
 import { WeeklyScoresChart, TrendLineChart, type TrendPoint } from "@/components/team-charts";
-import { PlayerNewsStrip } from "@/components/player-news-strip";
 import {
   getSeasonOptions,
   getDefaultStandingsSeasonId,
 } from "@/lib/standings/query";
 import { getTeamDirectory, getTeamDashboard } from "@/lib/team/query";
-import { getSpotlightData } from "@/lib/players/query";
 import { formatPoints } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -79,9 +77,6 @@ export default async function MyTeamPage({
       ? await getTeamDashboard(seasonId, teamId)
       : null;
 
-  // Live, season-independent player signals for the "around the league" strip.
-  const spotlight = await getSpotlightData();
-
   const selectors = (
     <div className="flex flex-wrap items-center gap-3">
       {seasonId !== undefined ? <SeasonSelector seasons={seasons} selectedId={seasonId} /> : null}
@@ -105,8 +100,6 @@ export default async function MyTeamPage({
           title="No team data for this season yet"
           description="This season has no owners or scored games yet. Pick another season above, or check back once weekly DraftKings scores begin posting."
         />
-        {/* The live player signals + builder are still useful before scores post. */}
-        <PlayerNewsStrip data={spotlight} />
       </Container>
     );
   }
@@ -207,9 +200,6 @@ export default async function MyTeamPage({
           icon={TrendingUp}
         />
       </div>
-
-      {/* Around the league — live player news / waiver signals + builder CTA */}
-      <PlayerNewsStrip data={spotlight} />
 
       {/* Weekly scoring chart */}
       <Card>

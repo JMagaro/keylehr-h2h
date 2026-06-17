@@ -18,12 +18,14 @@ import {
   Info,
   ListChecks,
   Sparkles,
+  Trophy,
   Users,
 } from 'lucide-react';
 
 import { Container } from '@/components/container';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState } from '@/components/empty-state';
+import { Badge } from '@/components/badge';
 import { Card, CardBody, CardHeader, CardTitle, CardDescription } from '@/components/card';
 import { PlayerCard } from '@/components/player-card';
 import {
@@ -38,6 +40,8 @@ import {
   type RiskLevel,
 } from '@/lib/players/query';
 import { RISK_META } from '@/lib/players/recommend';
+import { MODEL_REGISTRY } from '@/lib/players/models';
+import { getModelPerformance } from '@/lib/players/performance';
 import { DK_CLASSIC_SALARY_CAP } from '@/lib/draftkings/draftables';
 
 export const metadata: Metadata = {
@@ -57,7 +61,7 @@ function param(sp: Record<string, string | string[] | undefined>, key: string): 
 const RISK_OPTIONS: RiskOption[] = RISK_LEVELS.map((value) => ({
   value,
   label: RISK_META[value].label,
-  tagline: RISK_META[value].tagline,
+  tagline: `${MODEL_REGISTRY[value].codename} v${MODEL_REGISTRY[value].version}`,
 }));
 
 export default async function LineupBuilderPage({
@@ -110,8 +114,12 @@ export default async function LineupBuilderPage({
   // Optional ?dg=<draftGroupId> to try a DraftKings slate before it's saved in admin.
   const dgOverride = param(sp, 'dg') ?? null;
 
-  const data = await getBuilderData(season, week, risk, dgOverride);
+  const [data, performance] = await Promise.all([
+    getBuilderData(season, week, risk, dgOverride),
+    getModelPerformance(season.id),
+  ]);
   const salary = data.salary;
+  const model = MODEL_REGISTRY[risk];
   const money = (n: number) => `$${n.toLocaleString('en-US')}`;
 
   const controls = (
@@ -145,9 +153,15 @@ export default async function LineupBuilderPage({
             <Info className="size-5" aria-hidden="true" />
           </span>
           <div className="flex flex-col gap-1">
-            <p className="text-sm font-semibold text-foreground">
-              {data.riskMeta.label} — {data.riskMeta.tagline}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-foreground">
+                {model.codename} <span className="text-subtle">v{model.version}</span>
+              </p>
+              <Badge variant="neutral" title="Hand-weighted heuristic model — will graduate to a trained model once a season of results is collected.">
+                {model.stage}
+              </Badge>
+              <span className="text-sm text-muted">· {data.riskMeta.label} — {data.riskMeta.tagline}</span>
+            </div>
             <p className="text-sm text-muted">{data.riskMeta.description}</p>
             <p className="text-xs text-subtle">
               Built from free public sources — Sleeper consensus ranks, waiver add/drop trends and
@@ -342,6 +356,57 @@ export default async function LineupBuilderPage({
           </div>
         </>
       )}
+
+      {/* Model performance — accumulates as weeks are graded against actual results */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <Trophy className="size-5" aria-hidden="true" />
+            </span>
+            <div className="flex flex-col gap-0.5">
+              <CardTitle>Model performance</CardTitle>
+              <CardDescription>
+                How each model&apos;s lineups actually scored, graded against real player results.
+                These are versioned <strong>heuristic</strong> models today; once a season of results
+                is collected they&apos;ll be trained on that data and graduate to <strong>v1.0</strong>.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardBody>
+          {performance.every((m) => m.weeksGraded === 0) ? (
+            <p className="text-sm text-muted">
+              No graded weeks yet — tracking begins once the season&apos;s slates go live and a week is
+              snapshotted &amp; graded (Admin → Models). Each model&apos;s actual results will show here.
+            </p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-3">
+              {performance.map((m) => (
+                <div key={m.risk} className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {m.codename} <span className="text-subtle">v{m.version}</span>
+                    </span>
+                    <Badge variant={m.stage === 'trained' ? 'accent' : 'neutral'}>{m.stage}</Badge>
+                  </div>
+                  <span className="text-2xl font-bold tabular-nums text-foreground">
+                    {m.avgActual == null ? '—' : m.avgActual.toFixed(1)}
+                    <span className="ml-1 text-sm font-normal text-subtle">avg pts</span>
+                  </span>
+                  <span className="text-xs text-muted">
+                    {m.weeksGraded} week{m.weeksGraded === 1 ? '' : 's'} graded
+                    {m.avgOptimalPct != null ? ` · ${m.avgOptimalPct.toFixed(0)}% of optimal` : ''}
+                    {m.avgVsChalk != null
+                      ? ` · ${m.avgVsChalk >= 0 ? '+' : ''}${m.avgVsChalk.toFixed(1)} vs chalk`
+                      : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
     </Container>
   );
 }

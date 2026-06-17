@@ -196,6 +196,56 @@ interface RawTrending {
   count?: number;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Actual weekly results (for model grading)                                  */
+/* -------------------------------------------------------------------------- */
+
+interface RawWeekStats {
+  pts_ppr?: number;
+  pts_half_ppr?: number;
+  pts_std?: number;
+}
+
+/**
+ * Actual fantasy points per Sleeper player id for a completed week, as a PPR total (the
+ * closest free proxy to DraftKings Classic scoring). Used to grade the lineup models after
+ * the games. Cached for 6 hours via the Next Data Cache. Returns an empty map on any error
+ * or for a week with no results yet.
+ *
+ * @param seasonYear e.g. 2026 (the NFL calendar year, not the DB season id).
+ */
+export async function getWeekActuals(
+  seasonYear: number,
+  week: number,
+): Promise<Map<string, number>> {
+  const url = `${SLEEPER_BASE}/stats/nfl/regular/${seasonYear}/${week}`;
+  try {
+    const res = await fetch(url, {
+      headers: { accept: 'application/json' },
+      next: { revalidate: 21600 },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const dict = (await res.json()) as Record<string, RawWeekStats | null>;
+    const out = new Map<string, number>();
+    for (const [id, stats] of Object.entries(dict)) {
+      if (!stats) continue;
+      const pts =
+        typeof stats.pts_ppr === 'number'
+          ? stats.pts_ppr
+          : typeof stats.pts_half_ppr === 'number'
+            ? stats.pts_half_ppr
+            : typeof stats.pts_std === 'number'
+              ? stats.pts_std
+              : null;
+      if (pts != null) out.set(id, pts);
+    }
+    return out;
+  } catch (err) {
+    console.error(`[sleeper] week actuals ${seasonYear}/${week} fetch failed:`, err);
+    return new Map();
+  }
+}
+
 /**
  * Most-added (`add`) or most-dropped (`drop`) players over the lookback window, as a
  * map of Sleeper player id → roster-move count. Cached hourly via the Next Data Cache.
