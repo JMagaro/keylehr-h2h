@@ -33,6 +33,9 @@ import {
 import { getPlayoffBracket } from "@/lib/playoffs/service";
 import { getOddsTrend } from "@/lib/odds/query";
 import type { Conference } from "@/lib/standings";
+import { eq } from "drizzle-orm";
+import { db, seasons as seasonsTable } from "@/db";
+import { getSeasonRules } from "@/lib/rules/schema";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -78,7 +81,7 @@ function ConferenceSeeds({
     <section aria-label={`${conference} playoff seeding`} className="flex min-w-0 flex-col gap-4">
       <div className="flex items-center gap-3">
         <h3 className="text-lg font-bold tracking-tight text-foreground">{conference}</h3>
-        <Badge variant="accent">7 Seeds</Badge>
+        <Badge variant="accent">{seeds.length} Seeds</Badge>
       </div>
       <Table>
         <caption className="sr-only">{conference} playoff seeding</caption>
@@ -172,6 +175,23 @@ export default async function PlayoffsPage({
 
   const hasOdds = trend.weeks.length > 0 && trend.owners.length > 0;
 
+  // Resolve the season's playoff rules so the seeding copy reflects the configured
+  // format (the bracket/seeding engine is already rule-driven, so static copy here
+  // could drift if the commissioner changes the playoff structure in Settings).
+  const seasonRow =
+    selectedId !== undefined
+      ? (await db.select({ rules: seasonsTable.rules }).from(seasonsTable).where(eq(seasonsTable.id, selectedId)).limit(1))[0]
+      : undefined;
+  const playoffRules = getSeasonRules(seasonRow?.rules).playoffs;
+  const byeCount = playoffRules.topSeedByes;
+  const pictureDescription =
+    `${playoffRules.teamsPerConference} seeds per conference — ${playoffRules.divisionWinnersPerConference} division ` +
+    `winners and ${playoffRules.wildCardsPerConference} wild cards. ` +
+    (byeCount > 0
+      ? `The top ${byeCount === 1 ? "seed earns" : `${byeCount} seeds earn`} a first-round bye. `
+      : "") +
+    "Shown as if the season ended today.";
+
   return (
     <Container width="wide" as="div" className="flex flex-col gap-12 py-10">
       <PageHeader
@@ -187,10 +207,7 @@ export default async function PlayoffsPage({
 
       {/* 1. Playoff Picture — live seeding. */}
       <section aria-label="Playoff picture" className="flex flex-col gap-6">
-        <SectionHeading
-          title="Playoff Picture"
-          description="Seven seeds per conference — four division winners and three wild cards. The #1 seed earns a first-round bye. Shown as if the season ended today."
-        />
+        <SectionHeading title="Playoff Picture" description={pictureDescription} />
         {!picture.hasData ? (
           <EmptyState
             icon={Trophy}
