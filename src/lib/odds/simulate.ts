@@ -36,6 +36,8 @@ import {
   type Conference,
   type MatchupResult,
   type OwnerEntry,
+  type PlayoffConfig,
+  type RankingOptions,
 } from '@/lib/standings';
 import { getSeasonStandingsData } from '@/lib/standings/query';
 import { db, seasons } from '@/db';
@@ -184,6 +186,8 @@ function simulateWeek(
   models: Map<number, ScoringModel>,
   sims: number,
   rng: Lcg,
+  config: PlayoffConfig,
+  rankingOptions: RankingOptions,
 ): Map<number, number> {
   const fieldCount = new Map<number, number>();
   for (const e of entries) fieldCount.set(e.ownerSeasonId, 0);
@@ -209,7 +213,7 @@ function simulateWeek(
     });
 
     const allResults = playedResults.concat(simResults);
-    const seeds = computeConferenceSeeds(entries, allResults);
+    const seeds = computeConferenceSeeds(entries, allResults, config, rankingOptions);
     for (const conf of conferences) {
       for (const seeded of seeds[conf]) {
         fieldCount.set(seeded.ownerSeasonId, (fieldCount.get(seeded.ownerSeasonId) ?? 0) + 1);
@@ -243,7 +247,7 @@ export async function computePlayoffOddsSnapshots(
   options: OddsOptions = {},
 ): Promise<OddsSnapshot[]> {
   const sims = options.sims ?? DEFAULT_SIMS;
-  const { entries, results } = await getSeasonStandingsData(seasonId);
+  const { entries, results, playoffConfig, rankingOptions } = await getSeasonStandingsData(seasonId);
   if (entries.length === 0) return [];
 
   // The season's regular-season length (remaining weeks run up to this).
@@ -280,7 +284,7 @@ export async function computePlayoffOddsSnapshots(
     );
 
     const models = buildModels(entries, played);
-    const probs = simulateWeek(entries, played, remaining, models, sims, rng);
+    const probs = simulateWeek(entries, played, remaining, models, sims, rng, playoffConfig, rankingOptions);
 
     for (const e of entries) {
       const pct = probs.get(e.ownerSeasonId) ?? 0;

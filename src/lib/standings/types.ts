@@ -116,6 +116,38 @@ export interface RankedStandingRow extends StandingRow {
 }
 
 /**
+ * A single standings tiebreaker step. Mirrors the `tiebreakers` rule in
+ * `src/lib/rules/schema.ts`:
+ *   - `h2h` head-to-head record within the tied cohort
+ *   - `pf`  Points For (higher is better)
+ *   - `pa`  Points Against (lower is better)
+ */
+export type TiebreakerKey = 'h2h' | 'pf' | 'pa';
+
+/** The league's default tiebreaker order (H2H → PF → PA). */
+export const DEFAULT_TIEBREAKERS: readonly TiebreakerKey[] = ['h2h', 'pf', 'pa'];
+
+/**
+ * Rule-derived knobs that tune ranking + Points-For accumulation. Supplied by the
+ * DB layer from the season's configured rules; omitting it (or any field) keeps
+ * the league-default behavior so the pure engine and its tests stay unchanged.
+ */
+export interface RankingOptions {
+  /**
+   * Tiebreaker order applied WITHIN a cohort of equal overall record. Defaults to
+   * {@link DEFAULT_TIEBREAKERS}. The overall-record sort (win% then wins) always
+   * runs first, and `ownerSeasonId` is always the final deterministic fallback.
+   */
+  tiebreakers?: readonly TiebreakerKey[];
+  /**
+   * Per-owner bye-week points to ADD to Points For — set by the DB layer only when
+   * the season's `byeWeek.countsTowardPointsFor` rule is on. Affects Points For
+   * (and therefore the PF tiebreaker) but never wins/losses/win%.
+   */
+  byePointsFor?: Map<number, number>;
+}
+
+/**
  * Per-season playoff structure the seeding/bracket engine reads instead of
  * hardcoding. Mirrors the `playoffs` block of the season rules
  * (`src/lib/rules/schema.ts`) so the commissioner can change the format from

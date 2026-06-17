@@ -215,26 +215,6 @@ export function SeasonRulesForm({
         <form action={formAction} className="flex flex-col gap-6">
           <input type="hidden" name="seasonId" value={seasonId} />
 
-          {/* Regular season */}
-          <fieldset className="flex flex-col gap-4">
-            <legend className="text-sm font-semibold text-foreground">Regular season</legend>
-            <Field
-              label="Regular-season weeks"
-              htmlFor="rulesRegularSeasonWeeks"
-              hint="Used by standings/scoring. NFL is 18."
-            >
-              <Input
-                id="rulesRegularSeasonWeeks"
-                name="regularSeasonWeeks"
-                type="number"
-                min={1}
-                max={25}
-                step={1}
-                defaultValue={rules.regularSeasonWeeks}
-              />
-            </Field>
-          </fieldset>
-
           {/* Tiebreakers */}
           <fieldset className="flex flex-col gap-3">
             <legend className="text-sm font-semibold text-foreground">Standings tiebreakers</legend>

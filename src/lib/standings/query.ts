@@ -17,10 +17,10 @@
  * Numeric columns (`numeric(7,2)`) come back from the driver as strings; we convert with
  * `Number` exactly once, here.
  */
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 
 import { db, matchups, nflTeams, owners, ownerSeasons, scores, seasons } from '@/db';
-import { getSeasonRules } from '@/lib/rules/schema';
+import { getSeasonRules, type SeasonRules } from '@/lib/rules/schema';
 import {
   computeConferenceSeeds,
   computeDivisionStandings,
@@ -29,9 +29,21 @@ import {
   type Division,
   type MatchupResult,
   type OwnerEntry,
+  type PlayoffConfig,
+  type RankingOptions,
   type SeededOwner,
   type StandingRow,
 } from '@/lib/standings';
+
+/** Map a season's `playoffs` rules to the engine's {@link PlayoffConfig}. */
+function playoffConfigFromRules(rules: SeasonRules): PlayoffConfig {
+  return {
+    teamsPerConference: rules.playoffs.teamsPerConference,
+    divisionWinnersPerConference: rules.playoffs.divisionWinnersPerConference,
+    wildCardsPerConference: rules.playoffs.wildCardsPerConference,
+    topSeedByes: rules.playoffs.topSeedByes,
+  };
+}
 
 /** Display-only team branding (logo + accent color), keyed by ownerSeasonId. */
 export interface TeamBranding {
@@ -47,6 +59,15 @@ export interface SeasonStandingsData {
   results: MatchupResult[];
   /** Per-owner team branding for display; not consumed by the standings engine. */
   brandingById: Map<number, TeamBranding>;
+  /** The season's effective (defaults-filled) rules. */
+  rules: SeasonRules;
+  /**
+   * Rule-derived ranking knobs (tiebreaker order + bye Points-For), ready to pass
+   * straight to `computeStandings` / `computeConferenceSeeds` / `computeDivisionStandings`.
+   */
+  rankingOptions: RankingOptions;
+  /** The season's playoff structure (seeds, division winners, wild cards, byes). */
+  playoffConfig: PlayoffConfig;
 }
 
 /**
@@ -118,11 +139,19 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
   const pointsByOwnerWeek = new Map<string, number | null>();
   /** key `${ownerSeasonId}:${week}` → true when that owner-week is a forfeit. */
   const forfeitByOwnerWeek = new Set<string>();
+  /** Sum of bye-week points per owner — added to Points For when the rule is on. */
+  const byePointsForByOwner = new Map<number, number>();
   for (const s of scoreRows) {
     const key = `${s.ownerSeasonId}:${s.week}`;
     const pts = s.isBye || s.dkPoints === null ? null : Number(s.dkPoints);
     pointsByOwnerWeek.set(key, pts);
     if (s.isForfeit) forfeitByOwnerWeek.add(key);
+    if (s.isBye && s.dkPoints !== null) {
+      byePointsForByOwner.set(
+        s.ownerSeasonId,
+        (byePointsForByOwner.get(s.ownerSeasonId) ?? 0) + Number(s.dkPoints),
+      );
+    }
   }
 
   // 3. Matchups → MatchupResult[]. A matchup is final only when both sides have a
@@ -213,7 +242,21 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
     return { ...base, forfeitBy: 'away', opponentFacesPoints: facesFor(m.week, awayPoints) };
   });
 
-  return { entries, results, brandingById };
+  // Rule-derived ranking knobs, ready for the engine: the configured tiebreaker
+  // order, and bye Points-For ONLY when the season counts bye weeks toward PF.
+  const rankingOptions: RankingOptions = {
+    tiebreakers: rules.tiebreakers,
+    byePointsFor: rules.byeWeek.countsTowardPointsFor ? byePointsForByOwner : undefined,
+  };
+
+  return {
+    entries,
+    results,
+    brandingById,
+    rules,
+    rankingOptions,
+    playoffConfig: playoffConfigFromRules(rules),
+  };
 }
 
 /** A standings row enriched with the owner's identity, for display/comparison. */
@@ -230,8 +273,8 @@ export interface SeasonStandingRow extends StandingRow {
  * owner's identity. Unordered — use the seeding/tiebreaker helpers to rank.
  */
 export async function getSeasonStandings(seasonId: number): Promise<SeasonStandingRow[]> {
-  const { entries, results } = await getSeasonStandingsData(seasonId);
-  const rows = computeStandings(entries, results);
+  const { entries, results, rankingOptions } = await getSeasonStandingsData(seasonId);
+  const rows = computeStandings(entries, results, rankingOptions.byePointsFor);
   const entryById = new Map(entries.map((e) => [e.ownerSeasonId, e]));
   return rows.map((r) => {
     const e = entryById.get(r.ownerSeasonId)!;
@@ -250,8 +293,8 @@ export async function getSeasonStandings(seasonId: number): Promise<SeasonStandi
 export async function getSeasonSeeds(
   seasonId: number,
 ): Promise<Record<Conference, SeededOwner[]>> {
-  const { entries, results } = await getSeasonStandingsData(seasonId);
-  return computeConferenceSeeds(entries, results);
+  const { entries, results, playoffConfig, rankingOptions } = await getSeasonStandingsData(seasonId);
+  return computeConferenceSeeds(entries, results, playoffConfig, rankingOptions);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -358,7 +401,8 @@ const DIVISIONS: Division[] = ['East', 'North', 'South', 'West'];
  * re-derives standings logic.
  */
 export async function getStandingsView(seasonId: number): Promise<StandingsView> {
-  const { entries, results, brandingById } = await getSeasonStandingsData(seasonId);
+  const { entries, results, brandingById, playoffConfig, rankingOptions } =
+    await getSeasonStandingsData(seasonId);
 
   const empty: StandingsView = {
     hasData: false,
@@ -380,7 +424,7 @@ export async function getStandingsView(seasonId: number): Promise<StandingsView>
   const entryById = new Map(entries.map((e) => [e.ownerSeasonId, e]));
 
   // Playoff tags from the conference seeding.
-  const seeds = computeConferenceSeeds(entries, results);
+  const seeds = computeConferenceSeeds(entries, results, playoffConfig, rankingOptions);
   const tagById = new Map<number, PlayoffTag>();
   for (const conf of CONFERENCES) {
     for (const s of seeds[conf]) {
@@ -396,7 +440,7 @@ export async function getStandingsView(seasonId: number): Promise<StandingsView>
 
   for (const conf of CONFERENCES) {
     for (const div of DIVISIONS) {
-      const ranked = computeDivisionStandings(entries, results, conf, div);
+      const ranked = computeDivisionStandings(entries, results, conf, div, rankingOptions);
       byConference[conf][div] = ranked.map((row, idx) => {
         const e = entryById.get(row.ownerSeasonId)!;
         return {
@@ -451,6 +495,19 @@ export interface HighestWeeklyScore {
 export async function getHighestWeeklyScore(
   seasonId: number,
 ): Promise<HighestWeeklyScore | null> {
+  // Honor the season's `byeWeek.eligibleForWeeklyHigh` rule: when off (the
+  // default), bye-week scores are excluded from the weekly-high prize.
+  const [seasonRow] = await db
+    .select({ rules: seasons.rules })
+    .from(seasons)
+    .where(eq(seasons.id, seasonId))
+    .limit(1);
+  const byesEligible = getSeasonRules(seasonRow?.rules).byeWeek.eligibleForWeeklyHigh;
+
+  const where = byesEligible
+    ? eq(scores.seasonId, seasonId)
+    : and(eq(scores.seasonId, seasonId), eq(scores.isBye, false));
+
   const rows = await db
     .select({
       ownerName: owners.name,
@@ -462,7 +519,7 @@ export async function getHighestWeeklyScore(
     .innerJoin(ownerSeasons, eq(scores.ownerSeasonId, ownerSeasons.id))
     .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id))
     .innerJoin(nflTeams, eq(ownerSeasons.nflTeamId, nflTeams.id))
-    .where(eq(scores.seasonId, seasonId))
+    .where(where)
     .orderBy(desc(scores.dkPoints))
     .limit(1);
   const r = rows[0];
@@ -534,12 +591,13 @@ export interface PlayoffPictureView {
  * each owner's identity and record.
  */
 export async function getPlayoffPicture(seasonId: number): Promise<PlayoffPictureView> {
-  const { entries, results, brandingById } = await getSeasonStandingsData(seasonId);
+  const { entries, results, brandingById, playoffConfig, rankingOptions } =
+    await getSeasonStandingsData(seasonId);
   if (entries.length === 0) {
     return { hasData: false, byConference: { AFC: [], NFC: [] } };
   }
   const entryById = new Map(entries.map((e) => [e.ownerSeasonId, e]));
-  const seeds = computeConferenceSeeds(entries, results);
+  const seeds = computeConferenceSeeds(entries, results, playoffConfig, rankingOptions);
   const byConference = { AFC: [], NFC: [] } as Record<Conference, PlayoffSeedRow[]>;
   for (const conf of CONFERENCES) {
     byConference[conf] = seeds[conf].map((s) => {

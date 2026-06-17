@@ -43,6 +43,32 @@ function rank(entries: OwnerEntry[], results: MatchupResult[]): number[] {
   return rankStandings(rows, ctx).map((r) => r.ownerSeasonId);
 }
 
+describe('tiebreakers — configurable order (rules.tiebreakers)', () => {
+  // Owners 1 and 2 each finish 1-0 and never play each other (H2H not applicable).
+  // Owner 1 has the higher Points For; owner 2 has the lower (better) Points Against.
+  // So PF-first ranks 1 ahead, PA-first ranks 2 ahead — proving the order is honored.
+  const entries = [owner(1), owner(2), owner(3), owner(4)];
+  const results: MatchupResult[] = [
+    game(1, 1, 3, 120, 100), // owner 1: 1-0, PF 120, PA 100
+    game(2, 2, 4, 110, 90), //  owner 2: 1-0, PF 110, PA 90
+  ];
+
+  function rankTopTwo(order?: ('h2h' | 'pf' | 'pa')[]): number[] {
+    const rows = computeStandings(entries, results);
+    const ctx = buildTiebreakerContext(rows, results);
+    const tied = rows.filter((r) => r.ownerSeasonId === 1 || r.ownerSeasonId === 2);
+    return rankStandings(tied, ctx, order).map((r) => r.ownerSeasonId);
+  }
+
+  it('default order (H2H → PF → PA) ranks the higher-PF owner ahead', () => {
+    expect(rankTopTwo()).toEqual([1, 2]);
+  });
+
+  it('PA before PF flips the result — the lower-PA owner ranks ahead', () => {
+    expect(rankTopTwo(['h2h', 'pa', 'pf'])).toEqual([2, 1]);
+  });
+});
+
 describe('tiebreakers — head-to-head beats Points For', () => {
   it('the owner who won the head-to-head ranks ahead despite lower PF', () => {
     // Owners 1 and 2 each finish 1-1 (a clean 2-way tie). Owner 2 beat owner 1

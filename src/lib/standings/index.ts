@@ -19,9 +19,11 @@ export type {
   PlayoffGame,
   PlayoffGameResult,
   AdvancingOwner,
+  TiebreakerKey,
+  RankingOptions,
 } from './types';
 
-export { DEFAULT_PLAYOFF_CONFIG } from './types';
+export { DEFAULT_PLAYOFF_CONFIG, DEFAULT_TIEBREAKERS } from './types';
 
 export { computeStandings } from './standings';
 

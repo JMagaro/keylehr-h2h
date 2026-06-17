@@ -17,7 +17,7 @@
  *
  * Pure: no DB, no I/O.
  */
-import type { MatchupResult, StandingRow } from './types';
+import { DEFAULT_TIEBREAKERS, type MatchupResult, type StandingRow, type TiebreakerKey } from './types';
 
 /**
  * Context needed to compare two standings rows. Built once via
@@ -135,29 +135,51 @@ export function compareForStandings(
   b: StandingRow,
   ctx: TiebreakerContext,
   group?: Iterable<number>,
+  order: readonly TiebreakerKey[] = DEFAULT_TIEBREAKERS,
 ): number {
-  // 1. Overall record.
+  // 1. Overall record always comes first (this is the standings order itself, not
+  //    a configurable tiebreaker).
   if (a.winPct !== b.winPct) return b.winPct - a.winPct;
   if (a.wins !== b.wins) return b.wins - a.wins;
 
-  // 2. Head-to-head within the tied cohort.
+  // 2. Configured tiebreaker steps, applied in the season's order.
   const cohort = group ? [...group] : [a.ownerSeasonId, b.ownerSeasonId];
-  const aH2h = h2hWinPct(ctx, a.ownerSeasonId, cohort);
-  const bH2h = h2hWinPct(ctx, b.ownerSeasonId, cohort);
-  // Only decisive when both owners actually have games within the cohort;
-  // otherwise H2H is "not applicable" and we fall through to PF/PA.
-  if (aH2h.games > 0 && bH2h.games > 0 && aH2h.pct !== bH2h.pct) {
-    return bH2h.pct - aH2h.pct;
+  for (const key of order) {
+    const d = compareByKey(key, a, b, ctx, cohort);
+    if (d !== 0) return d;
   }
 
-  // 3. Points For (higher first).
-  if (a.pointsFor !== b.pointsFor) return b.pointsFor - a.pointsFor;
-
-  // 4. Points Against (lower first).
-  if (a.pointsAgainst !== b.pointsAgainst) return a.pointsAgainst - b.pointsAgainst;
-
-  // 5. Deterministic fallback.
+  // 3. Deterministic fallback so sorts are always stable and reproducible.
   return a.ownerSeasonId - b.ownerSeasonId;
+}
+
+/**
+ * Compare two rows by ONE tiebreaker step. Returns a negative/positive number when
+ * decisive, or 0 ("not applicable") to fall through to the next step.
+ */
+function compareByKey(
+  key: TiebreakerKey,
+  a: StandingRow,
+  b: StandingRow,
+  ctx: TiebreakerContext,
+  cohort: number[],
+): number {
+  switch (key) {
+    case 'h2h': {
+      // Head-to-head within the tied cohort — only decisive when BOTH owners
+      // actually have games within the cohort; otherwise not applicable.
+      const aH2h = h2hWinPct(ctx, a.ownerSeasonId, cohort);
+      const bH2h = h2hWinPct(ctx, b.ownerSeasonId, cohort);
+      if (aH2h.games > 0 && bH2h.games > 0 && aH2h.pct !== bH2h.pct) {
+        return bH2h.pct - aH2h.pct;
+      }
+      return 0;
+    }
+    case 'pf': // Points For (higher first).
+      return a.pointsFor !== b.pointsFor ? b.pointsFor - a.pointsFor : 0;
+    case 'pa': // Points Against (lower first).
+      return a.pointsAgainst !== b.pointsAgainst ? a.pointsAgainst - b.pointsAgainst : 0;
+  }
 }
 
 /**
@@ -175,7 +197,11 @@ export function compareForStandings(
  *
  * @returns A new array sorted best-first. The input is not mutated.
  */
-export function rankStandings(rows: StandingRow[], ctx: TiebreakerContext): StandingRow[] {
+export function rankStandings(
+  rows: StandingRow[],
+  ctx: TiebreakerContext,
+  order: readonly TiebreakerKey[] = DEFAULT_TIEBREAKERS,
+): StandingRow[] {
   // Group by identical overall record.
   const byRecord = [...rows].sort((a, b) => {
     if (a.winPct !== b.winPct) return b.winPct - a.winPct;
@@ -199,7 +225,7 @@ export function rankStandings(rows: StandingRow[], ctx: TiebreakerContext): Stan
       result.push(cohort[0]);
     } else {
       const cohortIds = cohort.map((r) => r.ownerSeasonId);
-      const sorted = [...cohort].sort((a, b) => compareForStandings(a, b, ctx, cohortIds));
+      const sorted = [...cohort].sort((a, b) => compareForStandings(a, b, ctx, cohortIds, order));
       result.push(...sorted);
     }
     i = j;

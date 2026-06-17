@@ -41,6 +41,34 @@ function rowFor(rows: ReturnType<typeof computeStandings>, id: number) {
   return rows.find((r) => r.ownerSeasonId === id)!;
 }
 
+describe('computeStandings — bye points toward Points For (byeWeek rule)', () => {
+  it('adds supplied bye points to Points For only, leaving the record untouched', () => {
+    const entries = [owner(1), owner(2)];
+    const results = [game(1, 1, 2, 100, 90)]; // owner 1: 1-0, PF 100, PA 90
+
+    const without = rowFor(computeStandings(entries, results), 1);
+    expect(without.pointsFor).toBe(100);
+
+    const byePf = new Map<number, number>([[1, 55.5]]);
+    const withBye = rowFor(computeStandings(entries, results, byePf), 1);
+    // Bye points add to PF...
+    expect(withBye.pointsFor).toBe(155.5);
+    // ...but never touch the record / win%.
+    expect(withBye.wins).toBe(without.wins);
+    expect(withBye.losses).toBe(without.losses);
+    expect(withBye.ties).toBe(without.ties);
+    expect(withBye.gamesPlayed).toBe(without.gamesPlayed);
+    expect(withBye.winPct).toBe(without.winPct);
+    expect(withBye.pointsAgainst).toBe(without.pointsAgainst);
+  });
+
+  it('omitting the bye map (the default) excludes bye points entirely', () => {
+    const entries = [owner(1), owner(2)];
+    const results = [game(1, 1, 2, 100, 90)];
+    expect(rowFor(computeStandings(entries, results), 1).pointsFor).toBe(100);
+  });
+});
+
 describe('computeStandings — basic W-L-T', () => {
   it('tallies wins, losses, PF and PA from points', () => {
     const entries = [owner(1), owner(2)];

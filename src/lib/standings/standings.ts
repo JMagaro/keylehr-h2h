@@ -158,12 +158,18 @@ function computeStreak(history: { week: number; outcome: Outcome }[]): string {
  *                 owners with zero games played).
  * @param results  All matchup results; non-final and playoff results are
  *                 ignored automatically.
+ * @param byePointsFor  Optional per-owner bye-week points to ADD to Points For.
+ *                 Supplied by the DB layer only when the season's
+ *                 `byeWeek.countsTowardPointsFor` rule is on. A bye produces no
+ *                 matchup, so this is the only way bye scores reach Points For;
+ *                 it never affects wins/losses/win% (there is no game).
  * @returns One {@link StandingRow} per owner, in the input `entries` order.
  *          (Use the tiebreaker/seeding helpers to rank them.)
  */
 export function computeStandings(
   entries: OwnerEntry[],
   results: MatchupResult[],
+  byePointsFor?: Map<number, number>,
 ): StandingRow[] {
   const tallies = new Map<number, Tally>();
   for (const e of entries) {
@@ -202,13 +208,15 @@ export function computeStandings(
     const t = tallies.get(e.ownerSeasonId)!;
     const gamesPlayed = t.wins + t.losses + t.ties;
     const winPct = gamesPlayed === 0 ? 0 : (t.wins + 0.5 * t.ties) / gamesPlayed;
+    // Bye-week points (when the season counts them) accrue to Points For only.
+    const byePf = byePointsFor?.get(e.ownerSeasonId) ?? 0;
     return {
       ownerSeasonId: e.ownerSeasonId,
       wins: t.wins,
       losses: t.losses,
       ties: t.ties,
       gamesPlayed,
-      pointsFor: round2(t.pointsFor),
+      pointsFor: round2(t.pointsFor + byePf),
       pointsAgainst: round2(t.pointsAgainst),
       winPct,
       streak: computeStreak(t.history),

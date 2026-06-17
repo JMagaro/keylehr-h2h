@@ -109,8 +109,8 @@ async function loadTieRule(seasonId: number): Promise<'regular_season_pf' | 'hig
 
 /** Per-owner regular-season Points For, keyed by ownerSeasonId. */
 async function loadRegularSeasonPf(seasonId: number): Promise<Map<number, number>> {
-  const { entries, results } = await getSeasonStandingsData(seasonId);
-  const rows = computeStandings(entries, results);
+  const { entries, results, rankingOptions } = await getSeasonStandingsData(seasonId);
+  const rows = computeStandings(entries, results, rankingOptions.byePointsFor);
   const out = new Map<number, number>();
   for (const r of rows) out.set(r.ownerSeasonId, r.pointsFor);
   return out;
@@ -208,7 +208,7 @@ export interface GenerateBracketResult {
  */
 export async function generatePlayoffBracket(seasonId: number): Promise<GenerateBracketResult> {
   const config = await loadPlayoffConfig(seasonId);
-  const { entries, results } = await getSeasonStandingsData(seasonId);
+  const { entries, results, rankingOptions } = await getSeasonStandingsData(seasonId);
 
   const emptySeeds = { AFC: [], NFC: [] } as Record<Conference, SeededOwner[]>;
 
@@ -225,7 +225,7 @@ export async function generatePlayoffBracket(seasonId: number): Promise<Generate
     };
   }
 
-  const seeds = computeConferenceSeeds(entries, results, config);
+  const seeds = computeConferenceSeeds(entries, results, config, rankingOptions);
   const wildCard = seedInitialBracket(seeds, config);
   await upsertRoundGames(seasonId, wildCard);
 
@@ -297,8 +297,8 @@ async function loadByeSeeds(
   seasonId: number,
   config: PlayoffConfig,
 ): Promise<Record<Conference, SeededOwner[]>> {
-  const { entries, results } = await getSeasonStandingsData(seasonId);
-  const seeds = computeConferenceSeeds(entries, results, config);
+  const { entries, results, rankingOptions } = await getSeasonStandingsData(seasonId);
+  const seeds = computeConferenceSeeds(entries, results, config, rankingOptions);
   const out = { AFC: [], NFC: [] } as Record<Conference, SeededOwner[]>;
   for (const conf of CONFERENCES) {
     out[conf] = seeds[conf].filter((s) => s.isBye);

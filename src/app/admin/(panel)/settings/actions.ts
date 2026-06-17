@@ -148,7 +148,10 @@ export async function updateSeasonRules(
 
   const next = {
     ...current,
-    regularSeasonWeeks: num(formData.get('regularSeasonWeeks')),
+    // Regular-season weeks is edited on the Season card (the canonical
+    // `seasons.regularSeasonWeeks` column the scoring engine reads); preserve the
+    // rules-JSONB mirror here rather than exposing a second, divergent editor.
+    regularSeasonWeeks: current.regularSeasonWeeks,
     tiebreakers: readTiebreakers(formData, current.tiebreakers),
     playoffs: {
       teamsPerConference: num(formData.get('teamsPerConference')),

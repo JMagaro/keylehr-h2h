@@ -17,14 +17,17 @@ import { computeStandings } from './standings';
 import { buildTiebreakerContext, rankStandings, type TiebreakerContext } from './tiebreakers';
 import {
   DEFAULT_PLAYOFF_CONFIG,
+  DEFAULT_TIEBREAKERS,
   type Conference,
   type Division,
   type MatchupResult,
   type OwnerEntry,
   type PlayoffConfig,
   type RankedStandingRow,
+  type RankingOptions,
   type SeededOwner,
   type StandingRow,
+  type TiebreakerKey,
 } from './types';
 
 const CONFERENCES: Conference[] = ['AFC', 'NFC'];
@@ -35,14 +38,20 @@ interface ComputedContext {
   entryById: Map<number, OwnerEntry>;
   rowById: Map<number, StandingRow>;
   ctx: TiebreakerContext;
+  /** The season's tiebreaker order, applied by every rankStandings call below. */
+  order: readonly TiebreakerKey[];
 }
 
-function compute(entries: OwnerEntry[], results: MatchupResult[]): ComputedContext {
-  const rows = computeStandings(entries, results);
+function compute(
+  entries: OwnerEntry[],
+  results: MatchupResult[],
+  opts: RankingOptions = {},
+): ComputedContext {
+  const rows = computeStandings(entries, results, opts.byePointsFor);
   const ctx = buildTiebreakerContext(rows, results);
   const entryById = new Map(entries.map((e) => [e.ownerSeasonId, e]));
   const rowById = new Map(rows.map((r) => [r.ownerSeasonId, r]));
-  return { entryById, rowById, ctx };
+  return { entryById, rowById, ctx, order: opts.tiebreakers ?? DEFAULT_TIEBREAKERS };
 }
 
 /** Attach conference/division to a standings row. */
@@ -62,8 +71,9 @@ export function computeDivisionStandings(
   results: MatchupResult[],
   conference: Conference,
   division: Division,
+  opts: RankingOptions = {},
 ): RankedStandingRow[] {
-  const c = compute(entries, results);
+  const c = compute(entries, results, opts);
   return rankDivision(entries, c, conference, division);
 }
 
@@ -77,7 +87,7 @@ function rankDivision(
     (e) => e.conference === conference && e.division === division,
   );
   const rows = members.map((e) => c.rowById.get(e.ownerSeasonId)!);
-  const ranked = rankStandings(rows, c.ctx);
+  const ranked = rankStandings(rows, c.ctx, c.order);
   return ranked.map((r) => enrich(r, c.entryById.get(r.ownerSeasonId)!));
 }
 
@@ -106,8 +116,9 @@ export function computeConferenceSeeds(
   entries: OwnerEntry[],
   results: MatchupResult[],
   config: PlayoffConfig = DEFAULT_PLAYOFF_CONFIG,
+  opts: RankingOptions = {},
 ): Record<Conference, SeededOwner[]> {
-  const c = compute(entries, results);
+  const c = compute(entries, results, opts);
   const out = {} as Record<Conference, SeededOwner[]>;
   for (const conf of CONFERENCES) {
     out[conf] = seedConference(entries, c, conf, config);
@@ -133,7 +144,7 @@ function seedConference(
   // 2. Order the division leaders, then take the configured number as the
   //    division-winner seeds. Any extra leaders (config < 4 winners) drop back
   //    into the wild-card pool and compete on record like everyone else.
-  const orderedLeaders = rankStandings(leaderRows, c.ctx);
+  const orderedLeaders = rankStandings(leaderRows, c.ctx, c.order);
   const divisionWinners = orderedLeaders.slice(0, config.divisionWinnersPerConference);
   const winnerIds = new Set(divisionWinners.map((r) => r.ownerSeasonId));
 
@@ -148,7 +159,7 @@ function seedConference(
   const nonWinnerRows = entries
     .filter((e) => e.conference === conference && !winnerIds.has(e.ownerSeasonId))
     .map((e) => c.rowById.get(e.ownerSeasonId)!);
-  const orderedWildCards = rankStandings(nonWinnerRows, c.ctx).slice(0, wildCardSlots);
+  const orderedWildCards = rankStandings(nonWinnerRows, c.ctx, c.order).slice(0, wildCardSlots);
 
   const seeds: SeededOwner[] = [];
   divisionWinners.forEach((row, idx) => {
