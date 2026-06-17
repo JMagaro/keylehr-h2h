@@ -6,12 +6,11 @@
  */
 import type { Metadata } from "next";
 import {
+  AlertTriangle,
   CalendarDays,
   Flame,
   Gauge,
   LineChart,
-  ListOrdered,
-  Swords,
   Target,
   TrendingUp,
   Trophy,
@@ -120,7 +119,7 @@ export default async function MyTeamPage({
       <PageHeader
         eyebrow={season?.name ?? "My Team"}
         title="My Team"
-        description="Weekly scoring, trends, schedule, and head-to-head — for any team in the league."
+        description="Weekly scoring, trends, schedule, and results — for any team in the league."
         actions={selectors}
       />
 
@@ -149,7 +148,18 @@ export default async function MyTeamPage({
           <div className="flex items-center gap-6 sm:gap-8">
             <div className="flex flex-col">
               <span className="text-xs uppercase tracking-wide text-subtle">Record</span>
-              <span className="text-xl font-bold tabular-nums text-foreground">{record}</span>
+              <span className="flex items-center gap-2">
+                <span className="text-xl font-bold tabular-nums text-foreground">{record}</span>
+                {dashboard.stats.forfeits > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-loss-soft px-2 py-0.5 text-xs font-semibold text-loss"
+                    title="Weeks this team missed its lineup (automatic loss)"
+                  >
+                    <AlertTriangle className="size-3" aria-hidden="true" />
+                    {dashboard.stats.forfeits} {dashboard.stats.forfeits === 1 ? "forfeit" : "forfeits"}
+                  </span>
+                ) : null}
+              </span>
             </div>
             <div className="flex flex-col">
               <span className="text-xs uppercase tracking-wide text-subtle">Div rank</span>
@@ -265,9 +275,8 @@ export default async function MyTeamPage({
         </Card>
       </div>
 
-      {/* Schedule & results + head-to-head */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="flex min-w-0 flex-col gap-3">
+      {/* Schedule & results */}
+      <div className="flex min-w-0 flex-col gap-3">
           <div className="flex items-center gap-2">
             <CalendarDays className="size-4 text-accent" aria-hidden="true" />
             <h3 className="text-sm font-semibold tracking-tight text-foreground">Schedule &amp; results</h3>
@@ -291,9 +300,19 @@ export default async function MyTeamPage({
                     {w.isBye ? (
                       <span className="text-muted">Bye</span>
                     ) : (
-                      <span className="font-medium text-foreground">
-                        {w.oppTeamKey} · {w.oppOwnerName}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-foreground">
+                          {w.oppTeamKey} · {w.oppOwnerName}
+                        </span>
+                        {w.thisForfeit ? (
+                          <span className="flex items-center gap-1 text-xs font-medium text-loss">
+                            <AlertTriangle className="size-3" aria-hidden="true" /> Missed lineup —
+                            auto-loss
+                          </span>
+                        ) : w.oppForfeit ? (
+                          <span className="text-xs text-subtle">Opponent missed lineup</span>
+                        ) : null}
+                      </div>
                     )}
                   </TD>
                   <TD align="right" className="tabular-nums">
@@ -306,11 +325,16 @@ export default async function MyTeamPage({
                     {w.result ? (
                       <span
                         className={
-                          "font-semibold " +
+                          "inline-flex items-center gap-1 font-semibold " +
                           (w.result === "W" ? "text-win" : w.result === "L" ? "text-loss" : "text-tie")
                         }
                       >
                         {w.result}
+                        {w.thisForfeit ? (
+                          <span className="rounded bg-loss-soft px-1 text-[10px] font-bold text-loss">
+                            FF
+                          </span>
+                        ) : null}
                       </span>
                     ) : (
                       <span className="text-subtle">—</span>
@@ -320,47 +344,6 @@ export default async function MyTeamPage({
               ))}
             </TBody>
           </Table>
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Swords className="size-4 text-accent" aria-hidden="true" />
-            <h3 className="text-sm font-semibold tracking-tight text-foreground">Head-to-head record</h3>
-          </div>
-          {dashboard.h2h.length === 0 ? (
-            <EmptyState
-              icon={ListOrdered}
-              title="No head-to-head games yet"
-              description="Matchup records against each opponent will appear here once games are played."
-            />
-          ) : (
-            <Table>
-              <caption className="sr-only">Head-to-head records</caption>
-              <THead>
-                <TR>
-                  <TH>Opponent</TH>
-                  <TH align="right">W</TH>
-                  <TH align="right">L</TH>
-                  <TH align="right">T</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {dashboard.h2h.map((r) => (
-                  <TR key={r.oppOwnerSeasonId}>
-                    <TD>
-                      <span className="font-medium text-foreground">
-                        {r.oppTeamKey} · {r.oppOwnerName}
-                      </span>
-                    </TD>
-                    <TD align="right" className="tabular-nums">{r.wins}</TD>
-                    <TD align="right" className="tabular-nums">{r.losses}</TD>
-                    <TD align="right" className="tabular-nums">{r.ties}</TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </div>
       </div>
     </Container>
   );

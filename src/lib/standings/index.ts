@@ -25,7 +25,7 @@ export type {
 
 export { DEFAULT_PLAYOFF_CONFIG, DEFAULT_TIEBREAKERS } from './types';
 
-export { computeStandings } from './standings';
+export { computeStandings, resolveMatchup, type Resolved } from './standings';
 
 export {
   compareForStandings,

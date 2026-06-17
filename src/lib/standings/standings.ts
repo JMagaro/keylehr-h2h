@@ -44,7 +44,7 @@ interface Tally {
  * symmetry: the non-forfeiting opponent's PA is the value it "faced", not the
  * forfeiter's raw points.
  */
-interface Resolved {
+export interface Resolved {
   homeOutcome: Outcome;
   awayOutcome: Outcome;
   homePoints: number;
@@ -54,11 +54,18 @@ interface Resolved {
 }
 
 /**
- * Resolve a final, regular-season matchup into per-side outcomes & points.
+ * Resolve a final, regular-season matchup into per-side outcomes & points,
+ * applying the same forfeit / explicit-winner rules as {@link computeStandings}.
+ * Exported so per-game views (e.g. the team dashboard) show outcomes that match
+ * the standings exactly instead of re-deriving them from raw points.
  *
  * Returns `null` when the matchup should not be counted (not final, a playoff
  * game, or missing points with no explicit winner).
  */
+export function resolveMatchup(m: MatchupResult): Resolved | null {
+  return resolveOutcome(m);
+}
+
 function resolveOutcome(m: MatchupResult): Resolved | null {
   if (!m.isFinal || m.isPlayoff) return null;
 

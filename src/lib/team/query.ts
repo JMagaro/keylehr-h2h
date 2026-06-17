@@ -8,8 +8,13 @@
  */
 import { eq } from 'drizzle-orm';
 
-import { db, owners, ownerSeasons, nflTeams } from '@/db';
-import { buildTiebreakerContext, computeStandings, rankStandings } from '@/lib/standings';
+import { db, owners, ownerSeasons, nflTeams, scores } from '@/db';
+import {
+  buildTiebreakerContext,
+  computeStandings,
+  rankStandings,
+  resolveMatchup,
+} from '@/lib/standings';
 import {
   getSeasonStandingsData,
   getStandingsView,
@@ -53,20 +58,14 @@ export interface TeamWeek {
   oppTeamKey: string | null;
   oppPoints: number | null;
   result: 'W' | 'L' | 'T' | null;
+  /** This team missed its lineup that week (auto-loss under the league rule). */
+  thisForfeit: boolean;
+  /** The opponent forfeited that week (this team faced the league rule's value). */
+  oppForfeit: boolean;
   /** Mean of every team's scored points that week — the chart's reference line. */
   leagueAvg: number | null;
   /** The team's overall league rank computed through this week (1 = first). */
   rank: number | null;
-}
-
-/** Season-long head-to-head record vs one opponent. */
-export interface TeamH2H {
-  oppOwnerSeasonId: number;
-  oppOwnerName: string;
-  oppTeamKey: string;
-  wins: number;
-  losses: number;
-  ties: number;
 }
 
 /** Everything the `/my-team` dashboard renders for one team. */
@@ -81,9 +80,10 @@ export interface TeamDashboard {
     consistency: number | null;
     /** Single highest week (same as bestWeek.points) for the tile. */
     highScore: number | null;
+    /** Number of weeks this team forfeited (missed lineup) — surfaced on the record. */
+    forfeits: number;
   };
   weeks: TeamWeek[];
-  h2h: TeamH2H[];
   /** Playoff-odds trend for this team, or null when no snapshots exist. */
   odds: { weeks: number[]; series: (number | null)[] } | null;
 }
@@ -106,11 +106,26 @@ export async function getTeamDashboard(
   seasonId: number,
   ownerSeasonId: number,
 ): Promise<TeamDashboard | null> {
-  const [view, data, oddsTrend] = await Promise.all([
+  const [view, data, oddsTrend, scoreRows] = await Promise.all([
     getStandingsView(seasonId),
     getSeasonStandingsData(seasonId),
     getOddsTrend(seasonId),
+    db
+      .select({
+        ownerSeasonId: scores.ownerSeasonId,
+        week: scores.week,
+        isForfeit: scores.isForfeit,
+      })
+      .from(scores)
+      .where(eq(scores.seasonId, seasonId)),
   ]);
+
+  // Which (owner, week) pairs were forfeits (missed lineups) — the raw fact,
+  // independent of how the season's rule scores them.
+  const forfeitSet = new Set<string>();
+  for (const s of scoreRows) {
+    if (s.isForfeit) forfeitSet.add(`${s.ownerSeasonId}:${s.week}`);
+  }
 
   // Authoritative header row (record, rank, PF/PA, streak, playoff tag, branding).
   let header: StandingsViewRow | null = null;
@@ -153,8 +168,7 @@ export async function getTeamDashboard(
     if (idx >= 0) rankByWeek.set(week, idx + 1);
   }
 
-  // Per-week schedule/result for this team + season-long head-to-head tallies.
-  const h2hMap = new Map<number, TeamH2H>();
+  // Per-week schedule/result for this team.
   const myWeekScores: number[] = [];
   const weeks: TeamWeek[] = [];
 
@@ -175,6 +189,8 @@ export async function getTeamDashboard(
         oppTeamKey: null,
         oppPoints: null,
         result: null,
+        thisForfeit: false,
+        oppForfeit: false,
         leagueAvg: leagueAvgByWeek.get(week) ?? null,
         rank: rankByWeek.get(week) ?? null,
       });
@@ -186,24 +202,18 @@ export async function getTeamDashboard(
     const oppId = isHome ? wkGame.awayOwnerSeasonId : wkGame.homeOwnerSeasonId;
     const oppPoints = isHome ? wkGame.awayPoints : wkGame.homePoints;
 
-    let result: 'W' | 'L' | 'T' | null = null;
-    if (myPoints !== null && oppPoints !== null) {
-      result = myPoints > oppPoints ? 'W' : myPoints < oppPoints ? 'L' : 'T';
-      const rec =
-        h2hMap.get(oppId) ??
-        ({
-          oppOwnerSeasonId: oppId,
-          oppOwnerName: nameById.get(oppId) ?? 'Unknown',
-          oppTeamKey: teamKeyById.get(oppId) ?? '?',
-          wins: 0,
-          losses: 0,
-          ties: 0,
-        } satisfies TeamH2H);
-      if (result === 'W') rec.wins += 1;
-      else if (result === 'L') rec.losses += 1;
-      else rec.ties += 1;
-      h2hMap.set(oppId, rec);
-    }
+    // Authoritative outcome from the same resolver the standings use (so a forfeit
+    // shows as the auto-loss it actually is, not a raw-points "win").
+    const resolved = resolveMatchup(wkGame);
+    const result: 'W' | 'L' | 'T' | null = resolved
+      ? isHome
+        ? resolved.homeOutcome
+        : resolved.awayOutcome
+      : null;
+
+    const thisForfeit = forfeitSet.has(`${ownerSeasonId}:${week}`);
+    const oppForfeit = forfeitSet.has(`${oppId}:${week}`);
+
     if (myPoints !== null) myWeekScores.push(myPoints);
 
     weeks.push({
@@ -214,6 +224,8 @@ export async function getTeamDashboard(
       oppTeamKey: teamKeyById.get(oppId) ?? null,
       oppPoints,
       result,
+      thisForfeit,
+      oppForfeit,
       leagueAvg: leagueAvgByWeek.get(week) ?? null,
       rank: rankByWeek.get(week) ?? null,
     });
@@ -246,9 +258,9 @@ export async function getTeamDashboard(
       worstWeek,
       consistency: scored.length ? round2(stddev(scored) ?? 0) : null,
       highScore: bestWeek?.points ?? null,
+      forfeits: weeks.filter((w) => w.thisForfeit).length,
     },
     weeks,
-    h2h: [...h2hMap.values()].sort((a, b) => b.wins - a.wins || a.oppTeamKey.localeCompare(b.oppTeamKey)),
     odds,
   };
 }
