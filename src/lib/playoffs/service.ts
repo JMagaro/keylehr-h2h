@@ -24,7 +24,7 @@
  * Server-only: this module touches the DB (Neon Node driver). Never import it
  * into a `'use client'` component or an edge route.
  */
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 
 import {
   db,
@@ -568,7 +568,7 @@ async function loadOwnerDisplay(seasonId: number): Promise<Map<number, OwnerDisp
   const rows = await db
     .select({
       ownerSeasonId: ownerSeasons.id,
-      ownerName: owners.name,
+      ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
       teamKey: nflTeams.key,
       teamName: nflTeams.name,
       logoEspn: nflTeams.logoEspn,

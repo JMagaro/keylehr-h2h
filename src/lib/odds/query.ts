@@ -8,7 +8,7 @@
  * `scripts/compute-odds.ts` (which runs `computePlayoffOddsSnapshots`), so this
  * function is a cheap, render-time read.
  */
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 
 import { db, nflTeams, owners, ownerSeasons, playoffOddsSnapshots } from '@/db';
 import type { Conference } from '@/lib/standings';
@@ -53,7 +53,7 @@ export async function getOddsTrend(seasonId: number): Promise<OddsTrend> {
       week: playoffOddsSnapshots.week,
       ownerSeasonId: playoffOddsSnapshots.ownerSeasonId,
       oddsPct: playoffOddsSnapshots.oddsPct,
-      ownerName: owners.name,
+      ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
       teamKey: nflTeams.key,
       teamName: nflTeams.name,
       conference: nflTeams.conference,

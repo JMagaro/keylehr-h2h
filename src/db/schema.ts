@@ -192,6 +192,13 @@ export const ownerSeasons = pgTable(
      * and the league rule is it must not change mid-season.
      */
     dkEntryName: varchar({ length: 128 }),
+    /**
+     * The owner's display name AS THAT SEASON'S sheet listed it. Co-owners can change
+     * year to year (e.g. "Chris deMartino" in 2024 vs "Chris deMartino and Zack Herman"
+     * in 2025), but owners are global (one row per person, deduped by email). This holds
+     * the per-season name; season-scoped views show `coalesce(displayName, owners.name)`.
+     */
+    displayName: varchar({ length: 160 }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

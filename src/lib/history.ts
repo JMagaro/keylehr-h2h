@@ -17,7 +17,7 @@
  *
  * This module imports `@/db` and must only be used from server-side code.
  */
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 
 import {
   db,
@@ -102,7 +102,7 @@ async function loadOwnerIdentities(seasonId: number): Promise<Map<number, OwnerI
     .select({
       ownerSeasonId: ownerSeasons.id,
       ownerId: owners.id,
-      ownerName: owners.name,
+      ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
       teamKey: nflTeams.key,
       teamName: nflTeams.name,
       logoEspn: nflTeams.logoEspn,

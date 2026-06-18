@@ -17,7 +17,7 @@
  * Numeric columns (`numeric(7,2)`) come back from the driver as strings; we convert with
  * `Number` exactly once, here.
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { db, matchups, nflTeams, owners, ownerSeasons, scores, seasons } from '@/db';
 import { getSeasonRules, type SeasonRules } from '@/lib/rules/schema';
@@ -90,7 +90,7 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
   const ownerRows = await db
     .select({
       ownerSeasonId: ownerSeasons.id,
-      ownerName: owners.name,
+      ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
       teamKey: nflTeams.key,
       teamName: nflTeams.name,
       conference: nflTeams.conference,
@@ -510,7 +510,7 @@ export async function getHighestWeeklyScore(
 
   const rows = await db
     .select({
-      ownerName: owners.name,
+      ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
       teamKey: nflTeams.key,
       week: scores.week,
       points: scores.dkPoints,

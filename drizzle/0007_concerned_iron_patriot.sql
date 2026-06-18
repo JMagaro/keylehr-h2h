@@ -1,0 +1,1 @@
+ALTER TABLE "owner_seasons" ADD COLUMN "display_name" varchar(160);

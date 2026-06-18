@@ -6,7 +6,7 @@
  * for the per-matchup results), so a team's numbers always agree with the rest of
  * the site. No new scoring logic lives here — only per-owner shaping for charts.
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 import { db, owners, ownerSeasons, nflTeams, scores } from '@/db';
 import {
@@ -36,7 +36,7 @@ export async function getTeamDirectory(seasonId: number): Promise<TeamDirectoryE
   const rows = await db
     .select({
       ownerSeasonId: ownerSeasons.id,
-      ownerName: owners.name,
+      ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
       teamKey: nflTeams.key,
       teamName: nflTeams.name,
       logoEspn: nflTeams.logoEspn,

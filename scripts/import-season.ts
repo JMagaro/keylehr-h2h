@@ -263,12 +263,14 @@ async function upsertOwners(seasonId: number, ownerRows: OwnerRow[]): Promise<vo
         .where(eq(owners.id, ownerId));
     }
 
+    // Store the per-season display name (the sheet's owner name for THIS season), so a
+    // co-owner change across seasons doesn't bleed onto other seasons via the global owner.
     await db
       .insert(ownerSeasons)
-      .values({ seasonId, ownerId, nflTeamId, dkEntryName: o.dkEntryName || null })
+      .values({ seasonId, ownerId, nflTeamId, dkEntryName: o.dkEntryName || null, displayName: o.ownerName })
       .onConflictDoUpdate({
         target: [ownerSeasons.seasonId, ownerSeasons.ownerId],
-        set: { nflTeamId, dkEntryName: o.dkEntryName || null },
+        set: { nflTeamId, dkEntryName: o.dkEntryName || null, displayName: o.ownerName },
       });
   }
 }

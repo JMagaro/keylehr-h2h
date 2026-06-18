@@ -182,7 +182,7 @@ export async function getSeasonDataStatus(seasonId: number): Promise<SeasonDataS
   // query feeds the owners count, the assignments count, and the DK-name gaps.
   const osRows = await db
     .select({
-      ownerName: owners.name,
+      ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
       teamId: nflTeams.id,
       teamKey: nflTeams.key,
       teamName: nflTeams.name,

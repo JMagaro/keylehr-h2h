@@ -50,6 +50,13 @@
       "when": 1781731563698,
       "tag": "0006_daffy_scourge",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781749377180,
+      "tag": "0007_concerned_iron_patriot",
+      "breakpoints": true
     }
   ]
 }
