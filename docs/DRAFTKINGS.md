@@ -1,10 +1,16 @@
-# DraftKings scoring pipeline — **Planned (Phase 3)**
+# DraftKings scoring pipeline
 
-> **Status: Planned (Phase 3).** This document describes the design of the automated scoring
-> pipeline. The supporting **database tables already exist** (`weekly_contests`, `scores`,
-> `score_import_runs`) and the environment variables are reserved (`DK_SESSION_COOKIE`,
-> `CRON_SECRET`), but the **pipeline code, cron route, and manual-fallback UI are not yet
-> implemented.** Nothing in `src/lib` reads DraftKings today.
+> **Status: Implemented.** The scoring ingest (`src/app/api/ingest/draftkings/`, `src/lib/scores/`)
+> + the **Chrome extension** (`extension/`) read a shared contest leaderboard and write each owner's
+> weekly points into `scores`. Tables: `weekly_contests`, `scores`, `score_import_runs`.
+>
+> **Two distinct DraftKings integrations — don't conflate them:**
+> 1. **Scoring** (this doc): the *leaderboard* of a shared private contest → owner weekly totals.
+>    Needs the commissioner's authenticated DK session (via the extension).
+> 2. **Salaries** (`src/lib/draftkings/`): the public, **keyless** *draftables* API gives per-player
+>    salaries for a slate, used only by the **lineup builder** for cap-aware optimization. Server-side,
+>    no auth. The slate is auto-detected from DK's lobby or pinned in Admin → Slates. See
+>    `docs/HANDOFF.md`.
 
 > ⚠️ **Terms-of-Service caveat (read this).** DraftKings does **not** publish a public API. The
 > endpoints this design relies on are **unofficial, undocumented, and using them is against

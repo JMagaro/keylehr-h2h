@@ -98,6 +98,10 @@ npm run dev             # http://localhost:3000
 | `npm run verify`         | `tsx scripts/verify.ts`       | **Full verification gate** — typecheck · lint · tests · production build · ESPN health · engine invariants · 2025 ground-truth replay. Exits non-zero on any failure. |
 | `npm run verify:quick`   | `tsx scripts/verify.ts --quick`| Same, minus the slow build + ground-truth replay (no DB writes).       |
 | `npm run verify:ground-truth` | `tsx scripts/import-season3.ts` | Replay the 2025 season vs the league's published standings.        |
+| `npm run import:season`  | `tsx scripts/import-season.ts` | Backfill a season's regular season from its Google Sheet (`--year --sheet --name`). |
+| `npm run import:playoffs`| `tsx scripts/import-playoffs.ts`| Backfill a season's playoff bracket from its sheet (`--season --sheet`).             |
+| `npm run models:snapshot`| `tsx scripts/models.ts --action=snapshot` | Snapshot the 3 lineup models for a week (`--season --week`).               |
+| `npm run models:grade`   | `tsx scripts/models.ts --action=grade` | Grade a week's model snapshots vs actual player results.                      |
 
 > **Run `npm run verify` before pushing.** Its production `build` step catches production-only
 > errors (e.g. invalid `'use server'` exports) that `dev`, `typecheck`, and `lint` all let through —
@@ -128,7 +132,11 @@ DailyFantasy/
 │     ├─ espn/                  # ESPN scoreboard client + types
 │     ├─ schedule/              # syncSeasonSchedule → upserts nfl_games
 │     ├─ matchups/              # generateMatchups → derives matchups from nfl_games
-│     ├─ standings/             # Pure standings engine (computeStandings) + types
+│     ├─ standings/             # Pure standings/seeding/tiebreaker engine + types
+│     ├─ playoffs/              # Bracket service (generate/advance/read)
+│     ├─ rules/                 # Per-season rules schema + defaults (seasons.rules)
+│     ├─ players/               # Lineup builder: Sleeper/ESPN signals, recommend, optimize, models, performance
+│     ├─ draftkings/            # DK draftables (salaries) client + Sleeper matcher
 │     └─ utils.ts               # cn(), formatPoints(), formatMoney(), winPct()
 ├─ drizzle.config.ts
 ├─ .env.example
@@ -144,8 +152,9 @@ DailyFantasy/
 | **P2** | Public pages                                                          | **Done.** Dashboard, Standings, Playoffs (picture + odds chart + bracket), History, **Rules (rules-driven)**, and the **per-team My Team dashboard**. Mobile-friendly. |
 | **P3** | DraftKings scoring pipeline + manual fallback                        | **Done.** Ingest API + the **Chrome extension** (live sync) feed `scores`; standings/seeding honor the season's configured rules. |
 | **P4** | Playoffs / history                                                    | **Done.** Config-driven seeding + bracket, history/all-time pages, playoff-odds Monte-Carlo.    |
-| **P5** | Migrate prior season(s) from the Google Sheet                         | **Done for 2025** — `scripts/import-season3.ts` replays it and is wired into `npm run verify` as a ground-truth regression check. |
-| **Next** | **My Team Phase B** — Sleeper/ESPN team-builder wizard + player-news strip | **Not started.** See [`docs/HANDOFF.md`](docs/HANDOFF.md). |
+| **P5** | Migrate prior season(s) from the Google Sheet                         | **Done for 2023–2025** (regular season **and** playoff brackets) — `import-season3.ts` (2025, the verify anchor) + the generic `import-season.ts` / `import-playoffs.ts`. Each validates against the published sheets. |
+| **P6** | My Team Phase B — lineup builder + player news                        | **Done.** Free Sleeper/ESPN signals, 3 risk models, **DraftKings salary + $50k cap optimization**, a player-news strip, and a **model-performance tracker** (Admin → Models) that the models will train into ML v1.0 from. |
+| **Next** | —                                                                   | Rebuild is feature-complete vs the Sheets workflow; no task queued. See [`docs/HANDOFF.md`](docs/HANDOFF.md). |
 
 ## Documentation
 

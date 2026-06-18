@@ -122,6 +122,7 @@ other per-owner table points at.
 | `ownerId`     | integer FK    | NOT NULL → `owners.id`, `onDelete: cascade`.                         |
 | `nflTeamId`   | integer FK    | NOT NULL → `nfl_teams.id`.                                           |
 | `dkEntryName` | varchar(128)  | The exact DK entry/username this owner uses in the weekly contest. **Scoring matches the leaderboard against this; league rule says it must not change mid-season.** |
+| `displayName` | varchar(160)  | The owner's name **as that season's sheet listed it** (co-owners can change year to year). Season-scoped views render `coalesce(displayName, owners.name)` so a co-owner change doesn't bleed across seasons. Nullable; falls back to the global owner name. |
 | `createdAt`   | timestamptz   | NOT NULL, default `now()`.                                           |
 
 **Constraints/indexes:**
@@ -274,6 +275,36 @@ conference). (Seeding/bracket logic — Planned, Phase 4.)
 | `highPoints`            | numeric(7,2)   | Nullable.                                                   |
 | `lowPoints`             | numeric(7,2)   | Nullable.                                                   |
 | `winnerOwnerSeasonId`   | integer FK     | Nullable → `owner_seasons.id`.                              |
+
+## `model_snapshots`
+
+Performance tracking for the three lineup models (Floor/Blend/Ceiling). One row per
+`(season, week, risk)`: a snapshot of the lineup the model recommended that week, plus — once the
+games are played — how it actually scored. Produced by `snapshotWeek` / graded by `gradeWeek`
+(`src/lib/players/performance.ts`); see also Admin → Models.
+
+| Column          | Type          | Notes                                                                |
+| --------------- | ------------- | -------------------------------------------------------------------- |
+| `id`            | identity PK   |                                                                      |
+| `seasonId`      | integer FK    | NOT NULL → `seasons.id`, `onDelete: cascade`.                        |
+| `week`          | integer       | NOT NULL.                                                            |
+| `risk`          | varchar(16)   | `safe` \| `balanced` \| `boom`.                                      |
+| `modelVersion`  | varchar(32)   | e.g. `Floor@0.1.0`.                                                  |
+| `draftGroupId`  | varchar(64)   | DK slate the salaries came from (null in signal-only mode).         |
+| `salaryMode`    | boolean       | NOT NULL, default false.                                            |
+| `salaryCap`     | integer       | Nullable.                                                           |
+| `lineup`        | jsonb         | NOT NULL. The recommended roster: `[{ slot, playerId, name, position, teamKey, fit, salary }]`. |
+| `pool`          | jsonb         | NOT NULL. Considered players for hindsight grading.                 |
+| `createdAt`     | timestamptz   | NOT NULL, default `now()`.                                          |
+| `gradedAt`      | timestamptz   | Nullable — set when graded.                                         |
+| `actualPoints`  | numeric(8,2)  | Nullable. The recommended lineup's actual fantasy total.            |
+| `optimalPoints` | numeric(8,2)  | Nullable. Best achievable from the pool under the cap (hindsight).  |
+| `chalkPoints`   | numeric(8,2)  | Nullable. A naive "pay up" lineup's actual total.                   |
+| `playersGraded` | integer       | Nullable. How many of the 9 had a stat line.                        |
+| `gradeMeta`     | jsonb         | Nullable. Per-player actuals.                                       |
+
+**Constraints/indexes:** `model_snapshots_season_week_risk_uq` UNIQUE `(seasonId, week, risk)`;
+`model_snapshots_season_idx` on `seasonId`.
 
 ## Drizzle relations & inferred types
 

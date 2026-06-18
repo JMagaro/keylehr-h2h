@@ -3,7 +3,8 @@
 A running "where things stand" doc so a fresh Claude/context window (or contributor) can pick up
 without re-deriving everything. Update the **Next up** and **Recent work** sections as you go.
 
-_Last updated: 2026-06-17 (Phase B lineup builder + player news shipped)._
+_Last updated: 2026-06-17 (tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary
++ model performance tracker)._
 
 ---
 
@@ -14,8 +15,52 @@ _Last updated: 2026-06-17 (Phase B lineup builder + player news shipped)._
   config file) · Drizzle + Neon Postgres (**HTTP driver** — every query is a network round-trip) ·
   NextAuth (commissioner login) · a Chrome extension for DraftKings sync.
 - **Verification:** `npm run verify` runs the whole gate (see below). It is **green** as of this
-  handoff (typecheck · lint · 45 tests · production build · ESPN health · engine invariants ·
+  handoff (typecheck · lint · **~68 unit tests** · production build · ESPN health · engine invariants ·
   2025 ground-truth replay).
+- **Seasons in DB:** 2023, 2024, 2025 fully imported (regular season **and** playoffs, validated
+  against the sheets) + 2026 (upcoming; schedule synced, no owners yet). The rebuild is feature-complete
+  vs the original Google-Sheets workflow.
+- **The DFS model:** owners are assigned an NFL team (drives the H2H *schedule* only); each week a score
+  is the owner's **NFL-wide DraftKings lineup total**. Players were not tracked at all until Phase B.
+
+## ✅ DONE — tiebreaker engine fixed to the league's real rule + 2023/2024 playoffs imported
+
+**The tiebreaker was wrong for multi-way ties** and it surfaced while importing the playoff brackets.
+The user provided the league's original R code (`tiebreaker_functions.R`, committed for reference).
+The engine now faithfully ports its `resolve_ties` (see `src/lib/standings/tiebreakers.ts`):
+
+> Within a cohort tied on win%, iteratively pick the **head-to-head dominant** owner — for a 2-team
+> tie, whoever won the season series; for a 3+-team tie, an owner with a winning series vs **more than
+> half** the group — else the owner with the most **Points For**; remove and repeat.
+
+This replaced a non-transitive "H2H win% across the whole group" that mis-seeded 2024 (it ranked
+Seahawks over Vikings even though Vikings won head-to-head). It is **rule-driven, not hardcoded**: the
+tiebreaker ORDER (h2h/pf/pa) still comes from `seasons.rules` and the pf/pa order stays configurable.
+The engine now reproduces the **published seeds for 2023, 2024 AND 2025** (the 2025 ground-truth replay
+is unchanged). New test pins the non-transitive 2024 case.
+
+**Playoffs importer** `scripts/import-playoffs.ts` (npm `import:playoffs`): generic + sheet-faithful.
+Seeds from the (now-correct) engine, writes each round's DK scores for only the 14 playoff teams
+(skips the sheet's "Round 3" consolation bracket), advances, sets the champion from the sheet's
+Champion cell (the title game carries no points). Resolves each bracket cell to an owner by **team OR
+owner name via the DB** (handles cells that carry only one of the two, and co-owner names). 2023 + 2024
+brackets reproduce the sheets exactly (every round, the Super Bowl, the champions). Re-run:
+```
+npm run import:playoffs -- --season=9  --sheet=1kWMn8Zbk4K7JitaOqxMjII_LKVsKRyqaeXhIJPFkJl8   # 2024
+npm run import:playoffs -- --season=11 --sheet=15KWmUsWkQuRgdOCJWUBfaImXZjGxnFp9Lv4UsNikDaA   # 2023
+```
+(2025 playoffs keep their own `scripts/import-playoffs-2025.ts`, which has hardcoded validation.)
+
+## ✅ DONE — per-season owner display names
+
+Owners are GLOBAL (one row per person, deduped by email) with a single name, so a co-owner who joined
+only some seasons bled onto all of them (the 2024 champion showed "Chris deMartino **and Zack Herman**"
+because the 2025 sheet, where Zack co-owns, last wrote the shared name). Added
+`owner_seasons.displayName` (migration 0007) = the name as **that season's** sheet listed it; the
+generic importer populates it (backfilled 2023/2024/2025). Season-scoped views render
+`coalesce(owner_seasons.displayName, owners.name)` — standings, seeding/playoffs (incl. champion +
+bracket), my-team, odds, per-season history, admin data-status. **All-time per-person aggregates and
+the global owner-management pages intentionally keep `owners.name`.**
 
 ## ✅ DONE — 2023 + 2024 seasons imported & validated
 
@@ -75,9 +120,23 @@ home hero + Explore hub link to it); the nav now uses longest-prefix active matc
 `/my-team/builder` doesn't also light up `/my-team`, and the desktop bar switches to the hamburger
 below `lg` (7 items). Verified: `npm run verify` 7/7 (54 unit tests).
 
-Possible Phase B+ follow-ups (not requested yet): DK salary cap awareness (needs DK slate data —
-not free/keyless), snapshotting trends so the builder works for *past* weeks too (Sleeper trending is
-"now" only), and a "build for my matchup" mode tying the suggestion to the owner's H2H opponent.
+**DK salary + $50k cap is now DONE** (`src/lib/draftkings/{draftables,match}.ts`, `optimize.ts`): the
+builder's suggested lineup is a cap-valid DK Classic roster. Salaries come from DK's free, keyless
+draftables API; the slate is resolved override(`?dg=`) → admin-pinned (**Admin → Slates**) →
+auto-detected main NFL slate (DK lobby). Falls back to signal-only when no salaries are posted (e.g.
+the offseason). Pure cap optimizer + matcher are unit-tested.
+
+**Model performance tracker is now DONE** (`src/lib/players/{models,grade,performance}.ts`,
+`model_snapshots` table, **Admin → Models**, `models:snapshot`/`models:grade`). The 3 risk profiles are
+versioned models — `Floor`/`Blend`/`Ceiling` v0.1.0, stage `heuristic` — and (per the user) will
+**graduate to trained ML v1.0** once a season of graded results exists. Forward-looking: `snapshotWeek`
+records each model's lineup near lock, `gradeWeek` scores it vs actual player results (Sleeper stats,
+PPR proxy) and computes hindsight-optimal + "pay-up chalk" baselines (reusing the cap optimizer). Shown
+as a minimizable table inside the builder's model card + Admin → Models. Pure grading math in `grade.ts`.
+
+Remaining Phase B+ follow-ups (not requested): snapshot Sleeper trends so the builder works for *past*
+weeks (trending is "now" only); a "build for my H2H matchup" mode; exact DK scoring (the tracker uses
+Sleeper PPR as a free proxy).
 
 ## Open action items (need the USER, not code)
 
@@ -109,13 +168,35 @@ not free/keyless), snapshotting trends so the builder works for *past* weeks too
   ORDER, bye-week toggles, and the playoff field size are threaded from `seasons.rules` →
   `getSeasonStandingsData()` (which returns `rankingOptions` + `playoffConfig`) → the standings /
   seeding / odds / playoffs code. If you add a new consumer of standings, pass those through.
+  Admin → Settings has an **"Apply 2025 & earlier rules"** preset button (`applyDefaultRulesAction`)
+  that sets a season's rules to `DEFAULT_SEASON_RULES`.
+- **Tiebreakers = the league's `resolve_ties`** (head-to-head dominance → Points For, recursive). Do
+  NOT "simplify" multi-way ties to a win% — it's non-transitive and was the 2024 mis-seed. The pure
+  logic lives in `tiebreakers.ts` (`rankCohort`/`pickTop`); `tiebreaker_functions.R` is the original.
+- **DB migrations:** edit `src/db/schema.ts`, then `npm run db:generate` (writes SQL to `drizzle/`) and
+  `npm run db:migrate` (applies to `DATABASE_URL`). Latest: 0006 `model_snapshots`, 0007
+  `owner_seasons.displayName`.
+- **Owner names are per-season** via `coalesce(owner_seasons.displayName, owners.name)`; only all-time
+  per-person views + the global owner-management pages use the bare `owners.name`. See the DONE section.
 - **Local `.next/* 2.*` files** are an iCloud/Finder duplication artifact on this machine; they make
   `tsc` throw bogus `RouteContext` errors. `find .next -name "* 2.*" -delete` before typecheck.
 - Money is cents; points are `numeric` (strings). Use `formatMoney` / `formatPoints` in
   `src/lib/utils.ts`. `src/lib/standings/` stays pure (no DB imports).
 
-## Recent work (this session, newest first)
+## Recent work (newest first)
 
+- **Per-season owner display names** (`owner_seasons.displayName`, migration 0007): season-scoped views
+  coalesce it over the global `owners.name` so co-owner changes don't bleed across seasons (2024 champ
+  now "Chris deMartino", not "…and Zack Herman"). See the DONE section.
+- **Tiebreaker engine rewritten to the league's `resolve_ties`** (`tiebreakers.ts`) + **2023/2024
+  playoff brackets imported** (`scripts/import-playoffs.ts`). Engine now matches published seeds for
+  2023/2024/2025. See the DONE section. `tiebreaker_functions.R` committed as the reference.
+- **Admin → Settings "Apply 2025 & earlier rules" preset** (`applyDefaultRulesAction`); tiebreaker
+  order stays an editable rule variable.
+- **Interactive + expandable My Team charts** (`team-charts.tsx` now `'use client'`,
+  `expandable-chart.tsx`): hover/tap to highlight + tooltip, click to pin, Expand → modal.
+- **DraftKings salary + $50k cap optimization** + **lineup-model performance tracker** (see the two
+  DONE notes under Phase B). New tables: `model_snapshots`. New admin pages: **Slates**, **Models**.
 - **Lineup models: versioning + performance tracker** (`src/lib/players/models.ts`, `grade.ts`,
   `performance.ts`, `model_snapshots` table, Admin → Models, `models:snapshot`/`models:grade`
   scripts). The 3 risk profiles are now **versioned models** — `Floor`/`Blend`/`Ceiling` v0.1.0,
@@ -160,9 +241,20 @@ not free/keyless), snapshotting trends so the builder works for *past* weeks too
 - `regularSeasonWeeks` is now edited only on the admin **Season** card (the column the engine
   reads); the duplicate Rules-card field was removed.
 
+## Start here (fresh session)
+
+The rebuild is **feature-complete** vs the old Google-Sheets workflow — there is **no specific task
+queued**. Read this doc + the linked memories, run `npm run verify` (must be 7/7) before any push, and
+pick up from whatever the user asks. The most likely future asks: training the lineup models into ML
+`v1.0` once the 2026 season produces graded weeks (the tracker collects the data), the My Team
+"team-builder wizard Phase B+" follow-ups noted above, or 2026 in-season operations (the scheduled
+`keylehr-verify` routine + DK score syncing). Importers are idempotent; data for 2023–2025 (regular
+season + playoffs) is in and validated.
+
 ## Map of the important code
 
 - Standings/seeding/tiebreaker **engine** (pure, tested): `src/lib/standings/{standings,tiebreakers,seeding,types}.ts`
+  (`tiebreakers.ts` = the league `resolve_ties`; `tiebreaker_functions.R` is the original reference)
 - DB adapter feeding the engine: `src/lib/standings/query.ts` (`getSeasonStandingsData` is the hub —
   returns `rankingOptions` + `playoffConfig`)
 - Per-team dashboard data: `src/lib/team/query.ts`
@@ -173,6 +265,11 @@ not free/keyless), snapshotting trends so the builder works for *past* weeks too
   (`grade.ts` is the pure grading math; `performance.ts` adds DB + Sleeper-stats I/O). Cmds:
   `npm run models:snapshot -- --season=<id> --week=<n>` and `models:grade`. Admin → Models drives it.
 - Playoffs bracket service: `src/lib/playoffs/service.ts` · Odds sim: `src/lib/odds/`
-- Rules schema (single source of truth): `src/lib/rules/schema.ts`
-- DraftKings ingest: `src/lib/scores/`, `src/app/api/ingest/draftkings/` · Chrome ext: `extension/`
-- Admin (commissioner): `src/app/admin/(panel)/` (auth-gated)
+- Rules schema (single source of truth): `src/lib/rules/schema.ts` (`DEFAULT_SEASON_RULES` = the
+  canonical 2025-and-earlier config; the admin preset button applies it)
+- DraftKings *scoring* ingest (leaderboard): `src/lib/scores/`, `src/app/api/ingest/draftkings/` · Chrome
+  ext: `extension/` — distinct from DK *salaries* (`src/lib/draftkings/`, server-side, keyless)
+- Admin (commissioner): `src/app/admin/(panel)/` — Owners · Assignments · Schedule · Sync · Playoffs ·
+  **Slates** · **Models** · Settings · Users (all auth-gated)
+- Season importers (idempotent): `scripts/import-season{,3}.ts` (regular season; `import-season3.ts` is
+  the 2025 verify anchor — do NOT modify), `scripts/import-playoffs{,-2025}.ts` (brackets)
