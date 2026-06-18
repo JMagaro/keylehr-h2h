@@ -1,45 +1,44 @@
 /**
- * Standings tiebreakers.
+ * Standings tiebreakers — a faithful port of the league's original R `resolve_ties`.
  *
- * Implements the league's STRICT tiebreaker order:
- *   1. Head-to-head record among the tied owners
- *   2. Points For (higher is better)
- *   3. Points Against (lower is better)
- *   4. Deterministic final fallback: ownerSeasonId ascending (so sorts are
- *      always stable and reproducible).
+ * Within a group of owners tied on overall record (win%), the order is resolved
+ * ITERATIVELY:
+ *   1. Build the head-to-head grid among only the tied owners. An owner "wins the
+ *      series" against another when it has MORE WINS THAN LOSSES against them
+ *      (a split, or never having played, counts as neither).
+ *   2. Count each owner's series wins (how many of the other tied owners it beat).
+ *   3. If an owner is head-to-head DOMINANT — for a 2-way tie, it won the series;
+ *      for a 3+-way tie, it has a winning series against MORE THAN HALF the group —
+ *      that owner is placed next.
+ *   4. Otherwise the owner with the most POINTS FOR is placed next.
+ *   5. Remove that owner and repeat on the rest (the grid is recomputed each pass).
  *
- * Step 1 is applied as a *group* tiebreaker: when more than two owners are
- * tied, head-to-head is each owner's win% in games played ONLY against the
- * other members of the tied group (a "mini round-robin"). For a 2-way tie this
- * reduces to the direct head-to-head record. This is computed first by overall
- * record (wins/win%), and head-to-head is only consulted between owners whose
- * overall record is equal.
+ * So the chain is: record → head-to-head dominance → Points For. Points Against is
+ * kept only as an inert final fallback for an exact Points-For tie (which never
+ * happens with real decimal scores), followed by ownerSeasonId for determinism.
  *
  * Pure: no DB, no I/O.
  */
 import { DEFAULT_TIEBREAKERS, type MatchupResult, type StandingRow, type TiebreakerKey } from './types';
 
 /**
- * Context needed to compare two standings rows. Built once via
- * {@link buildTiebreakerContext} and reused across all comparisons in a sort.
+ * Context needed to compare standings rows. Built once via
+ * {@link buildTiebreakerContext} and reused across a sort.
  */
 export interface TiebreakerContext {
   /** Standings row by ownerSeasonId. */
   rows: Map<number, StandingRow>;
   /**
-   * Head-to-head win value per ordered pair: `h2h.get(a)?.get(b)` is the sum of
-   * win-credit owner `a` earned against owner `b` across all counted regular-
-   * season games (win = 1, tie = 0.5, loss = 0), plus the game count.
+   * Head-to-head per ordered pair: `h2h.get(a)?.get(b)` is the win-credit owner `a`
+   * earned against owner `b` across counted regular-season games (win = 1, tie = 0.5,
+   * loss = 0), plus the game count. Owner `a` won the series vs `b` iff `credit > games/2`.
    */
   h2h: Map<number, Map<number, { credit: number; games: number }>>;
 }
 
 /**
  * Build a reusable tiebreaker context from standings rows and the raw results.
- *
- * Only final, regular-season results contribute to head-to-head, mirroring
- * {@link computeStandings}. Explicit `winnerOwnerSeasonId` (override/forfeit)
- * is honored; otherwise the winner is derived from points.
+ * Only final, regular-season results contribute to head-to-head.
  */
 export function buildTiebreakerContext(
   rows: StandingRow[],
@@ -87,113 +86,128 @@ export function buildTiebreakerContext(
   return { rows: rowMap, h2h };
 }
 
-/** Head-to-head win% of `owner` against the supplied set of opponents. */
-function h2hWinPct(
-  ctx: TiebreakerContext,
-  owner: number,
-  opponents: Iterable<number>,
-): { pct: number; games: number } {
-  const inner = ctx.h2h.get(owner);
-  let credit = 0;
-  let games = 0;
-  if (inner) {
-    for (const opp of opponents) {
-      if (opp === owner) continue;
-      const rec = inner.get(opp);
-      if (rec) {
-        credit += rec.credit;
-        games += rec.games;
-      }
-    }
+/** True when owner `a` has a winning head-to-head SERIES against owner `b`. */
+function wonSeries(ctx: TiebreakerContext, a: number, b: number): boolean {
+  const rec = ctx.h2h.get(a)?.get(b);
+  if (!rec || rec.games === 0) return false;
+  return rec.credit > rec.games / 2; // more wins than losses
+}
+
+/** How many owners in `cohortIds` that `owner` has a winning series against. */
+function seriesWinCount(ctx: TiebreakerContext, owner: number, cohortIds: number[]): number {
+  let n = 0;
+  for (const opp of cohortIds) {
+    if (opp === owner) continue;
+    if (wonSeries(ctx, owner, opp)) n += 1;
   }
-  return { pct: games === 0 ? 0 : credit / games, games };
+  return n;
 }
 
 /**
- * Compare two standings rows for ranking, applying the full tiebreaker chain.
+ * Compare two rows by the configured POINTS tiebreakers (the non-h2h keys, in order):
+ * `pf` = higher first, `pa` = lower first; then ownerSeasonId ascending. Negative when
+ * `a` ranks ahead. The pf/pa order is taken from the season's rules — never hardcoded.
+ */
+function comparePoints(a: StandingRow, b: StandingRow, pointsKeys: readonly TiebreakerKey[]): number {
+  for (const k of pointsKeys) {
+    if (k === 'pf' && a.pointsFor !== b.pointsFor) return b.pointsFor - a.pointsFor;
+    if (k === 'pa' && a.pointsAgainst !== b.pointsAgainst) return a.pointsAgainst - b.pointsAgainst;
+  }
+  return a.ownerSeasonId - b.ownerSeasonId;
+}
+
+function bestByPoints(teams: StandingRow[], pointsKeys: readonly TiebreakerKey[]): StandingRow {
+  return teams.reduce((best, t) => (comparePoints(t, best, pointsKeys) < 0 ? t : best));
+}
+
+/**
+ * Pick the single top owner from a tied cohort, per the league rule: a head-to-head
+ * dominant owner if one exists, otherwise the best by the configured points tiebreakers.
+ */
+function pickTop(
+  teams: StandingRow[],
+  ctx: TiebreakerContext,
+  useH2h: boolean,
+  pointsKeys: readonly TiebreakerKey[],
+): StandingRow {
+  if (useH2h) {
+    const ids = teams.map((t) => t.ownerSeasonId);
+    const wins = new Map(teams.map((t) => [t.ownerSeasonId, seriesWinCount(ctx, t.ownerSeasonId, ids)]));
+    const maxWins = Math.max(...wins.values());
+    const totalWins = [...wins.values()].reduce((s, n) => s + n, 0);
+    // 2-way tie: dominant means one owner actually won the series (maxWins > total/2 = 0.5).
+    // 3+-way tie: dominant means a winning series against more than half the group.
+    const threshold = teams.length === 2 ? totalWins / 2 : teams.length / 2;
+    if (maxWins > threshold) {
+      const dominant = teams.filter((t) => wins.get(t.ownerSeasonId) === maxWins);
+      // Practically unique; if not, fall back to the points tiebreakers among them.
+      return bestByPoints(dominant, pointsKeys);
+    }
+  }
+  return bestByPoints(teams, pointsKeys);
+}
+
+/**
+ * Order a tied cohort (all sharing the same overall record) by recursively selecting
+ * the top owner (head-to-head dominant, else best by the configured points tiebreakers),
+ * removing it, and repeating. Mirrors the R `resolve_ties`. Returns a new array,
+ * best-first. The tiebreaker order comes from the season's rules — nothing is hardcoded.
+ */
+export function rankCohort(
+  cohort: StandingRow[],
+  ctx: TiebreakerContext,
+  order: readonly TiebreakerKey[] = DEFAULT_TIEBREAKERS,
+): StandingRow[] {
+  const useH2h = order.includes('h2h');
+  const pointsKeys = order.filter((k) => k !== 'h2h');
+  const remaining = [...cohort];
+  const out: StandingRow[] = [];
+  while (remaining.length > 1) {
+    const top = pickTop(remaining, ctx, useH2h, pointsKeys);
+    out.push(top);
+    remaining.splice(remaining.indexOf(top), 1);
+  }
+  if (remaining.length) out.push(remaining[0]);
+  return out;
+}
+
+/**
+ * Compare two standings rows for ranking (pairwise). Best-first ordering:
+ *   1. Overall record (win% then wins).
+ *   2. Head-to-head series winner (when the two actually played and one won).
+ *   3. Points For (higher), then Points Against (lower), then ownerSeasonId.
  *
- * Returns a negative number when `a` should rank ahead of `b`, positive when
- * `b` should rank ahead, and 0 only when truly indistinguishable (which cannot
- * happen here because of the ownerSeasonId fallback).
- *
- * Ordering, best-first:
- *   1. Overall record: higher win% first; if equal, more wins first.
- *   2. Head-to-head: higher head-to-head win% *within the group being ranked*
- *      first (the group defaults to {a, b} for a pairwise comparison; pass a
- *      larger group via {@link compareForStandings}'s `group` to resolve
- *      multi-way ties as a mini round-robin).
- *   3. Points For: higher first.
- *   4. Points Against: lower first.
- *   5. ownerSeasonId: ascending (deterministic stable fallback).
- *
- * @param group Optional set of ownerSeasonIds defining the tied cohort for the
- *              head-to-head step. When omitted, the head-to-head is computed
- *              between just `a` and `b`.
+ * Returns negative when `a` ranks ahead, positive when `b` ranks ahead. The `group`
+ * and `order` params are accepted for backward compatibility; multi-way ties should
+ * be resolved with {@link rankStandings} (the recursive league rule), not pairwise.
  */
 export function compareForStandings(
   a: StandingRow,
   b: StandingRow,
   ctx: TiebreakerContext,
-  group?: Iterable<number>,
+  _group?: Iterable<number>,
   order: readonly TiebreakerKey[] = DEFAULT_TIEBREAKERS,
 ): number {
-  // 1. Overall record always comes first (this is the standings order itself, not
-  //    a configurable tiebreaker).
   if (a.winPct !== b.winPct) return b.winPct - a.winPct;
   if (a.wins !== b.wins) return b.wins - a.wins;
 
-  // 2. Configured tiebreaker steps, applied in the season's order.
-  const cohort = group ? [...group] : [a.ownerSeasonId, b.ownerSeasonId];
-  for (const key of order) {
-    const d = compareByKey(key, a, b, ctx, cohort);
-    if (d !== 0) return d;
+  if (order.includes('h2h')) {
+    const aWon = wonSeries(ctx, a.ownerSeasonId, b.ownerSeasonId);
+    const bWon = wonSeries(ctx, b.ownerSeasonId, a.ownerSeasonId);
+    if (aWon !== bWon) return aWon ? -1 : 1;
   }
-
-  // 3. Deterministic fallback so sorts are always stable and reproducible.
+  if (a.pointsFor !== b.pointsFor) return b.pointsFor - a.pointsFor;
+  if (a.pointsAgainst !== b.pointsAgainst) return a.pointsAgainst - b.pointsAgainst;
   return a.ownerSeasonId - b.ownerSeasonId;
 }
 
 /**
- * Compare two rows by ONE tiebreaker step. Returns a negative/positive number when
- * decisive, or 0 ("not applicable") to fall through to the next step.
- */
-function compareByKey(
-  key: TiebreakerKey,
-  a: StandingRow,
-  b: StandingRow,
-  ctx: TiebreakerContext,
-  cohort: number[],
-): number {
-  switch (key) {
-    case 'h2h': {
-      // Head-to-head within the tied cohort — only decisive when BOTH owners
-      // actually have games within the cohort; otherwise not applicable.
-      const aH2h = h2hWinPct(ctx, a.ownerSeasonId, cohort);
-      const bH2h = h2hWinPct(ctx, b.ownerSeasonId, cohort);
-      if (aH2h.games > 0 && bH2h.games > 0 && aH2h.pct !== bH2h.pct) {
-        return bH2h.pct - aH2h.pct;
-      }
-      return 0;
-    }
-    case 'pf': // Points For (higher first).
-      return a.pointsFor !== b.pointsFor ? b.pointsFor - a.pointsFor : 0;
-    case 'pa': // Points Against (lower first).
-      return a.pointsAgainst !== b.pointsAgainst ? a.pointsAgainst - b.pointsAgainst : 0;
-  }
-}
-
-/**
- * Rank a list of standings rows, resolving multi-way ties correctly.
+ * Rank a list of standings rows, resolving multi-way ties via the league's recursive
+ * rule (see {@link rankCohort}).
  *
- * The algorithm:
- *  1. Sort by overall record (win% then wins).
- *  2. Detect maximal cohorts of owners sharing the same overall record.
- *  3. Within each cohort, order by head-to-head record *among that cohort*,
- *     then Points For, then Points Against, then ownerSeasonId.
- *
- * This guarantees the head-to-head step uses the true tied group (the NFL's
- * "sweep" semantics) rather than only pairwise comparisons, which can be
- * non-transitive for 3+ teams.
+ * 1. Sort by overall record (win% then wins).
+ * 2. Detect maximal cohorts of owners sharing the same record.
+ * 3. Order each cohort by head-to-head dominance → Points For (recursively).
  *
  * @returns A new array sorted best-first. The input is not mutated.
  */
@@ -202,7 +216,6 @@ export function rankStandings(
   ctx: TiebreakerContext,
   order: readonly TiebreakerKey[] = DEFAULT_TIEBREAKERS,
 ): StandingRow[] {
-  // Group by identical overall record.
   const byRecord = [...rows].sort((a, b) => {
     if (a.winPct !== b.winPct) return b.winPct - a.winPct;
     if (a.wins !== b.wins) return b.wins - a.wins;
@@ -221,13 +234,8 @@ export function rankStandings(
       j++;
     }
     const cohort = byRecord.slice(i, j);
-    if (cohort.length === 1) {
-      result.push(cohort[0]);
-    } else {
-      const cohortIds = cohort.map((r) => r.ownerSeasonId);
-      const sorted = [...cohort].sort((a, b) => compareForStandings(a, b, ctx, cohortIds, order));
-      result.push(...sorted);
-    }
+    if (cohort.length === 1) result.push(cohort[0]);
+    else result.push(...rankCohort(cohort, ctx, order));
     i = j;
   }
   return result;

@@ -25,6 +25,7 @@
     "verify:quick": "tsx scripts/verify.ts --quick",
     "verify:ground-truth": "tsx scripts/import-season3.ts",
     "import:season": "tsx scripts/import-season.ts",
+    "import:playoffs": "tsx scripts/import-playoffs.ts",
     "models:snapshot": "tsx scripts/models.ts --action=snapshot",
     "models:grade": "tsx scripts/models.ts --action=grade"
   },

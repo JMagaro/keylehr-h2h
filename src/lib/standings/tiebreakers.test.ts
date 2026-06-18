@@ -1,7 +1,8 @@
 /**
- * Unit tests for the tiebreaker chain: H2H → PF → PA → ownerSeasonId.
- * Covers 2-way ties, the priority of each step, and multi-way (3+) ties
- * resolved as a mini round-robin.
+ * Unit tests for the league tiebreaker (a port of the original R `resolve_ties`):
+ * record → head-to-head dominance → Points For (pf/pa order configurable). Covers
+ * 2-way ties, the configurable points order, and the recursive multi-way resolution
+ * (including the non-transitive 2024-style case where head-to-head win% would mislead).
  */
 import { describe, it, expect } from 'vitest';
 import { computeStandings } from './standings';
@@ -135,8 +136,8 @@ describe('tiebreakers — deterministic final fallback', () => {
   });
 });
 
-describe('tiebreakers — multi-way (3-way) tie resolved by mini round-robin', () => {
-  it('orders three tied owners by their record among the tied group', () => {
+describe('tiebreakers — multi-way (3-way) tie resolved recursively', () => {
+  it('orders three tied owners by head-to-head dominance among the tied group', () => {
     // Three owners each 2-2 overall, all tied. Within the group of {1,2,3}:
     //   1 beat 2, 1 beat 3  -> 2-0 within group  (best)
     //   2 beat 3            -> 1-1 within group  (middle)
@@ -165,9 +166,58 @@ describe('tiebreakers — multi-way (3-way) tie resolved by mini round-robin', (
       expect(r.losses).toBe(2);
     }
     const order = rank(entries, results);
-    // Among the tied trio, the round-robin order must be 1, then 2, then 3.
+    // Among the tied trio, the resolved order must be 1, then 2, then 3.
     const idx = (id: number) => order.indexOf(id);
     expect(idx(1)).toBeLessThan(idx(2));
     expect(idx(2)).toBeLessThan(idx(3));
+  });
+});
+
+describe('tiebreakers — non-transitive 4-way tie (the real 2024 NFC case)', () => {
+  it('uses Points For for the top pick, then head-to-head for the rest', () => {
+    // Mirrors 2024 NFC seeds 6/7. Four owners V,L,S,F all finish 3-3. Their head-to-head
+    // WITHIN the group is lopsided & incomplete (they did not all play):
+    //   V beat S; F beat V; V–L split; S beat L; S beat F.  (V–F? F beat V. L–F never played.)
+    // Cohort series wins: S=2, V=1, F=1, L=0. Points For made highest for V.
+    //
+    // Round 1: S has the most series wins (2) but NOT more than half of 4 (>2) → no
+    //          dominant team → highest Points For wins → V.
+    // Round 2 {L,S,F}: S has 2 series wins (> 1.5) → dominant → S.
+    // Final order V, S, L, F — exactly the 2024 sheet (Vikings #6, Seahawks #7).
+    const V = 1, L = 2, S = 3, F = 4;
+    const o = [V, L, S, F, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].map(owner);
+    const results: MatchupResult[] = [
+      // Intra-cohort head-to-head (each game: higher score wins).
+      game(1, V, S, 60, 50), // V beats S
+      game(2, F, V, 60, 50), // F beats V
+      game(3, V, L, 60, 50), // V beats L
+      game(4, L, V, 60, 50), // L beats V  → V–L split
+      game(5, S, L, 60, 50), // S beats L
+      game(6, S, F, 60, 50), // S beats F
+      // Equalize everyone to 3-3 with outsider games; V gets a blowout so its PF is highest.
+      game(7, V, 11, 200, 10), // V W (huge PF)
+      game(8, V, 12, 10, 90), //  V L  → V 3-3
+      game(9, L, 13, 70, 10), //  L W
+      game(10, L, 14, 70, 10), // L W
+      game(11, L, 15, 10, 90), // L L  → L 3-3
+      game(12, S, 16, 70, 10), // S W
+      game(13, S, 17, 10, 90), // S L
+      game(14, S, 18, 10, 90), // S L  → S 3-3
+      game(15, F, 19, 70, 10), // F W
+      game(16, F, 20, 70, 10), // F W
+      game(17, F, 21, 10, 90), // F L
+      game(18, F, 22, 10, 90), // F L  → F 3-3
+    ];
+    const rows = computeStandings(o, results);
+    for (const id of [V, L, S, F]) {
+      const r = rows.find((x) => x.ownerSeasonId === id)!;
+      expect([r.wins, r.losses]).toEqual([3, 3]); // genuine 4-way tie
+    }
+    const order = rank(o, results);
+    const idx = (id: number) => order.indexOf(id);
+    // Vikings (V) ahead of Seahawks (S) — the whole point (old win% method got this wrong).
+    expect(idx(V)).toBeLessThan(idx(S));
+    // Seahawks (S) jumps ahead of Lions (L) despite L's higher PF, via head-to-head in the sub-group.
+    expect(idx(S)).toBeLessThan(idx(L));
   });
 });
