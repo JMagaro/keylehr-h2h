@@ -13,7 +13,12 @@ import { Field, Input, Select } from '@/components/ui/input';
 import { SubmitButton } from '@/components/ui/submit-button';
 import type { SeasonRules } from '@/lib/rules/schema';
 
-import { updateSeasonMeta, updateSeasonRules, type SettingsFormState } from './actions';
+import {
+  applyDefaultRulesAction,
+  updateSeasonMeta,
+  updateSeasonRules,
+  type SettingsFormState,
+} from './actions';
 
 type SettingsAction = (
   prev: SettingsFormState,
@@ -43,7 +48,7 @@ function StatusBanner({ state }: { state: SettingsFormState }) {
         role="status"
         className="rounded-md border border-win/30 bg-win-soft px-3 py-2 text-sm text-win"
       >
-        Saved.
+        {state.message ?? 'Saved.'}
       </p>
     );
   }
@@ -199,6 +204,10 @@ export function SeasonRulesForm({
 }) {
   const action: SettingsAction = updateSeasonRules;
   const [state, formAction] = useActionState<SettingsFormState, FormData>(action, {});
+  const [presetState, presetAction] = useActionState<SettingsFormState, FormData>(
+    applyDefaultRulesAction,
+    {},
+  );
 
   const order = rules.tiebreakers;
   const allKeys: SeasonRules['tiebreakers'] = ['h2h', 'pf', 'pa'];
@@ -206,10 +215,23 @@ export function SeasonRulesForm({
   return (
     <>
       <CardHeader>
-        <CardTitle>Rules</CardTitle>
-        <CardDescription>
-          Per-season league rules. Values inherit the league defaults until changed here.
-        </CardDescription>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <CardTitle>Rules</CardTitle>
+            <CardDescription>
+              Per-season league rules. Values inherit the league defaults until changed here.
+            </CardDescription>
+          </div>
+          {/* One-click preset for the historical league rules. Its own form (forms can't
+              nest) — applies the canonical config, then the inputs below re-render with it. */}
+          <form action={presetAction} className="shrink-0">
+            <input type="hidden" name="seasonId" value={seasonId} />
+            <SubmitButton variant="secondary">Apply 2025 &amp; earlier rules</SubmitButton>
+          </form>
+        </div>
+        <div className="mt-2">
+          <StatusBanner state={presetState} />
+        </div>
       </CardHeader>
       <CardBody>
         <form action={formAction} className="flex flex-col gap-6">
@@ -218,7 +240,11 @@ export function SeasonRulesForm({
           {/* Tiebreakers */}
           <fieldset className="flex flex-col gap-3">
             <legend className="text-sm font-semibold text-foreground">Standings tiebreakers</legend>
-            <p className="text-xs text-muted">Applied top to bottom. Each rank must be distinct.</p>
+            <p className="text-xs text-muted">
+              Applied top to bottom; each rank must be distinct. Head-to-head breaks a two-team tie
+              by the season series; a multi-team tie is resolved by head-to-head dominance, then the
+              next rank below (the league&rsquo;s rule).
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {[0, 1, 2].map((i) => (
                 <Field key={i} label={`Tiebreaker ${i + 1}`} htmlFor={`tiebreaker${i}`}>

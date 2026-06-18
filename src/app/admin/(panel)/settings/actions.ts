@@ -20,12 +20,13 @@ import { z } from 'zod';
 
 import { db, seasons } from '@/db';
 import { requireAdmin } from '@/lib/auth-helpers';
-import { getSeasonRules, seasonRulesSchema } from '@/lib/rules/schema';
+import { DEFAULT_SEASON_RULES, getSeasonRules, seasonRulesSchema } from '@/lib/rules/schema';
 
 /** Shape returned to `useActionState` for inline success/error rendering. */
 export type SettingsFormState = {
   ok?: boolean;
   error?: string;
+  message?: string;
 };
 
 /** Parse a dollar string (e.g. "155.50") into whole USD cents. */
@@ -194,4 +195,39 @@ export async function updateSeasonRules(
 
   revalidatePath('/admin/settings');
   return { ok: true };
+}
+
+/**
+ * One-click preset: set this season's rules to the league's canonical "2025 & earlier"
+ * configuration ({@link DEFAULT_SEASON_RULES}) — the same tiebreaker order, playoff
+ * structure, bye/missed-lineup behavior and payouts the 2023–2025 seasons used. Preserves
+ * the canonical `regularSeasonWeeks` + entry fee (edited on the Season card) so this never
+ * diverges from those columns. The Rules form re-renders with the applied values.
+ */
+export async function applyDefaultRulesAction(
+  _prev: SettingsFormState,
+  formData: FormData,
+): Promise<SettingsFormState> {
+  await requireAdmin();
+
+  const seasonId = Number(formData.get('seasonId'));
+  if (!Number.isInteger(seasonId) || seasonId <= 0) return { error: 'Invalid season.' };
+
+  const existing = await db
+    .select({ rules: seasons.rules })
+    .from(seasons)
+    .where(eq(seasons.id, seasonId))
+    .limit(1);
+  if (existing.length === 0) return { error: 'Season not found.' };
+  const current = getSeasonRules(existing[0].rules);
+
+  const next = {
+    ...DEFAULT_SEASON_RULES,
+    regularSeasonWeeks: current.regularSeasonWeeks,
+    payouts: { ...DEFAULT_SEASON_RULES.payouts, entryFeeCents: current.payouts.entryFeeCents },
+  };
+
+  await db.update(seasons).set({ rules: next }).where(eq(seasons.id, seasonId));
+  revalidatePath('/admin/settings');
+  return { ok: true, message: 'Applied the 2025 & earlier league rules.' };
 }
