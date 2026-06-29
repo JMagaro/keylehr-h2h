@@ -6,7 +6,8 @@
  * aggregated by PERSON across seasons. Queries Postgres directly.
  */
 import type { Metadata } from "next";
-import { ScrollText, Trophy, Crown, Flame, Swords } from "lucide-react";
+import Link from "next/link";
+import { ScrollText, Trophy, Crown, Flame, Swords, Users } from "lucide-react";
 
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
@@ -354,6 +355,29 @@ export default async function HistoryPage() {
                 }
               />
             </div>
+          </section>
+
+          {/* Head-to-Head Records */}
+          <section aria-label="Head-to-head records" className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <Users className="size-5 text-accent" aria-hidden="true" />
+              <h2 className="text-xl font-bold tracking-tight text-foreground">
+                Head-to-Head Records
+              </h2>
+            </div>
+            <Link
+              href="/history/head-to-head"
+              className="group flex items-center justify-between rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-border-strong hover:bg-surface"
+            >
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold text-foreground group-hover:text-accent">
+                  View owner vs. leaguemate records →
+                </span>
+                <span className="text-sm text-muted">
+                  Pick any owner to see their all-time W-L record against every opponent, aggregated across all seasons.
+                </span>
+              </div>
+            </Link>
           </section>
 
           {/* Rivalries */}
