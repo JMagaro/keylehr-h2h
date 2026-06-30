@@ -95,7 +95,7 @@ function ParticipantRow({
       )}
       <TeamLogo src={p.logoEspn} alt={p.teamName ? `${p.teamName} logo` : 'Team logo'} size={20} />
       <span className="flex min-w-0 flex-col leading-tight">
-        <span className="truncate">{p.ownerName ?? 'TBD'}</span>
+        <span className="truncate" title={p.ownerName ?? undefined}>{p.ownerName ?? 'TBD'}</span>
         {p.teamKey ? (
           <span className="truncate text-[11px] font-normal text-muted">
             {p.teamKey} · {p.teamName}
@@ -129,7 +129,7 @@ function GameCard({ game }: { game: BracketGame }) {
   return (
     <div
       className={cn(
-        'w-60 overflow-hidden rounded-lg border bg-card shadow-sm',
+        'w-72 overflow-hidden rounded-lg border bg-card shadow-sm',
         decided ? 'border-accent/40' : 'border-border',
       )}
     >
@@ -143,7 +143,7 @@ function GameCard({ game }: { game: BracketGame }) {
 /** A labeled "BYE" slot for a top seed sitting out the wild-card round. */
 function ByeSlot({ p }: { p: BracketParticipant }) {
   return (
-    <div className="flex w-60 items-center gap-2 rounded-lg border border-dashed border-border-strong bg-surface px-3 py-2 text-sm">
+    <div className="flex w-72 items-center gap-2 rounded-lg border border-dashed border-border-strong bg-surface px-3 py-2 text-sm">
       {p.seed !== null ? (
         <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-card text-[11px] font-bold tabular-nums text-subtle">
           {p.seed}
@@ -151,7 +151,7 @@ function ByeSlot({ p }: { p: BracketParticipant }) {
       ) : null}
       <TeamLogo src={p.logoEspn} alt={p.teamName ? `${p.teamName} logo` : 'Team logo'} size={20} />
       <span className="flex min-w-0 flex-col leading-tight">
-        <span className="truncate font-medium text-foreground">{p.ownerName ?? 'TBD'}</span>
+        <span className="truncate font-medium text-foreground" title={p.ownerName ?? undefined}>{p.ownerName ?? 'TBD'}</span>
         {p.teamKey ? (
           <span className="truncate text-[11px] text-muted">
             {p.teamKey} · {p.teamName}
@@ -328,7 +328,7 @@ export function PlayoffBracket({ bracket, className }: PlayoffBracketProps) {
               ))}
               {champion ? (
                 <div
-                  className="flex w-60 flex-col items-center gap-1 rounded-lg border border-accent bg-accent/10 px-4 py-5 text-center shadow-sm"
+                  className="flex w-72 flex-col items-center gap-1 rounded-lg border border-accent bg-accent/10 px-4 py-5 text-center shadow-sm"
                   aria-label="League champion"
                 >
                   <Crown className="size-7 text-accent" aria-hidden="true" />

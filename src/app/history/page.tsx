@@ -7,7 +7,7 @@
  */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart } from "lucide-react";
+import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart, Star, TrendingUp, TrendingDown } from "lucide-react";
 
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
@@ -23,8 +23,15 @@ import {
   getAllTimeLeaders,
   getAllTimeRivalries,
   getOwnerSeasonTrends,
+  getPlayoffStats,
+  getWeeklyHighScores,
+  getGameExtremes,
+  getChampionLeaders,
   type SeasonHistory,
-  type AllTimeLeader,
+  type ChampionLeader,
+  type PlayoffStat,
+  type WeeklyHighStat,
+  type GameExtreme,
   type Rivalry,
 } from "@/lib/history";
 
@@ -143,13 +150,20 @@ function SeasonCard({ season }: { season: SeasonHistory }) {
             }
           />
         </div>
+
+        <Link
+          href={`/history/${season.year}`}
+          className="self-start text-sm font-medium text-accent hover:underline"
+        >
+          View standings &amp; bracket →
+        </Link>
       </CardBody>
     </Card>
   );
 }
 
-/** A small all-time leaders table (most wins / points / best week). */
-function LeaderTable({
+/** A small all-time leaders table, generic over any row type with owner identity fields. */
+function LeaderTable<T extends { ownerId: number; ownerName: string }>({
   title,
   description,
   icon: Icon,
@@ -160,9 +174,9 @@ function LeaderTable({
   title: string;
   description: string;
   icon: typeof Trophy;
-  rows: AllTimeLeader[];
+  rows: T[];
   valueHeader: string;
-  valueOf: (l: AllTimeLeader) => string;
+  valueOf: (l: T) => string;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -175,9 +189,7 @@ function LeaderTable({
         <caption className="sr-only">{title}</caption>
         <THead>
           <TR>
-            <TH align="center" className="w-8">
-              #
-            </TH>
+            <TH align="center" className="w-8">#</TH>
             <TH>Owner</TH>
             <TH align="right">{valueHeader}</TH>
           </TR>
@@ -185,22 +197,87 @@ function LeaderTable({
         <TBody>
           {rows.map((l, i) => (
             <TR key={l.ownerId}>
-              <TD align="center" className="tabular-nums text-subtle">
-                {i + 1}
-              </TD>
+              <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
               <TD>
-                <div className="flex items-center gap-2">
-                  <TeamLogo src={l.logoEspn} alt={`${l.teamName ?? "team"} logo`} size={20} />
-                  <span className="font-medium text-foreground">{l.ownerName}</span>
-                </div>
+                <span className="font-medium text-foreground">{l.ownerName}</span>
               </TD>
-              <TD align="right" className="tabular-nums font-semibold">
-                {valueOf(l)}
+              <TD align="right" className="tabular-nums font-semibold">{valueOf(l)}</TD>
+            </TR>
+          ))}
+        </TBody>
+      </Table>
+    </div>
+  );
+}
+
+/** Two-column value table for playoff stats (appearances + W-L). */
+function PlayoffStatTable({ rows }: { rows: PlayoffStat[] }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <Trophy className="size-4 text-accent" aria-hidden="true" />
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">Playoff appearances</h3>
+      </div>
+      <p className="text-xs text-muted">Seasons reaching the postseason, with all-time playoff W-L record.</p>
+      <Table>
+        <caption className="sr-only">Playoff appearances</caption>
+        <THead>
+          <TR>
+            <TH align="center" className="w-8">#</TH>
+            <TH>Owner</TH>
+            <TH align="right">App</TH>
+            <TH align="right">W-L</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {rows.map((l, i) => (
+            <TR key={l.ownerId}>
+              <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
+              <TD>
+                <span className="font-medium text-foreground">{l.ownerName}</span>
+              </TD>
+              <TD align="right" className="tabular-nums font-semibold">{l.appearances}</TD>
+              <TD align="right" className="tabular-nums text-muted">
+                {l.playoffWins}-{l.playoffLosses}
               </TD>
             </TR>
           ))}
         </TBody>
       </Table>
+    </div>
+  );
+}
+
+/** A callout card for a single-game extreme (closest or biggest blowout). */
+function GameExtremeCard({
+  label,
+  icon: Icon,
+  game,
+}: {
+  label: string;
+  icon: typeof TrendingUp;
+  game: GameExtreme;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center gap-2">
+        <Icon className="size-4 text-accent" aria-hidden="true" />
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">{label}</h3>
+        <span className="ml-auto text-xs font-medium text-muted">{game.year} · Wk {game.week}</span>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-foreground">{game.winnerOwnerName}</span>
+          <span className="ml-auto tabular-nums font-semibold text-foreground">{game.winnerPoints.toFixed(2)}</span>
+        </div>
+        <div className="flex items-center gap-2 opacity-60">
+          <span className="text-foreground">{game.loserOwnerName}</span>
+          <span className="ml-auto tabular-nums text-foreground">{game.loserPoints.toFixed(2)}</span>
+        </div>
+      </div>
+      <p className="text-xs text-accent font-medium">
+        {game.margin < 0.1 ? `Margin: ${game.margin.toFixed(2)} pts` : `Won by ${game.margin.toFixed(2)} pts`}
+      </p>
     </div>
   );
 }
@@ -212,12 +289,9 @@ function RivalryRow({ r }: { r: Rivalry }) {
   return (
     <TR>
       <TD>
-        <div className="flex items-center gap-2">
-          <TeamLogo src={r.ownerA.logoEspn} alt={`${r.ownerA.teamName ?? "team"} logo`} size={20} />
-          <span className={aLeads ? "font-semibold text-foreground" : "text-foreground"}>
-            {r.ownerA.ownerName}
-          </span>
-        </div>
+        <span className={aLeads ? "font-semibold text-foreground" : "text-foreground"}>
+          {r.ownerA.ownerName}
+        </span>
       </TD>
       <TD align="center" className="tabular-nums font-semibold">
         <span className={aLeads ? "text-win" : bLeads ? "text-loss" : "text-muted"}>
@@ -230,12 +304,9 @@ function RivalryRow({ r }: { r: Rivalry }) {
         {r.ties > 0 ? <span className="text-subtle">{` (${r.ties}T)`}</span> : null}
       </TD>
       <TD align="right">
-        <div className="flex items-center justify-end gap-2">
-          <span className={bLeads ? "font-semibold text-foreground" : "text-foreground"}>
-            {r.ownerB.ownerName}
-          </span>
-          <TeamLogo src={r.ownerB.logoEspn} alt={`${r.ownerB.teamName ?? "team"} logo`} size={20} />
-        </div>
+        <span className={bLeads ? "font-semibold text-foreground" : "text-foreground"}>
+          {r.ownerB.ownerName}
+        </span>
       </TD>
       <TD align="right" className="tabular-nums text-muted">
         {r.meetings}
@@ -278,11 +349,15 @@ function RivalryTable({
 }
 
 export default async function HistoryPage() {
-  const [seasonHistory, leaders, rivalries, ownerTrends] = await Promise.all([
+  const [seasonHistory, leaders, rivalries, ownerTrends, playoffStats, weeklyHighs, gameExtremes, championLeaders] = await Promise.all([
     getSeasonHistory(),
     getAllTimeLeaders(),
     getAllTimeRivalries(),
     getOwnerSeasonTrends(),
+    getPlayoffStats(),
+    getWeeklyHighScores(),
+    getGameExtremes(),
+    getChampionLeaders(),
   ]);
 
   const hasAnyData = seasonHistory.length > 0;
@@ -328,7 +403,7 @@ export default async function HistoryPage() {
           {/* All-time leaders */}
           <section aria-label="All-time leaders" className="flex flex-col gap-5">
             <h2 className="text-xl font-bold tracking-tight text-foreground">All-time leaders</h2>
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               <LeaderTable
                 title="Most wins"
                 description="Total regular-season head-to-head wins across every season."
@@ -356,6 +431,25 @@ export default async function HistoryPage() {
                     ? `${formatPoints(l.bestWeek.points)} (${l.bestWeek.year} Wk ${l.bestWeek.week})`
                     : "—"
                 }
+              />
+              {championLeaders.length > 0 && (
+                <LeaderTable<ChampionLeader>
+                  title="Most championships"
+                  description="All-time league title count. Name shown as it appeared in the winning season."
+                  icon={Crown}
+                  rows={championLeaders}
+                  valueHeader="Titles"
+                  valueOf={(l) => `${l.championships}`}
+                />
+              )}
+              <PlayoffStatTable rows={playoffStats.slice(0, 10)} />
+              <LeaderTable<WeeklyHighStat>
+                title="Most weekly high scores"
+                description="Times an owner posted the single highest score leaguewide in a given week."
+                icon={Star}
+                rows={weeklyHighs.slice(0, 10)}
+                valueHeader="Weeks"
+                valueOf={(l) => `${l.count}`}
               />
             </div>
           </section>
@@ -402,6 +496,19 @@ export default async function HistoryPage() {
               <Swords className="size-5 text-accent" aria-hidden="true" />
               <h2 className="text-xl font-bold tracking-tight text-foreground">Rivalries</h2>
             </div>
+
+            {/* Single-game extremes */}
+            {(gameExtremes.closest || gameExtremes.biggestBlowout) && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {gameExtremes.closest && (
+                  <GameExtremeCard label="Closest game" icon={TrendingUp} game={gameExtremes.closest} />
+                )}
+                {gameExtremes.biggestBlowout && (
+                  <GameExtremeCard label="Biggest blowout" icon={TrendingDown} game={gameExtremes.biggestBlowout} />
+                )}
+              </div>
+            )}
+
             {rivalries.rivalries.length === 0 ? (
               <EmptyState
                 icon={Swords}

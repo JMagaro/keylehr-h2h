@@ -9,9 +9,9 @@
  *
  * Pure inline SVG (no charting dependency), scales responsively via `viewBox`.
  */
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 
-import { TeamLogo } from '@/components/team-logo';
+import { ExpandableChart } from '@/components/expandable-chart';
 import { forDarkBackground, useIsDarkMode } from '@/lib/color';
 import { cn } from '@/lib/utils';
 import type { OwnerSeasonTrends } from '@/lib/history';
@@ -60,6 +60,7 @@ interface OwnerTrendChartProps {
   years: number[];
   owners: ChartOwner[];
   activeOwnerId: number | null;
+  onOwnerHover?: (ownerId: number | null) => void;
   title: string;
   ariaLabel: string;
   valueFormat?: (v: number) => string;
@@ -67,11 +68,12 @@ interface OwnerTrendChartProps {
   yMax: number;
 }
 
-/** One metric's overlaid line chart. Highlight is CONTROLLED via `activeOwnerId` (set by the shared legend). */
+/** One metric's overlaid line chart. Highlight is CONTROLLED via `activeOwnerId` (set by the shared legend or chart hover). */
 export function OwnerTrendChart({
   years,
   owners,
   activeOwnerId,
+  onOwnerHover,
   title,
   ariaLabel,
   valueFormat = (v) => `${v}`,
@@ -79,7 +81,10 @@ export function OwnerTrendChart({
   yMax,
 }: OwnerTrendChartProps) {
   const titleId = useId();
+  const svgRef = useRef<SVGSVGElement>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
+  const activeIdx = pinnedIdx ?? hoverIdx;
   const isDark = useIsDarkMode();
   const lineColor = (c: string | null) => {
     const base = c ?? FALLBACK_COLOR;
@@ -95,12 +100,12 @@ export function OwnerTrendChart({
   const lastIdx = years.length - 1;
 
   const tooltip = useMemo(() => {
-    if (!activeOwner || hoverIdx === null) return null;
-    const v = activeOwner.series[hoverIdx];
+    if (!activeOwner || activeIdx === null) return null;
+    const v = activeOwner.series[activeIdx];
     if (v === null || v === undefined) return null;
-    return { x: xOf(hoverIdx), y: yOf(v), year: years[hoverIdx], value: v };
+    return { x: xOf(activeIdx), y: yOf(v), year: years[activeIdx], value: v };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOwner, hoverIdx, years]);
+  }, [activeOwner, activeIdx, years]);
 
   if (years.length === 0 || owners.length === 0) {
     return (
@@ -113,18 +118,49 @@ export function OwnerTrendChart({
   const TICK_COUNT = 6;
   const yTicks = Array.from({ length: TICK_COUNT }, (_, i) => yMin + ((yMax - yMin) * i) / (TICK_COUNT - 1));
 
+  function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    const rect = svgEl.getBoundingClientRect();
+    const scale = VIEW_W / rect.width; // h-auto keeps aspect ratio, so same scale for both axes
+    const svgX = (e.clientX - rect.left) * scale;
+    const svgY = (e.clientY - rect.top) * scale;
+
+    // Nearest year column by X
+    let colIdx = 0;
+    let minXDist = Infinity;
+    years.forEach((_, i) => {
+      const d = Math.abs(xOf(i) - svgX);
+      if (d < minXDist) { minXDist = d; colIdx = i; }
+    });
+    setHoverIdx(colIdx);
+
+    // Nearest owner line by Y at that column
+    let closestId: number | null = null;
+    let minYDist = Infinity;
+    owners.forEach((o) => {
+      const v = o.series[colIdx];
+      if (v === null || v === undefined) return;
+      const d = Math.abs(yOf(v) - svgY);
+      if (d < minYDist) { minYDist = d; closestId = o.ownerId; }
+    });
+    onOwnerHover?.(closestId);
+  }
+
   return (
     <figure className="m-0 flex flex-col gap-2">
       <figcaption id={titleId} className="text-sm font-semibold text-foreground">
         {title}
       </figcaption>
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-        className="h-auto w-full select-none rounded-xl border border-border bg-card"
+        className="h-auto w-full touch-none select-none rounded-xl border border-border bg-card"
         role="img"
         aria-label={ariaLabel}
         preserveAspectRatio="xMidYMid meet"
-        onMouseLeave={() => setHoverIdx(null)}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => { setHoverIdx(null); onOwnerHover?.(null); }}
       >
         {yTicks.map((t) => {
           const y = yOf(t);
@@ -189,7 +225,9 @@ export function OwnerTrendChart({
               width={bandW}
               height={PLOT_H}
               fill="transparent"
+              className="cursor-pointer"
               onMouseEnter={() => setHoverIdx(i)}
+              onClick={() => setPinnedIdx((p) => (p === i ? null : i))}
             />
           );
         })}
@@ -214,7 +252,7 @@ export function OwnerTrendChart({
                     key={p.idx}
                     cx={p.x}
                     cy={p.y}
-                    r={hoverIdx === p.idx ? 5 : 3}
+                    r={activeIdx === p.idx ? 5 : 3}
                     fill={color}
                     stroke="var(--color-card)"
                     strokeWidth={1.5}
@@ -251,6 +289,10 @@ export function OwnerTrendChart({
         )}
       </svg>
 
+      {activeOwner ? (
+        <p className="text-xs text-subtle">Hover or tap a point on the line for its exact value.</p>
+      ) : null}
+
       {/* Screen-reader data-table fallback: final-year value for every owner. */}
       <div className="sr-only">
         <table>
@@ -280,26 +322,88 @@ export function OwnerTrendChart({
   );
 }
 
-/** Shared legend + both metric charts, with one synced highlighted owner. */
-export function OwnerTrendsPanel({ trends }: { trends: OwnerSeasonTrends }) {
-  const [activeId, setActiveId] = useState<number | null>(null);
-  const [query, setQuery] = useState('');
+interface OwnerLegendProps {
+  owners: Omit<ChartOwner, 'series'>[];
+  activeId: number | null;
+  setActiveId: (id: number | null) => void;
+  query: string;
+  setQuery: (q: string) => void;
+}
+
+/** Searchable legend: click/hover/focus an owner to highlight their line on the chart(s) it's paired with. */
+function OwnerLegend({ owners, activeId, setActiveId, query, setQuery }: OwnerLegendProps) {
   const isDark = useIsDarkMode();
   const legendDotColor = (c: string | null) => {
     const base = c ?? FALLBACK_COLOR;
     return isDark ? forDarkBackground(base) : base;
   };
 
-  const filteredLegend = useMemo(() => {
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return trends.owners;
-    return trends.owners.filter(
+    if (!q) return owners;
+    return owners.filter(
       (o) =>
         o.ownerName.toLowerCase().includes(q) ||
         (o.teamName ?? '').toLowerCase().includes(q) ||
         (o.teamKey ?? '').toLowerCase().includes(q),
     );
-  }, [trends.owners, query]);
+  }, [owners, query]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search owner or team…"
+        aria-label="Search owner or team to highlight"
+        className="w-full max-w-xs self-start rounded-lg border border-border-strong bg-card px-3 py-1.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+      />
+      <ul
+        className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 lg:grid-cols-4"
+        aria-label="Owners — select to highlight on the chart"
+      >
+        {filtered.map((o) => {
+          const isActive = o.ownerId === activeId;
+          return (
+            <li key={o.ownerId}>
+              <button
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => setActiveId(isActive ? null : o.ownerId)}
+                onMouseEnter={() => setActiveId(o.ownerId)}
+                onFocus={() => setActiveId(o.ownerId)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors',
+                  isActive ? 'bg-surface' : 'hover:bg-surface',
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: legendDotColor(o.color) }}
+                />
+                <span className="truncate text-foreground">{o.ownerName}</span>
+              </button>
+            </li>
+          );
+        })}
+        {filtered.length === 0 && (
+          <li className="col-span-full px-2 py-1 text-sm text-muted">No owners match &ldquo;{query}&rdquo;.</li>
+        )}
+      </ul>
+    </div>
+  );
+}
+
+/** Shared legend + both metric charts, with one synced highlighted owner. Expandable into a larger modal together. */
+export function OwnerTrendsPanel({ trends }: { trends: OwnerSeasonTrends }) {
+  const [activeId, setActiveId] = useState<number | null>(null);
+  const [chartHoverId, setChartHoverId] = useState<number | null>(null);
+  const [query, setQuery] = useState('');
+
+  // Chart hover temporarily overrides the legend selection; leaving the chart restores it.
+  const effectiveId = chartHoverId ?? activeId;
 
   const winsOwners: ChartOwner[] = trends.owners.map((o) => ({ ...o, series: o.wins }));
   const pfOwners: ChartOwner[] = trends.owners.map((o) => ({ ...o, series: o.avgPointsFor }));
@@ -320,75 +424,34 @@ export function OwnerTrendsPanel({ trends }: { trends: OwnerSeasonTrends }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid gap-6 lg:grid-cols-2">
-        <OwnerTrendChart
-          years={trends.years}
-          owners={winsOwners}
-          activeOwnerId={activeId}
-          title="Wins per season"
-          ariaLabel="Regular-season wins per year, one line per owner"
-          valueFormat={(v) => `${Math.round(v)}`}
-          yMin={0}
-          yMax={winsYMax}
-        />
-        <OwnerTrendChart
-          years={trends.years}
-          owners={pfOwners}
-          activeOwnerId={activeId}
-          title="Average Points For per season"
-          ariaLabel="Average regular-season DraftKings points per game, one line per owner"
-          valueFormat={(v) => v.toFixed(1)}
-          yMin={pfYMin}
-          yMax={pfYMax}
-        />
+    <ExpandableChart title="Owner trends — wins & average Points For per season" modalWidthClassName="max-w-7xl">
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <OwnerTrendChart
+            years={trends.years}
+            owners={winsOwners}
+            activeOwnerId={effectiveId}
+            onOwnerHover={setChartHoverId}
+            title="Wins per season"
+            ariaLabel="Regular-season wins per year, one line per owner"
+            valueFormat={(v) => `${Math.round(v)}`}
+            yMin={0}
+            yMax={winsYMax}
+          />
+          <OwnerTrendChart
+            years={trends.years}
+            owners={pfOwners}
+            activeOwnerId={effectiveId}
+            onOwnerHover={setChartHoverId}
+            title="Average Points For per season"
+            ariaLabel="Average regular-season DraftKings points per game, one line per owner"
+            valueFormat={(v) => v.toFixed(1)}
+            yMin={pfYMin}
+            yMax={pfYMax}
+          />
+        </div>
+        <OwnerLegend owners={trends.owners} activeId={activeId} setActiveId={setActiveId} query={query} setQuery={setQuery} />
       </div>
-
-      {/* Shared searchable legend: click/hover to highlight an owner on BOTH charts. */}
-      <div className="flex flex-col gap-2">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search owner or team…"
-          aria-label="Search owner or team to highlight"
-          className="w-full max-w-xs self-start rounded-lg border border-border-strong bg-card px-3 py-1.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
-        />
-        <ul
-          className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 lg:grid-cols-4"
-          aria-label="Owners — select to highlight on both charts"
-        >
-          {filteredLegend.map((o) => {
-            const isActive = o.ownerId === activeId;
-            return (
-              <li key={o.ownerId}>
-                <button
-                  type="button"
-                  aria-pressed={isActive}
-                  onClick={() => setActiveId(isActive ? null : o.ownerId)}
-                  onMouseEnter={() => setActiveId(o.ownerId)}
-                  onFocus={() => setActiveId(o.ownerId)}
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors',
-                    isActive ? 'bg-surface' : 'hover:bg-surface',
-                  )}
-                >
-                  <span
-                    aria-hidden="true"
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: legendDotColor(o.color) }}
-                  />
-                  <TeamLogo src={o.logoEspn} alt={`${o.teamName ?? 'team'} logo`} size={18} />
-                  <span className="truncate text-foreground">{o.ownerName}</span>
-                </button>
-              </li>
-            );
-          })}
-          {filteredLegend.length === 0 && (
-            <li className="col-span-full px-2 py-1 text-sm text-muted">No owners match &ldquo;{query}&rdquo;.</li>
-          )}
-        </ul>
-      </div>
-    </div>
+    </ExpandableChart>
   );
 }

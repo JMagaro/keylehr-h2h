@@ -14,9 +14,12 @@ import { Expand, X } from 'lucide-react';
 export function ExpandableChart({
   title,
   children,
+  modalWidthClassName = 'max-w-5xl',
 }: {
   title: string;
   children: React.ReactNode;
+  /** Tailwind max-width class for the expanded modal. Wider panels (e.g. multi-chart) can opt into more room. */
+  modalWidthClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -57,7 +60,7 @@ export function ExpandableChart({
           onClick={() => setOpen(false)}
         >
           <div
-            className="w-full max-w-5xl rounded-xl border border-border bg-card p-5 shadow-xl"
+            className={`w-full ${modalWidthClassName} rounded-xl border border-border bg-card p-5 shadow-xl`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between gap-4">
