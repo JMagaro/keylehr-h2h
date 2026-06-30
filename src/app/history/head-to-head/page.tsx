@@ -1,6 +1,6 @@
 /**
  * Head-to-Head Records — Server Component. Shows one selected owner's all-time
- * W-L-T record against every leaguemate they've faced across all seasons.
+ * W-L-T record against every opponent they've faced across all seasons.
  *
  * Owner is chosen via `?owner=<ownerId>`, defaulting to the first owner
  * alphabetically. All aggregation is done from `getAllTimeRivalries()`, which
@@ -9,7 +9,7 @@
  */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Swords, ArrowLeft } from "lucide-react";
+import { Swords, ArrowLeft, ChevronDown } from "lucide-react";
 
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
@@ -19,8 +19,8 @@ import { Card, CardBody } from "@/components/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/data-table";
 import { TeamLogo } from "@/components/team-logo";
 import { OwnerSelector } from "@/components/owner-selector";
-import { getAllTimeRivalries } from "@/lib/history";
-import { winPct } from "@/lib/utils";
+import { getAllTimeRivalries, type OwnerIdentity } from "@/lib/history";
+import { formatPoints, winPct } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -37,6 +37,112 @@ function record(w: number, l: number, t: number): string {
 
 function pct(w: number, l: number, t: number): string {
   return (winPct(w, l, t) * 100).toFixed(1) + "%";
+}
+
+interface OpponentGame {
+  seasonId: number;
+  year: number;
+  week: number;
+  /** Selected owner's points / opponent's points for this meeting. */
+  points: number;
+  oppPoints: number;
+}
+
+interface OpponentRow {
+  opponent: OwnerIdentity;
+  wins: number;
+  losses: number;
+  ties: number;
+  meetings: number;
+  games: OpponentGame[];
+}
+
+/** One opponent's summary row, expandable (no client JS) to the game-by-game log. */
+function OpponentDetail({ row }: { row: OpponentRow }) {
+  const wPct = winPct(row.wins, row.losses, row.ties);
+  const leads = row.wins > row.losses;
+  const trails = row.losses > row.wins;
+
+  return (
+    <details className="group rounded-xl border border-border bg-card shadow-sm open:shadow-md">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap sm:gap-4">
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <TeamLogo
+            src={row.opponent.logoEspn}
+            alt={`${row.opponent.teamName ?? "team"} logo`}
+            size={22}
+          />
+          <span className="truncate font-medium text-foreground">{row.opponent.ownerName}</span>
+          {row.opponent.teamKey ? (
+            <span className="hidden shrink-0 text-xs text-muted sm:inline">
+              {row.opponent.teamKey}
+            </span>
+          ) : null}
+        </span>
+
+        <span className="flex shrink-0 items-center gap-4 text-sm">
+          <span className="tabular-nums font-semibold">
+            <span className={leads ? "text-win" : "text-foreground"}>{row.wins}</span>
+            <span className="px-0.5 text-subtle">-</span>
+            <span className={trails ? "text-loss" : "text-foreground"}>{row.losses}</span>
+            {row.ties > 0 ? <span className="text-subtle">{`-${row.ties}`}</span> : null}
+          </span>
+          <span className="hidden tabular-nums text-muted sm:inline">
+            {row.meetings} mtg{row.meetings === 1 ? "" : "s"}
+          </span>
+          <Badge variant={leads ? "win" : trails ? "loss" : "neutral"}>
+            {(wPct * 100).toFixed(1)}%
+          </Badge>
+          <ChevronDown
+            className="size-4 shrink-0 text-subtle transition-transform group-open:rotate-180"
+            aria-hidden="true"
+          />
+        </span>
+      </summary>
+
+      <div className="border-t border-border px-4 py-3">
+        <Table>
+          <caption className="sr-only">
+            Game-by-game results vs. {row.opponent.ownerName}
+          </caption>
+          <THead>
+            <TR>
+              <TH>Season</TH>
+              <TH align="center">Week</TH>
+              <TH align="right">You</TH>
+              <TH align="right">Opp</TH>
+              <TH align="right">Result</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {row.games.map((g) => {
+              const won = g.points > g.oppPoints;
+              const tied = g.points === g.oppPoints;
+              return (
+                <TR key={`${g.seasonId}:${g.week}`}>
+                  <TD className="tabular-nums">{g.year}</TD>
+                  <TD align="center" className="tabular-nums text-muted">
+                    {g.week}
+                  </TD>
+                  <TD align="right" className="tabular-nums font-semibold text-foreground">
+                    {formatPoints(g.points)}
+                  </TD>
+                  <TD align="right" className="tabular-nums text-muted">
+                    {formatPoints(g.oppPoints)}
+                  </TD>
+                  <TD align="right">
+                    <Badge variant={won ? "win" : tied ? "tie" : "loss"}>
+                      {won ? "W" : tied ? "T" : "L"}
+                    </Badge>
+                  </TD>
+                </TR>
+              );
+            })}
+          </TBody>
+        </Table>
+      </div>
+    </details>
+  );
 }
 
 export default async function HeadToHeadPage({
@@ -86,7 +192,7 @@ export default async function HeadToHeadPage({
 
   // Per-opponent rows: filter rivalries involving the selected owner and flip
   // the A/B orientation so wins/losses are always from the selected owner's POV.
-  const opponents = rivalryData.rivalries
+  const opponents: OpponentRow[] = rivalryData.rivalries
     .filter(
       (r) =>
         r.ownerA.ownerId === selectedId || r.ownerB.ownerId === selectedId,
@@ -99,6 +205,13 @@ export default async function HeadToHeadPage({
         losses: isA ? r.bWins : r.aWins,
         ties: r.ties,
         meetings: r.meetings,
+        games: r.games.map((g) => ({
+          seasonId: g.seasonId,
+          year: g.year,
+          week: g.week,
+          points: isA ? g.aPoints : g.bPoints,
+          oppPoints: isA ? g.bPoints : g.aPoints,
+        })),
       };
     })
     .sort(
@@ -123,7 +236,7 @@ export default async function HeadToHeadPage({
           </Link>
         }
         title="Head-to-Head Records"
-        description="All-time record for any owner against every leaguemate, aggregated across all seasons."
+        description="All-time record for any owner against every opponent, aggregated across all seasons."
         actions={
           <OwnerSelector
             owners={allOwners.map((o) => ({
@@ -202,74 +315,14 @@ export default async function HeadToHeadPage({
             description="This owner hasn't played any scored head-to-head games yet against any opponent."
           />
         ) : (
-          <Table>
-            <caption className="sr-only">
-              {selectedOwner.ownerName}&apos;s all-time head-to-head records
-            </caption>
-            <THead>
-              <TR>
-                <TH>Opponent</TH>
-                <TH align="center">W</TH>
-                <TH align="center">L</TH>
-                <TH align="center" className="hidden sm:table-cell">T</TH>
-                <TH align="center">Meetings</TH>
-                <TH align="right">Win %</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {opponents.map((row) => {
-                const wPct = winPct(row.wins, row.losses, row.ties);
-                const leads = row.wins > row.losses;
-                const trails = row.losses > row.wins;
-                return (
-                  <TR key={row.opponent.ownerId}>
-                    <TD>
-                      <div className="flex items-center gap-2">
-                        <TeamLogo
-                          src={row.opponent.logoEspn}
-                          alt={`${row.opponent.teamName ?? "team"} logo`}
-                          size={22}
-                        />
-                        <span className="font-medium text-foreground">
-                          {row.opponent.ownerName}
-                        </span>
-                        {row.opponent.teamKey ? (
-                          <span className="hidden text-xs text-muted sm:inline">
-                            {row.opponent.teamKey}
-                          </span>
-                        ) : null}
-                      </div>
-                    </TD>
-                    <TD align="center" className="tabular-nums font-semibold">
-                      <span className={leads ? "text-win" : "text-foreground"}>
-                        {row.wins}
-                      </span>
-                    </TD>
-                    <TD align="center" className="tabular-nums font-semibold">
-                      <span className={trails ? "text-loss" : "text-foreground"}>
-                        {row.losses}
-                      </span>
-                    </TD>
-                    <TD align="center" className="hidden tabular-nums text-muted sm:table-cell">
-                      {row.ties}
-                    </TD>
-                    <TD align="center" className="tabular-nums text-muted">
-                      {row.meetings}
-                    </TD>
-                    <TD align="right" className="tabular-nums">
-                      <Badge
-                        variant={
-                          leads ? "win" : trails ? "loss" : "neutral"
-                        }
-                      >
-                        {(wPct * 100).toFixed(1)}%
-                      </Badge>
-                    </TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-muted">
+              Click an opponent to see the game-by-game results behind the record.
+            </p>
+            {opponents.map((row) => (
+              <OpponentDetail key={row.opponent.ownerId} row={row} />
+            ))}
+          </div>
         )}
       </section>
     </Container>

@@ -287,10 +287,20 @@ export interface OwnerIdentity {
   logoEspn: string | null;
 }
 
+/** One individual meeting between two people (a single matchup), in canonical A/B order. */
+export interface RivalryGame {
+  seasonId: number;
+  year: number;
+  week: number;
+  aPoints: number;
+  bPoints: number;
+}
+
 /**
  * All-time head-to-head between two PEOPLE. `a`/`b` are ordered so `ownerA.ownerId
  * < ownerB.ownerId` for a stable key. `aWins`/`bWins`/`ties` and `aPoints`/`bPoints`
- * accumulate across every season the two have met.
+ * accumulate across every season the two have met. `games` is the chronological
+ * per-meeting breakdown those aggregates are built from.
  */
 export interface Rivalry {
   ownerA: OwnerIdentity;
@@ -301,6 +311,7 @@ export interface Rivalry {
   meetings: number;
   aPoints: number;
   bPoints: number;
+  games: RivalryGame[];
 }
 
 export interface AllTimeRivalries {
@@ -387,6 +398,9 @@ export async function getAllTimeRivalries(): Promise<AllTimeRivalries> {
   }
 
   // 3. Matchups (regular season only) → accumulate per owner-pair, by person.
+  const seasonRows = await db.select({ id: seasons.id, year: seasons.year }).from(seasons);
+  const yearBySeasonId = new Map(seasonRows.map((s) => [s.id, s.year]));
+
   const matchupRows = await db
     .select({
       seasonId: matchups.seasonId,
@@ -422,6 +436,7 @@ export async function getAllTimeRivalries(): Promise<AllTimeRivalries> {
         meetings: 0,
         aPoints: 0,
         bPoints: 0,
+        games: [],
       };
       rivalryByPair.set(key, rv);
     }
@@ -433,12 +448,22 @@ export async function getAllTimeRivalries(): Promise<AllTimeRivalries> {
     const bPts = homeIsA ? awayPts : homePts;
     rv.aPoints += aPts;
     rv.bPoints += bPts;
+    rv.games.push({
+      seasonId: m.seasonId,
+      year: yearBySeasonId.get(m.seasonId) ?? 0,
+      week: m.week,
+      aPoints: aPts,
+      bPoints: bPts,
+    });
     if (aPts > bPts) rv.aWins += 1;
     else if (bPts > aPts) rv.bWins += 1;
     else rv.ties += 1;
   }
 
   const rivalries = [...rivalryByPair.values()];
+  for (const rv of rivalries) {
+    rv.games.sort((a, b) => a.year - b.year || a.week - b.week);
+  }
 
   const mostPlayed = (limit = 10): Rivalry[] =>
     [...rivalries].sort((a, b) => b.meetings - a.meetings).slice(0, limit);

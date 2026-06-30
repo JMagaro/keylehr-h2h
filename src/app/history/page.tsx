@@ -371,7 +371,7 @@ export default async function HistoryPage() {
             >
               <div className="flex flex-col gap-1">
                 <span className="font-semibold text-foreground group-hover:text-accent">
-                  View owner vs. leaguemate records →
+                  View owner vs. opponent records →
                 </span>
                 <span className="text-sm text-muted">
                   Pick any owner to see their all-time W-L record against every opponent, aggregated across all seasons.
