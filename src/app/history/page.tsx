@@ -7,7 +7,7 @@
  */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ScrollText, Trophy, Crown, Flame, Swords, Users } from "lucide-react";
+import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart } from "lucide-react";
 
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
@@ -16,11 +16,13 @@ import { Badge } from "@/components/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardBody } from "@/components/card";
 import { TeamLogo } from "@/components/team-logo";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/data-table";
+import { OwnerTrendsPanel } from "@/components/owner-trend-chart";
 import { formatPoints } from "@/lib/utils";
 import {
   getSeasonHistory,
   getAllTimeLeaders,
   getAllTimeRivalries,
+  getOwnerSeasonTrends,
   type SeasonHistory,
   type AllTimeLeader,
   type Rivalry,
@@ -276,10 +278,11 @@ function RivalryTable({
 }
 
 export default async function HistoryPage() {
-  const [seasonHistory, leaders, rivalries] = await Promise.all([
+  const [seasonHistory, leaders, rivalries, ownerTrends] = await Promise.all([
     getSeasonHistory(),
     getAllTimeLeaders(),
     getAllTimeRivalries(),
+    getOwnerSeasonTrends(),
   ]);
 
   const hasAnyData = seasonHistory.length > 0;
@@ -355,6 +358,19 @@ export default async function HistoryPage() {
                 }
               />
             </div>
+          </section>
+
+          {/* Owner trends */}
+          <section aria-label="Owner trends" className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <LineChart className="size-5 text-accent" aria-hidden="true" />
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Owner trends</h2>
+            </div>
+            <p className="text-sm text-muted">
+              Every owner&apos;s win count and average Points For, season by season. Search or hover an
+              owner below to highlight their line on both charts.
+            </p>
+            <OwnerTrendsPanel trends={ownerTrends} />
           </section>
 
           {/* Head-to-Head Records */}

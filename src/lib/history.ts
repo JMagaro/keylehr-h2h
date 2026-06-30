@@ -95,6 +95,8 @@ type OwnerIdentityRow = {
   teamKey: string;
   teamName: string;
   logoEspn: string | null;
+  /** Team's primary brand color (hex), e.g. for chart line coloring. */
+  color: string | null;
 };
 
 async function loadOwnerIdentities(seasonId: number): Promise<Map<number, OwnerIdentityRow>> {
@@ -106,12 +108,15 @@ async function loadOwnerIdentities(seasonId: number): Promise<Map<number, OwnerI
       teamKey: nflTeams.key,
       teamName: nflTeams.name,
       logoEspn: nflTeams.logoEspn,
+      color: nflTeams.primaryColor,
     })
     .from(ownerSeasons)
     .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id))
     .innerJoin(nflTeams, eq(ownerSeasons.nflTeamId, nflTeams.id))
     .where(eq(ownerSeasons.seasonId, seasonId));
-  return new Map(rows.map((r) => [r.ownerSeasonId, { ...r, logoEspn: r.logoEspn ?? null }]));
+  return new Map(
+    rows.map((r) => [r.ownerSeasonId, { ...r, logoEspn: r.logoEspn ?? null, color: r.color ?? null }]),
+  );
 }
 
 function holderFrom(id: OwnerIdentityRow): SeasonRecordHolder {
@@ -668,4 +673,93 @@ export async function getAllTimeLeaders(): Promise<AllTimeLeaders> {
       .slice(0, limit);
 
   return { leaders, byWins, byPoints, byBestWeek };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Owner trends over time (cross-season, by person)                            */
+/* -------------------------------------------------------------------------- */
+
+/** One owner's per-season win count + average Points For, for the trend charts. */
+export interface OwnerSeasonTrendOwner {
+  ownerId: number;
+  ownerName: string;
+  teamKey: string | null;
+  teamName: string | null;
+  logoEspn: string | null;
+  /** Most-recent team's primary brand color (hex), used to color the owner's line. */
+  color: string | null;
+  /**
+   * Regular-season win count per year, aligned index-for-index with
+   * {@link OwnerSeasonTrends.years}. `null` = the owner didn't play that season.
+   */
+  wins: (number | null)[];
+  /** Average regular-season Points For per game played, same alignment as `wins`. */
+  avgPointsFor: (number | null)[];
+}
+
+export interface OwnerSeasonTrends {
+  /** Season years with data, ascending (oldest first — natural left-to-right reading). */
+  years: number[];
+  owners: OwnerSeasonTrendOwner[];
+}
+
+/**
+ * Every owner's win count + average Points For for every season with data, aggregated
+ * by PERSON (owners.id) so a co-owned/renamed team across years still rolls up to one
+ * line. Powers the "Owner trends" overlaid line charts on `/history`.
+ */
+export async function getOwnerSeasonTrends(): Promise<OwnerSeasonTrends> {
+  const options = await getSeasonOptions(); // newest year first
+
+  const ownerSeasonRows = await db
+    .select({ seasonId: ownerSeasons.seasonId })
+    .from(ownerSeasons);
+  const seasonsWithData = new Set(ownerSeasonRows.map((r) => r.seasonId));
+
+  // Chronological (oldest first) so the chart reads left-to-right naturally.
+  const dataSeasons = options.filter((s) => seasonsWithData.has(s.id)).sort((a, b) => a.year - b.year);
+  const years = dataSeasons.map((s) => s.year);
+
+  const byOwner = new Map<number, OwnerSeasonTrendOwner>();
+  /** Track the latest year seen per owner so identity (team/color) uses their most recent team. */
+  const latestYearByOwner = new Map<number, number>();
+
+  for (let i = 0; i < dataSeasons.length; i++) {
+    const season = dataSeasons[i]!;
+    const identities = await loadOwnerIdentities(season.id);
+    const standings = await getSeasonStandings(season.id);
+
+    for (const s of standings) {
+      const id = identities.get(s.ownerSeasonId);
+      if (!id) continue;
+      let agg = byOwner.get(id.ownerId);
+      if (!agg) {
+        agg = {
+          ownerId: id.ownerId,
+          ownerName: id.ownerName,
+          teamKey: id.teamKey,
+          teamName: id.teamName,
+          logoEspn: id.logoEspn,
+          color: id.color,
+          wins: new Array(years.length).fill(null),
+          avgPointsFor: new Array(years.length).fill(null),
+        };
+        byOwner.set(id.ownerId, agg);
+      }
+      // Refresh display identity to the latest season's team.
+      const seen = latestYearByOwner.get(id.ownerId);
+      if (seen === undefined || season.year >= seen) {
+        latestYearByOwner.set(id.ownerId, season.year);
+        agg.ownerName = id.ownerName;
+        agg.teamKey = id.teamKey;
+        agg.teamName = id.teamName;
+        agg.logoEspn = id.logoEspn;
+        agg.color = id.color;
+      }
+      agg.wins[i] = s.wins;
+      agg.avgPointsFor[i] = s.gamesPlayed > 0 ? s.pointsFor / s.gamesPlayed : null;
+    }
+  }
+
+  return { years, owners: [...byOwner.values()] };
 }
