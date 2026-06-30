@@ -12,6 +12,7 @@
 import { useId, useMemo, useState } from 'react';
 
 import { TeamLogo } from '@/components/team-logo';
+import { forDarkBackground, useIsDarkMode } from '@/lib/color';
 import { cn } from '@/lib/utils';
 import type { OwnerSeasonTrends } from '@/lib/history';
 
@@ -79,6 +80,11 @@ export function OwnerTrendChart({
 }: OwnerTrendChartProps) {
   const titleId = useId();
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const isDark = useIsDarkMode();
+  const lineColor = (c: string | null) => {
+    const base = c ?? FALLBACK_COLOR;
+    return isDark ? forDarkBackground(base) : base;
+  };
 
   const xOf = (i: number) =>
     years.length <= 1 ? PAD.left + PLOT_W / 2 : PAD.left + (i / (years.length - 1)) * PLOT_W;
@@ -161,9 +167,9 @@ export function OwnerTrendChart({
               key={o.ownerId}
               d={pathD(pts)}
               fill="none"
-              stroke={o.color ?? FALLBACK_COLOR}
+              stroke={lineColor(o.color)}
               strokeWidth={1.5}
-              strokeOpacity={activeOwnerId === null ? 0.28 : 0.12}
+              strokeOpacity={activeOwnerId === null ? (isDark ? 0.4 : 0.28) : isDark ? 0.2 : 0.12}
               strokeLinejoin="round"
               strokeLinecap="round"
               className="transition-[stroke-opacity] duration-150"
@@ -191,7 +197,7 @@ export function OwnerTrendChart({
         {/* The active (highlighted) owner's line + markers, drawn on top. */}
         {activeOwner &&
           (() => {
-            const color = activeOwner.color ?? FALLBACK_COLOR;
+            const color = lineColor(activeOwner.color);
             const pts = pointsFor(activeOwner.series, xOf, yOf);
             return (
               <g>
@@ -278,6 +284,11 @@ export function OwnerTrendChart({
 export function OwnerTrendsPanel({ trends }: { trends: OwnerSeasonTrends }) {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [query, setQuery] = useState('');
+  const isDark = useIsDarkMode();
+  const legendDotColor = (c: string | null) => {
+    const base = c ?? FALLBACK_COLOR;
+    return isDark ? forDarkBackground(base) : base;
+  };
 
   const filteredLegend = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -365,7 +376,7 @@ export function OwnerTrendsPanel({ trends }: { trends: OwnerSeasonTrends }) {
                   <span
                     aria-hidden="true"
                     className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: o.color ?? FALLBACK_COLOR }}
+                    style={{ backgroundColor: legendDotColor(o.color) }}
                   />
                   <TeamLogo src={o.logoEspn} alt={`${o.teamName ?? 'team'} logo`} size={18} />
                   <span className="truncate text-foreground">{o.ownerName}</span>

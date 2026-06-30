@@ -29,6 +29,7 @@
 import { useId, useMemo, useState } from 'react';
 
 import { TeamLogo } from '@/components/team-logo';
+import { forDarkBackground, useIsDarkMode } from '@/lib/color';
 import { cn } from '@/lib/utils';
 import type { OddsTrend, OddsTrendOwner } from '@/lib/odds/query';
 
@@ -84,6 +85,11 @@ export function PlayoffOddsChart({ trend, className }: PlayoffOddsChartProps) {
   const [query, setQuery] = useState('');
   const [activeId, setActiveId] = useState<number | null>(null);
   const [hoverWeekIdx, setHoverWeekIdx] = useState<number | null>(null);
+  const isDark = useIsDarkMode();
+  const lineColor = (c: string | null) => {
+    const base = c ?? FALLBACK_COLOR;
+    return isDark ? forDarkBackground(base) : base;
+  };
 
   const { weeks, owners } = trend;
 
@@ -253,9 +259,9 @@ export function PlayoffOddsChart({ trend, className }: PlayoffOddsChartProps) {
                 key={o.ownerSeasonId}
                 d={pathD(pts)}
                 fill="none"
-                stroke={o.color ?? FALLBACK_COLOR}
+                stroke={lineColor(o.color)}
                 strokeWidth={1.5}
-                strokeOpacity={activeId === null ? 0.28 : 0.12}
+                strokeOpacity={activeId === null ? (isDark ? 0.4 : 0.28) : isDark ? 0.2 : 0.12}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 className="transition-[stroke-opacity] duration-150"
@@ -284,7 +290,7 @@ export function PlayoffOddsChart({ trend, className }: PlayoffOddsChartProps) {
           {activeOwner &&
             visibleOwners.some((o) => o.ownerSeasonId === activeId) &&
             (() => {
-              const color = activeOwner.color ?? FALLBACK_COLOR;
+              const color = lineColor(activeOwner.color);
               const pts = pointsFor(activeOwner, weeks, xOf, yOf);
               return (
                 <g>
@@ -369,7 +375,7 @@ export function PlayoffOddsChart({ trend, className }: PlayoffOddsChartProps) {
                 <span
                   aria-hidden="true"
                   className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: o.color ?? FALLBACK_COLOR }}
+                  style={{ backgroundColor: lineColor(o.color) }}
                 />
                 <TeamLogo src={o.logoEspn} alt={`${o.teamName} logo`} size={18} />
                 <span className="truncate text-foreground">{o.ownerName}</span>
