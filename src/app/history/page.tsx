@@ -17,7 +17,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardBody } from "@/compon
 import { TeamLogo } from "@/components/team-logo";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/data-table";
 import { OwnerTrendsPanel } from "@/components/owner-trend-chart";
-import { formatPoints, formatMoney } from "@/lib/utils";
+import { formatPoints, formatMoney, winPct } from "@/lib/utils";
 import {
   getSeasonHistory,
   getAllTimeLeaders,
@@ -82,9 +82,7 @@ function record(w: number, l: number, t: number): string {
 }
 
 function allTimeWinPct(l: AllTimeLeader): string {
-  const g = l.totalWins + l.totalLosses + l.totalTies;
-  if (g === 0) return '0.0%';
-  return ((l.totalWins + l.totalTies * 0.5) / g * 100).toFixed(1) + '%';
+  return (winPct(l.totalWins, l.totalLosses, l.totalTies) * 100).toFixed(1) + '%';
 }
 
 function SeasonCard({ season }: { season: SeasonHistory }) {
@@ -285,10 +283,12 @@ function GameExtremeCard({
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
+          <TeamLogo src={game.winnerLogoEspn} alt={`${game.winnerTeamKey} logo`} size={20} />
           <span className="font-semibold text-foreground">{game.winnerOwnerName}</span>
           <span className="ml-auto tabular-nums font-semibold text-foreground">{game.winnerPoints.toFixed(2)}</span>
         </div>
         <div className="flex items-center gap-2 opacity-60">
+          <TeamLogo src={game.loserLogoEspn} alt={`${game.loserTeamKey} logo`} size={20} />
           <span className="text-foreground">{game.loserOwnerName}</span>
           <span className="ml-auto tabular-nums text-foreground">{game.loserPoints.toFixed(2)}</span>
         </div>
@@ -434,7 +434,7 @@ function NetEarnersTable({ rows }: { rows: NetEarningsLeader[] }) {
         <h3 className="text-sm font-semibold tracking-tight text-foreground">Net earners</h3>
       </div>
       <p className="text-xs text-muted">
-        Who&apos;s up and who&apos;s down — prizes won minus entry fees paid across all seasons.
+        Top 10 by net — prizes won minus entry fees paid across all seasons.
       </p>
       <Table>
         <caption className="sr-only">Net earners all-time</caption>
@@ -442,6 +442,8 @@ function NetEarnersTable({ rows }: { rows: NetEarningsLeader[] }) {
           <TR>
             <TH align="center" className="w-8">#</TH>
             <TH>Owner</TH>
+            <TH align="right" className="hidden sm:table-cell">Earned</TH>
+            <TH align="right" className="hidden sm:table-cell">Paid</TH>
             <TH align="right">Net</TH>
           </TR>
         </THead>
@@ -450,6 +452,12 @@ function NetEarnersTable({ rows }: { rows: NetEarningsLeader[] }) {
             <TR key={r.ownerId}>
               <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
               <TD><span className="font-medium text-foreground">{r.ownerName}</span></TD>
+              <TD align="right" className="hidden tabular-nums text-muted sm:table-cell">
+                {formatMoney(r.earnedCents)}
+              </TD>
+              <TD align="right" className="hidden tabular-nums text-muted sm:table-cell">
+                {formatMoney(r.paidCents)}
+              </TD>
               <TD align="right" className={`tabular-nums font-semibold ${r.netCents >= 0 ? "text-win" : "text-loss"}`}>
                 {r.netCents >= 0 ? "+" : ""}{formatMoney(r.netCents)}
               </TD>
@@ -592,7 +600,7 @@ export default async function HistoryPage() {
               />
             </div>
             <div className="grid gap-6 lg:grid-cols-3">
-              {championLeaders.length > 0 && (
+              {championLeaders.length > 0 ? (
                 <LeaderTable<ChampionLeader>
                   title="Most championships"
                   description="Championship titles won across all seasons."
@@ -601,6 +609,14 @@ export default async function HistoryPage() {
                   valueHeader="Titles"
                   valueOf={(l) => `${l.championships}`}
                 />
+              ) : (
+                <div className="flex min-w-0 flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <Medal className="size-4 text-accent" aria-hidden="true" />
+                    <h3 className="text-sm font-semibold tracking-tight text-foreground">Most championships</h3>
+                  </div>
+                  <p className="text-xs text-muted">No championship titles recorded yet.</p>
+                </div>
               )}
               <PlayoffTable rows={playoffStats.slice(0, 10)} />
               <LeaderTable<WeeklyHighStat>
@@ -673,7 +689,7 @@ export default async function HistoryPage() {
               />
             </div>
             <div className="grid gap-6 lg:grid-cols-2">
-              <NetEarnersTable rows={earners} />
+              <NetEarnersTable rows={earners.slice(0, 10)} />
               <MissedSubmissionsTable rows={missedSubmissions} />
             </div>
           </section>

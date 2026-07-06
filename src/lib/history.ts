@@ -1071,14 +1071,14 @@ export interface WeeklyHighStat {
 export async function getWeeklyHighScores(): Promise<WeeklyHighStat[]> {
   const seasonOptions = await getSeasonOptions();
   const yearById = new Map(seasonOptions.map((s) => [s.id, s.year]));
-  const seasonsWithData = seasonOptions.map((s) => s.id);
-  if (seasonsWithData.length === 0) return [];
+  const allSeasonIds = seasonOptions.map((s) => s.id);
+  if (allSeasonIds.length === 0) return [];
 
-  const [scoreRows, osRows] = await Promise.all([
+  const [scoreRows, osRows, seasonRules] = await Promise.all([
     db
       .select({ seasonId: scores.seasonId, ownerSeasonId: scores.ownerSeasonId, week: scores.week, dkPoints: scores.dkPoints, isBye: scores.isBye })
       .from(scores)
-      .where(inArray(scores.seasonId, seasonsWithData)),
+      .where(inArray(scores.seasonId, allSeasonIds)),
     db
       .select({ ownerSeasonId: ownerSeasons.id, seasonId: ownerSeasons.seasonId, ownerId: owners.id,
         ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
@@ -1086,7 +1086,12 @@ export async function getWeeklyHighScores(): Promise<WeeklyHighStat[]> {
       .from(ownerSeasons)
       .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id))
       .innerJoin(nflTeams, eq(ownerSeasons.nflTeamId, nflTeams.id)),
+    db.select({ id: seasons.id, rules: seasons.rules }).from(seasons),
   ]);
+
+  const regularWeeksBySeason = new Map(
+    seasonRules.map((r) => [r.id, getSeasonRules(r.rules).regularSeasonWeeks]),
+  );
 
   type Identity = { ownerId: number; ownerName: string; teamKey: string | null; teamName: string | null; logoEspn: string | null; seasonId: number };
   const identityByOwnerSeason = new Map<number, Identity>();
@@ -1095,10 +1100,11 @@ export async function getWeeklyHighScores(): Promise<WeeklyHighStat[]> {
       teamKey: r.teamKey, teamName: r.teamName, logoEspn: r.logoEspn ?? null, seasonId: r.seasonId });
   }
 
-  // Find the top scorer for each (season, week).
+  // Find the top scorer for each regular-season (season, week).
   const maxPerWeek = new Map<string, { ownerSeasonId: number; points: number }>();
   for (const s of scoreRows) {
     if (s.isBye || s.dkPoints === null) continue;
+    if (s.week > (regularWeeksBySeason.get(s.seasonId) ?? 18)) continue;
     const key = `${s.seasonId}:${s.week}`;
     const pts = Number(s.dkPoints);
     const cur = maxPerWeek.get(key);
@@ -1437,7 +1443,7 @@ export interface NetEarningsLeader {
 
 /**
  * Net earnings per owner (prize money minus entry fees) across all seasons,
- * top 10 descending. Every owner who has played at least one season is included.
+ * descending. Every owner who has played at least one season is included.
  */
 export async function getNetEarnings(): Promise<NetEarningsLeader[]> {
   const [seasonRows, ownerSeasonRows, earningsRows] = await Promise.all([
