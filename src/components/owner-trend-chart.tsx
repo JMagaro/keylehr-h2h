@@ -279,7 +279,7 @@ export function OwnerTrendChart({
             >
               <rect width={150} height={40} rx={6} className="fill-elevated stroke-border-strong" strokeWidth={1} />
               <text x={10} y={16} className="fill-foreground text-[12px] font-semibold">
-                {activeOwner?.teamKey ?? activeOwner?.ownerName} · {tooltip.year}
+                {activeOwner?.ownerName} · {tooltip.year}
               </text>
               <text x={10} y={32} className="fill-muted text-[12px]">
                 {valueFormat(tooltip.value)}
@@ -300,7 +300,6 @@ export function OwnerTrendChart({
           <thead>
             <tr>
               <th scope="col">Owner</th>
-              <th scope="col">Team</th>
               <th scope="col">{title}</th>
             </tr>
           </thead>
@@ -310,7 +309,6 @@ export function OwnerTrendChart({
               return (
                 <tr key={o.ownerId}>
                   <td>{o.ownerName}</td>
-                  <td>{o.teamName}</td>
                   <td>{v === null || v === undefined ? 'n/a' : valueFormat(v)}</td>
                 </tr>
               );
@@ -341,12 +339,7 @@ function OwnerLegend({ owners, activeId, setActiveId, query, setQuery }: OwnerLe
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return owners;
-    return owners.filter(
-      (o) =>
-        o.ownerName.toLowerCase().includes(q) ||
-        (o.teamName ?? '').toLowerCase().includes(q) ||
-        (o.teamKey ?? '').toLowerCase().includes(q),
-    );
+    return owners.filter((o) => o.ownerName.toLowerCase().includes(q));
   }, [owners, query]);
 
   return (
@@ -355,8 +348,8 @@ function OwnerLegend({ owners, activeId, setActiveId, query, setQuery }: OwnerLe
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search owner or team…"
-        aria-label="Search owner or team to highlight"
+        placeholder="Search owner…"
+        aria-label="Search owner to highlight"
         className="w-full max-w-xs self-start rounded-lg border border-border-strong bg-card px-3 py-1.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
       />
       <ul

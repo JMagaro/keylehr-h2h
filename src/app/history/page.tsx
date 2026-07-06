@@ -7,7 +7,7 @@
  */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart, Star, TrendingUp, TrendingDown } from "lucide-react";
+import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart, Star, TrendingUp, TrendingDown, AlertCircle, DollarSign, Medal, Target, Zap } from "lucide-react";
 
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
@@ -17,22 +17,28 @@ import { Card, CardHeader, CardTitle, CardDescription, CardBody } from "@/compon
 import { TeamLogo } from "@/components/team-logo";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/data-table";
 import { OwnerTrendsPanel } from "@/components/owner-trend-chart";
-import { formatPoints } from "@/lib/utils";
+import { formatPoints, formatMoney } from "@/lib/utils";
 import {
   getSeasonHistory,
   getAllTimeLeaders,
   getAllTimeRivalries,
   getOwnerSeasonTrends,
+  getStreakLeaders,
+  getMissedSubmissions,
+  getNetEarnings,
   getPlayoffStats,
   getWeeklyHighScores,
   getGameExtremes,
   getChampionLeaders,
   type SeasonHistory,
   type ChampionLeader,
+  type Rivalry,
+  type StreakRecord,
+  type MissedSubmission,
+  type NetEarningsLeader,
   type PlayoffStat,
   type WeeklyHighStat,
   type GameExtreme,
-  type Rivalry,
 } from "@/lib/history";
 
 export const dynamic = "force-dynamic";
@@ -77,88 +83,83 @@ function record(w: number, l: number, t: number): string {
 function SeasonCard({ season }: { season: SeasonHistory }) {
   const top = season.topFinisher;
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <CardTitle>{season.seasonName}</CardTitle>
-          <CardDescription>
-            {season.ownerCount} owners · {season.weeksPlayed} week
-            {season.weeksPlayed === 1 ? "" : "s"} played
-          </CardDescription>
-        </div>
-        <Badge variant={season.status === "completed" ? "accent" : "neutral"}>
-          {season.status === "active"
-            ? "In progress"
-            : season.status === "upcoming"
-              ? "Upcoming"
-              : "Final"}
-        </Badge>
-      </CardHeader>
-      <CardBody className="flex flex-col gap-4">
-        {top ? (
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
-            <TeamLogo src={top.logoEspn} alt={`${top.teamName} logo`} size={36} />
-            <div className="flex min-w-0 flex-col">
-              <div className="flex items-center gap-2">
-                <span className="truncate text-sm font-semibold text-foreground">
-                  {top.ownerName}
-                </span>
-                <Badge variant={top.isChampion ? "div" : "accent"}>
-                  {top.isChampion ? (
-                    <>
-                      <Crown className="size-3" aria-hidden="true" /> Champion
-                    </>
-                  ) : (
-                    <>
-                      <Trophy className="size-3" aria-hidden="true" /> Reg-season #1
-                    </>
-                  )}
-                </Badge>
-              </div>
-              <span className="text-xs text-muted">
-                {top.teamKey} · {record(top.wins, top.losses, top.ties)} ·{" "}
-                {formatPoints(top.pointsFor)} PF
-              </span>
-            </div>
+    <Link href={`/history/${season.year}`} className="group block">
+      <Card className="h-full transition-colors group-hover:border-accent/50">
+        <CardHeader className="flex-row items-center justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <CardTitle>{season.seasonName}</CardTitle>
+            <CardDescription>
+              {season.ownerCount} owners · {season.weeksPlayed} week
+              {season.weeksPlayed === 1 ? "" : "s"} played
+            </CardDescription>
           </div>
-        ) : (
-          <p className="text-sm text-muted">No standings recorded for this season yet.</p>
-        )}
+          <Badge variant={season.status === "completed" ? "accent" : "neutral"}>
+            {season.status === "active"
+              ? "In progress"
+              : season.status === "upcoming"
+                ? "Upcoming"
+                : "Final"}
+          </Badge>
+        </CardHeader>
+        <CardBody className="flex flex-col gap-4">
+          {top ? (
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
+              <TeamLogo src={top.logoEspn} alt={`${top.teamName} logo`} size={36} />
+              <div className="flex min-w-0 flex-col">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-semibold text-foreground">
+                    {top.ownerName}
+                  </span>
+                  <Badge variant={top.isChampion ? "div" : "accent"}>
+                    {top.isChampion ? (
+                      <>
+                        <Crown className="size-3" aria-hidden="true" /> Champion
+                      </>
+                    ) : (
+                      <>
+                        <Trophy className="size-3" aria-hidden="true" /> Regular-season #1
+                      </>
+                    )}
+                  </Badge>
+                </div>
+                <span className="text-xs text-muted">
+                  {record(top.wins, top.losses, top.ties)} ·{" "}
+                  {formatPoints(top.pointsFor)} pts
+                </span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted">No standings recorded for this season yet.</p>
+          )}
 
-        <div className="divide-y divide-border">
-          <RecordLine
-            label="Highest week"
-            holder={season.highestWeek}
-            value={
-              season.highestWeek
-                ? `${formatPoints(season.highestWeek.points)} (Wk ${season.highestWeek.week})`
-                : ""
-            }
-          />
-          <RecordLine
-            label="Points leader"
-            holder={season.pointsLeader}
-            value={season.pointsLeader ? `${formatPoints(season.pointsLeader.pointsFor)} PF` : ""}
-          />
-          <RecordLine
-            label="Best record"
-            holder={season.bestRecord}
-            value={
-              season.bestRecord
-                ? record(season.bestRecord.wins, season.bestRecord.losses, season.bestRecord.ties)
-                : ""
-            }
-          />
-        </div>
-
-        <Link
-          href={`/history/${season.year}`}
-          className="self-start text-sm font-medium text-accent hover:underline"
-        >
-          View standings &amp; bracket →
-        </Link>
-      </CardBody>
-    </Card>
+          <div className="divide-y divide-border">
+            <RecordLine
+              label="Highest week"
+              holder={season.highestWeek}
+              value={
+                season.highestWeek
+                  ? `${formatPoints(season.highestWeek.points)} (Wk ${season.highestWeek.week})`
+                  : ""
+              }
+            />
+            <RecordLine
+              label="Points leader"
+              holder={season.pointsLeader}
+              value={season.pointsLeader ? `${formatPoints(season.pointsLeader.pointsFor)} pts` : ""}
+            />
+            <RecordLine
+              label="Best record"
+              holder={season.bestRecord}
+              value={
+                season.bestRecord
+                  ? record(season.bestRecord.wins, season.bestRecord.losses, season.bestRecord.ties)
+                  : ""
+              }
+            />
+          </div>
+        </CardBody>
+      </Card>
+    </Link>
   );
 }
 
@@ -189,7 +190,9 @@ function LeaderTable<T extends { ownerId: number; ownerName: string }>({
         <caption className="sr-only">{title}</caption>
         <THead>
           <TR>
-            <TH align="center" className="w-8">#</TH>
+            <TH align="center" className="w-8">
+              #
+            </TH>
             <TH>Owner</TH>
             <TH align="right">{valueHeader}</TH>
           </TR>
@@ -197,11 +200,15 @@ function LeaderTable<T extends { ownerId: number; ownerName: string }>({
         <TBody>
           {rows.map((l, i) => (
             <TR key={l.ownerId}>
-              <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
+              <TD align="center" className="tabular-nums text-subtle">
+                {i + 1}
+              </TD>
               <TD>
                 <span className="font-medium text-foreground">{l.ownerName}</span>
               </TD>
-              <TD align="right" className="tabular-nums font-semibold">{valueOf(l)}</TD>
+              <TD align="right" className="tabular-nums font-semibold">
+                {valueOf(l)}
+              </TD>
             </TR>
           ))}
         </TBody>
@@ -210,17 +217,16 @@ function LeaderTable<T extends { ownerId: number; ownerName: string }>({
   );
 }
 
-/** Two-column value table for playoff stats (appearances + W-L). */
-function PlayoffStatTable({ rows }: { rows: PlayoffStat[] }) {
+function PlayoffTable({ rows }: { rows: PlayoffStat[] }) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-2">
-        <Trophy className="size-4 text-accent" aria-hidden="true" />
+        <Target className="size-4 text-accent" aria-hidden="true" />
         <h3 className="text-sm font-semibold tracking-tight text-foreground">Playoff appearances</h3>
       </div>
       <p className="text-xs text-muted">Seasons reaching the postseason, with all-time playoff W-L record.</p>
       <Table>
-        <caption className="sr-only">Playoff appearances</caption>
+        <caption className="sr-only">Playoff appearances all-time</caption>
         <THead>
           <TR>
             <TH align="center" className="w-8">#</TH>
@@ -233,9 +239,7 @@ function PlayoffStatTable({ rows }: { rows: PlayoffStat[] }) {
           {rows.map((l, i) => (
             <TR key={l.ownerId}>
               <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
-              <TD>
-                <span className="font-medium text-foreground">{l.ownerName}</span>
-              </TD>
+              <TD><span className="font-medium text-foreground">{l.ownerName}</span></TD>
               <TD align="right" className="tabular-nums font-semibold">{l.appearances}</TD>
               <TD align="right" className="tabular-nums text-muted">
                 {l.playoffWins}-{l.playoffLosses}
@@ -275,7 +279,7 @@ function GameExtremeCard({
           <span className="ml-auto tabular-nums text-foreground">{game.loserPoints.toFixed(2)}</span>
         </div>
       </div>
-      <p className="text-xs text-accent font-medium">
+      <p className="text-xs font-medium text-accent">
         {game.margin < 0.1 ? `Margin: ${game.margin.toFixed(2)} pts` : `Won by ${game.margin.toFixed(2)} pts`}
       </p>
     </div>
@@ -335,7 +339,7 @@ function RivalryTable({
             <TH>Owner</TH>
             <TH align="center">All-time</TH>
             <TH align="right">Owner</TH>
-            <TH align="right">Mtgs</TH>
+            <TH align="right">Games</TH>
           </TR>
         </THead>
         <TBody>
@@ -348,12 +352,144 @@ function RivalryTable({
   );
 }
 
+function streakSpan(r: StreakRecord): string {
+  if (r.startYear === r.endYear) return `${r.startYear} Wk ${r.startWeek}–${r.endWeek}`;
+  return `${r.startYear} Wk ${r.startWeek} – ${r.endYear} Wk ${r.endWeek}`;
+}
+
+function StreakTable({
+  title,
+  description,
+  icon: Icon,
+  rows,
+  variant,
+}: {
+  title: string;
+  description: string;
+  icon: typeof TrendingUp;
+  rows: StreakRecord[];
+  variant: "win" | "loss";
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <Icon className="size-4 text-accent" aria-hidden="true" />
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
+      </div>
+      <p className="text-xs text-muted">{description}</p>
+      <Table>
+        <caption className="sr-only">{title}</caption>
+        <THead>
+          <TR>
+            <TH align="center" className="w-8">#</TH>
+            <TH>Owner</TH>
+            <TH align="center">Streak</TH>
+            <TH align="right">Span</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {rows.map((r, i) => (
+            <TR key={r.ownerId}>
+              <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
+              <TD><span className="font-medium text-foreground">{r.ownerName}</span></TD>
+              <TD align="center">
+                <span className={`tabular-nums font-bold ${variant === "win" ? "text-win" : "text-loss"}`}>
+                  {r.streak}
+                </span>
+              </TD>
+              <TD align="right" className="tabular-nums text-xs text-muted">{streakSpan(r)}</TD>
+            </TR>
+          ))}
+        </TBody>
+      </Table>
+    </div>
+  );
+}
+
+function NetEarnersTable({ rows }: { rows: NetEarningsLeader[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <DollarSign className="size-4 text-accent" aria-hidden="true" />
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">Net earners</h3>
+      </div>
+      <p className="text-xs text-muted">
+        Who&apos;s up and who&apos;s down — prizes won minus entry fees paid across all seasons.
+      </p>
+      <Table>
+        <caption className="sr-only">Net earners all-time</caption>
+        <THead>
+          <TR>
+            <TH align="center" className="w-8">#</TH>
+            <TH>Owner</TH>
+            <TH align="right">Net</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {rows.map((r, i) => (
+            <TR key={r.ownerId}>
+              <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
+              <TD><span className="font-medium text-foreground">{r.ownerName}</span></TD>
+              <TD align="right" className={`tabular-nums font-semibold ${r.netCents >= 0 ? "text-win" : "text-loss"}`}>
+                {r.netCents >= 0 ? "+" : ""}{formatMoney(r.netCents)}
+              </TD>
+            </TR>
+          ))}
+        </TBody>
+      </Table>
+    </div>
+  );
+}
+
+function MissedSubmissionsTable({ rows }: { rows: MissedSubmission[] }) {
+  const visible = rows.filter((r) => r.count > 0);
+  if (visible.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <AlertCircle className="size-4 text-accent" aria-hidden="true" />
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">Missed submissions — The Shame List</h3>
+      </div>
+      <p className="text-xs text-muted">
+        Owners who forgot to set a lineup — at least once.
+      </p>
+      <Table>
+        <caption className="sr-only">Missed submissions all-time</caption>
+        <THead>
+          <TR>
+            <TH align="center" className="w-8">#</TH>
+            <TH>Owner</TH>
+            <TH align="right">Missed weeks</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {visible.map((r, i) => (
+            <TR key={r.ownerId}>
+              <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
+              <TD><span className="font-medium text-foreground">{r.ownerName}</span></TD>
+              <TD align="right" className="tabular-nums font-semibold text-loss">{r.count}</TD>
+            </TR>
+          ))}
+        </TBody>
+      </Table>
+    </div>
+  );
+}
+
 export default async function HistoryPage() {
-  const [seasonHistory, leaders, rivalries, ownerTrends, playoffStats, weeklyHighs, gameExtremes, championLeaders] = await Promise.all([
+  const [
+    seasonHistory, leaders, rivalries, ownerTrends,
+    streaks, missedSubmissions, earners,
+    playoffStats, weeklyHighs, gameExtremes, championLeaders,
+  ] = await Promise.all([
     getSeasonHistory(),
     getAllTimeLeaders(),
     getAllTimeRivalries(),
     getOwnerSeasonTrends(),
+    getStreakLeaders(),
+    getMissedSubmissions(),
+    getNetEarnings(),
     getPlayoffStats(),
     getWeeklyHighScores(),
     getGameExtremes(),
@@ -372,7 +508,7 @@ export default async function HistoryPage() {
       <PageHeader
         eyebrow="League archive"
         title="History"
-        description="Champions, season records, all-time owner leaders, and the most storied head-to-head rivalries from every KeyLehr H2H season."
+        description="Every champion, every record, every rivalry — the full KeyLehr H2H story across all seasons."
       />
 
       {!hasAnyData ? (
@@ -402,11 +538,14 @@ export default async function HistoryPage() {
 
           {/* All-time leaders */}
           <section aria-label="All-time leaders" className="flex flex-col gap-5">
-            <h2 className="text-xl font-bold tracking-tight text-foreground">All-time leaders</h2>
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="flex items-center gap-3">
+              <Trophy className="size-5 text-accent" aria-hidden="true" />
+              <h2 className="text-xl font-bold tracking-tight text-foreground">All-time leaders</h2>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-3">
               <LeaderTable
                 title="Most wins"
-                description="Total regular-season head-to-head wins across every season."
+                description="Total regular-season wins across every season."
                 icon={Trophy}
                 rows={topWins}
                 valueHeader="W-L-T"
@@ -414,10 +553,10 @@ export default async function HistoryPage() {
               />
               <LeaderTable
                 title="Most points"
-                description="Total regular-season Points For across every season."
+                description="Total points scored in regular-season play, all-time."
                 icon={Flame}
                 rows={topPoints}
-                valueHeader="PF"
+                valueHeader="Points"
                 valueOf={(l) => formatPoints(l.totalPoints)}
               />
               <LeaderTable
@@ -432,21 +571,23 @@ export default async function HistoryPage() {
                     : "—"
                 }
               />
+            </div>
+            <div className="grid gap-6 lg:grid-cols-3">
               {championLeaders.length > 0 && (
                 <LeaderTable<ChampionLeader>
                   title="Most championships"
-                  description="All-time league title count. Name shown as it appeared in the winning season."
-                  icon={Crown}
+                  description="Championship titles won across all seasons."
+                  icon={Medal}
                   rows={championLeaders}
                   valueHeader="Titles"
                   valueOf={(l) => `${l.championships}`}
                 />
               )}
-              <PlayoffStatTable rows={playoffStats.slice(0, 10)} />
+              <PlayoffTable rows={playoffStats.slice(0, 10)} />
               <LeaderTable<WeeklyHighStat>
-                title="Most weekly high scores"
-                description="Times an owner posted the single highest score leaguewide in a given week."
-                icon={Star}
+                title="Most weekly highs"
+                description="Weeks where an owner posted the highest score in the league."
+                icon={Zap}
                 rows={weeklyHighs.slice(0, 10)}
                 valueHeader="Weeks"
                 valueOf={(l) => `${l.count}`}
@@ -461,18 +602,18 @@ export default async function HistoryPage() {
               <h2 className="text-xl font-bold tracking-tight text-foreground">Owner trends</h2>
             </div>
             <p className="text-sm text-muted">
-              Every owner&apos;s win count and average Points For, season by season. Search or hover an
+              Every owner&apos;s win count and average points scored, season by season. Search or hover an
               owner below to highlight their line on both charts.
             </p>
             <OwnerTrendsPanel trends={ownerTrends} />
           </section>
 
-          {/* Head-to-Head Records */}
+          {/* Head-to-head records */}
           <section aria-label="Head-to-head records" className="flex flex-col gap-5">
             <div className="flex items-center gap-3">
               <Users className="size-5 text-accent" aria-hidden="true" />
               <h2 className="text-xl font-bold tracking-tight text-foreground">
-                Head-to-Head Records
+                Head-to-head records
               </h2>
             </div>
             <Link
@@ -488,6 +629,34 @@ export default async function HistoryPage() {
                 </span>
               </div>
             </Link>
+          </section>
+
+          {/* Records & milestones */}
+          <section aria-label="Records and milestones" className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <Star className="size-5 text-accent" aria-hidden="true" />
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Records &amp; milestones</h2>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <StreakTable
+                title="Longest winning streak"
+                description="Most consecutive regular-season wins within a single season."
+                icon={TrendingUp}
+                rows={streaks.longestWinStreak}
+                variant="win"
+              />
+              <StreakTable
+                title="Longest losing streak"
+                description="Most consecutive regular-season losses within a single season."
+                icon={TrendingDown}
+                rows={streaks.longestLossStreak}
+                variant="loss"
+              />
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <NetEarnersTable rows={earners} />
+              <MissedSubmissionsTable rows={missedSubmissions} />
+            </div>
           </section>
 
           {/* Rivalries */}
@@ -524,7 +693,7 @@ export default async function HistoryPage() {
                 />
                 <RivalryTable
                   title="Most lopsided"
-                  description="The most one-sided rivalries (3+ meetings) by all-time win share."
+                  description="Pairs with at least 3 meetings, ranked by dominance."
                   rows={mostLopsided}
                 />
               </div>

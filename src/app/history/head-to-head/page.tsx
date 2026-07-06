@@ -17,7 +17,6 @@ import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/badge";
 import { Card, CardBody } from "@/components/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/data-table";
-import { TeamLogo } from "@/components/team-logo";
 import { OwnerSelector } from "@/components/owner-selector";
 import { getAllTimeRivalries, type OwnerIdentity } from "@/lib/history";
 import { formatPoints, winPct } from "@/lib/utils";
@@ -67,17 +66,7 @@ function OpponentDetail({ row }: { row: OpponentRow }) {
     <details className="group rounded-xl border border-border bg-card shadow-sm open:shadow-md">
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap sm:gap-4">
         <span className="flex min-w-0 flex-1 items-center gap-2">
-          <TeamLogo
-            src={row.opponent.logoEspn}
-            alt={`${row.opponent.teamName ?? "team"} logo`}
-            size={22}
-          />
           <span className="truncate font-medium text-foreground">{row.opponent.ownerName}</span>
-          {row.opponent.teamKey ? (
-            <span className="hidden shrink-0 text-xs text-muted sm:inline">
-              {row.opponent.teamKey}
-            </span>
-          ) : null}
         </span>
 
         <span className="flex shrink-0 items-center gap-4 text-sm">
@@ -252,20 +241,10 @@ export default async function HeadToHeadPage({
       <Card>
         <CardBody className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <TeamLogo
-              src={selectedOwner.logoEspn}
-              alt={`${selectedOwner.teamName ?? "team"} logo`}
-              size={44}
-            />
             <div className="flex flex-col gap-0.5">
               <span className="text-lg font-bold tracking-tight text-foreground">
                 {selectedOwner.ownerName}
               </span>
-              {selectedOwner.teamKey ? (
-                <span className="text-xs text-muted">
-                  Most recent team: {selectedOwner.teamKey}
-                </span>
-              ) : null}
             </div>
           </div>
 

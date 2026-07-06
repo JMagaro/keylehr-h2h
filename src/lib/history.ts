@@ -17,7 +17,7 @@
  *
  * This module imports `@/db` and must only be used from server-side code.
  */
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 
 import {
   db,
@@ -36,6 +36,7 @@ import {
   getSeasonStandings,
   type SeasonStandingRow,
 } from '@/lib/standings/query';
+import { getSeasonRules } from '@/lib/rules/schema';
 
 /* -------------------------------------------------------------------------- */
 /* Per-season history (champions & records)                                    */
@@ -1204,4 +1205,262 @@ export async function getGameExtremes(): Promise<GameExtremes> {
   }
 
   return { closest, biggestBlowout };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Win / loss streaks (all-time, cross-season)                                 */
+/* -------------------------------------------------------------------------- */
+
+export interface StreakRecord {
+  ownerId: number;
+  ownerName: string;
+  streak: number;
+  startYear: number;
+  startWeek: number;
+  endYear: number;
+  endWeek: number;
+}
+
+export interface StreakLeaders {
+  longestWinStreak: StreakRecord[];
+  longestLossStreak: StreakRecord[];
+}
+
+/**
+ * Longest winning and losing streaks per owner across all regular-season games,
+ * spanning seasons. Ties count as neither W nor L and reset both counters.
+ */
+export async function getStreakLeaders(): Promise<StreakLeaders> {
+  const seasonOptions = await getSeasonOptions();
+  const yearById = new Map(seasonOptions.map((s) => [s.id, s.year]));
+  const seasonsWithData = seasonOptions.map((s) => s.id);
+  if (seasonsWithData.length === 0) return { longestWinStreak: [], longestLossStreak: [] };
+
+  const [matchupRows, scoreRows, osRows] = await Promise.all([
+    db
+      .select({
+        seasonId: matchups.seasonId,
+        week: matchups.week,
+        homeOwnerSeasonId: matchups.homeOwnerSeasonId,
+        awayOwnerSeasonId: matchups.awayOwnerSeasonId,
+      })
+      .from(matchups)
+      .where(eq(matchups.isPlayoff, false)),
+    db
+      .select({
+        ownerSeasonId: scores.ownerSeasonId,
+        week: scores.week,
+        dkPoints: scores.dkPoints,
+        isBye: scores.isBye,
+      })
+      .from(scores)
+      .where(inArray(scores.seasonId, seasonsWithData)),
+    db
+      .select({
+        ownerSeasonId: ownerSeasons.id,
+        seasonId: ownerSeasons.seasonId,
+        ownerId: owners.id,
+        ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
+      })
+      .from(ownerSeasons)
+      .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id)),
+  ]);
+
+  const pointsByKey = new Map<string, number | null>();
+  for (const s of scoreRows) {
+    const pts = s.isBye || s.dkPoints === null ? null : Number(s.dkPoints);
+    pointsByKey.set(`${s.ownerSeasonId}:${s.week}`, pts);
+  }
+
+  const osIdToOwnerId = new Map<number, number>();
+  const latestSeasonByOwner = new Map<number, number>();
+  const nameByOwner = new Map<number, string>();
+  for (const r of osRows) {
+    osIdToOwnerId.set(r.ownerSeasonId, r.ownerId);
+    const prev = latestSeasonByOwner.get(r.ownerId) ?? -1;
+    if (r.seasonId > prev) {
+      latestSeasonByOwner.set(r.ownerId, r.seasonId);
+      nameByOwner.set(r.ownerId, r.ownerName);
+    }
+  }
+
+  type GameResult = { seasonId: number; year: number; week: number; result: 'W' | 'L' | 'T' };
+  const gamesByOwner = new Map<number, GameResult[]>();
+
+  for (const m of matchupRows) {
+    const year = yearById.get(m.seasonId) ?? 0;
+    const homePts = pointsByKey.get(`${m.homeOwnerSeasonId}:${m.week}`);
+    const awayPts = pointsByKey.get(`${m.awayOwnerSeasonId}:${m.week}`);
+    if (homePts === null || homePts === undefined || awayPts === null || awayPts === undefined) continue;
+
+    let homeResult: 'W' | 'L' | 'T';
+    let awayResult: 'W' | 'L' | 'T';
+    if (homePts > awayPts) { homeResult = 'W'; awayResult = 'L'; }
+    else if (homePts < awayPts) { homeResult = 'L'; awayResult = 'W'; }
+    else { homeResult = 'T'; awayResult = 'T'; }
+
+    for (const [osId, result] of [[m.homeOwnerSeasonId, homeResult], [m.awayOwnerSeasonId, awayResult]] as [number, 'W' | 'L' | 'T'][]) {
+      const ownerId = osIdToOwnerId.get(osId);
+      if (ownerId === undefined) continue;
+      let games = gamesByOwner.get(ownerId);
+      if (!games) { games = []; gamesByOwner.set(ownerId, games); }
+      games.push({ seasonId: m.seasonId, year, week: m.week, result });
+    }
+  }
+
+  const winStreaks: StreakRecord[] = [];
+  const lossStreaks: StreakRecord[] = [];
+
+  for (const [ownerId, games] of gamesByOwner) {
+    games.sort((a, b) => a.year - b.year || a.week - b.week);
+    const ownerName = nameByOwner.get(ownerId) ?? '';
+
+    let curW = 0, curL = 0, maxW = 0, maxL = 0;
+    let prevSeasonId: number | null = null;
+    let wStart = games[0]!, lStart = games[0]!;
+    let bestWStart = games[0]!, bestWEnd = games[0]!;
+    let bestLStart = games[0]!, bestLEnd = games[0]!;
+
+    for (const g of games) {
+      // Reset at season boundaries — streaks are within a single season only.
+      if (g.seasonId !== prevSeasonId) { curW = 0; curL = 0; prevSeasonId = g.seasonId; }
+
+      if (g.result === 'W') {
+        if (curW === 0) wStart = g;
+        curW++; curL = 0;
+        if (curW > maxW) { maxW = curW; bestWStart = wStart; bestWEnd = g; }
+      } else if (g.result === 'L') {
+        if (curL === 0) lStart = g;
+        curL++; curW = 0;
+        if (curL > maxL) { maxL = curL; bestLStart = lStart; bestLEnd = g; }
+      } else {
+        curW = 0; curL = 0;
+      }
+    }
+
+    if (maxW > 0) winStreaks.push({ ownerId, ownerName, streak: maxW, startYear: bestWStart.year, startWeek: bestWStart.week, endYear: bestWEnd.year, endWeek: bestWEnd.week });
+    if (maxL > 0) lossStreaks.push({ ownerId, ownerName, streak: maxL, startYear: bestLStart.year, startWeek: bestLStart.week, endYear: bestLEnd.year, endWeek: bestLEnd.week });
+  }
+
+  winStreaks.sort((a, b) => b.streak - a.streak);
+  lossStreaks.sort((a, b) => b.streak - a.streak);
+
+  return { longestWinStreak: winStreaks.slice(0, 10), longestLossStreak: lossStreaks.slice(0, 10) };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Missed submissions (forfeits) per owner, all-time                          */
+/* -------------------------------------------------------------------------- */
+
+export interface MissedSubmission {
+  ownerId: number;
+  ownerName: string;
+  count: number;
+}
+
+/**
+ * Counts weeks where each owner posted a 0-point score (missed lineup), across
+ * all regular seasons. Byes and unscored weeks are excluded.
+ */
+export async function getMissedSubmissions(): Promise<MissedSubmission[]> {
+  const seasonOptions = await getSeasonOptions();
+  const seasonsWithData = seasonOptions.map((s) => s.id);
+  if (seasonsWithData.length === 0) return [];
+
+  const [scoreRows, osRows] = await Promise.all([
+    db
+      .select({ ownerSeasonId: scores.ownerSeasonId, dkPoints: scores.dkPoints })
+      .from(scores)
+      .where(and(inArray(scores.seasonId, seasonsWithData), eq(scores.isBye, false))),
+    db
+      .select({
+        ownerSeasonId: ownerSeasons.id,
+        seasonId: ownerSeasons.seasonId,
+        ownerId: owners.id,
+        ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
+      })
+      .from(ownerSeasons)
+      .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id)),
+  ]);
+
+  const osIdToOwnerId = new Map<number, number>();
+  const latestSeasonByOwner = new Map<number, number>();
+  const nameByOwner = new Map<number, string>();
+  for (const r of osRows) {
+    osIdToOwnerId.set(r.ownerSeasonId, r.ownerId);
+    const prev = latestSeasonByOwner.get(r.ownerId) ?? -1;
+    if (r.seasonId > prev) {
+      latestSeasonByOwner.set(r.ownerId, r.seasonId);
+      nameByOwner.set(r.ownerId, r.ownerName);
+    }
+  }
+
+  const countByOwner = new Map<number, number>();
+  for (const s of scoreRows) {
+    if (s.dkPoints === null || Number(s.dkPoints) !== 0) continue;
+    const ownerId = osIdToOwnerId.get(s.ownerSeasonId);
+    if (ownerId === undefined) continue;
+    countByOwner.set(ownerId, (countByOwner.get(ownerId) ?? 0) + 1);
+  }
+
+  return [...countByOwner.entries()]
+    .map(([ownerId, count]) => ({ ownerId, ownerName: nameByOwner.get(ownerId) ?? '', count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Biggest earners (all-time payout totals)                                   */
+/* -------------------------------------------------------------------------- */
+
+export interface NetEarningsLeader {
+  ownerId: number;
+  ownerName: string;
+  /** Prize money won minus entry fees paid, in cents. */
+  netCents: number;
+  earnedCents: number;
+  paidCents: number;
+}
+
+/**
+ * Net earnings per owner (prize money minus entry fees) across all seasons,
+ * top 10 descending. Every owner who has played at least one season is included.
+ */
+export async function getNetEarnings(): Promise<NetEarningsLeader[]> {
+  const [seasonRows, ownerSeasonRows, earningsRows] = await Promise.all([
+    db.select({ id: seasons.id, rules: seasons.rules }).from(seasons),
+    db
+      .select({ ownerId: owners.id, ownerName: owners.name, seasonId: ownerSeasons.seasonId })
+      .from(ownerSeasons)
+      .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id)),
+    db
+      .select({
+        ownerId: seasonAwards.ownerId,
+        earnedCents: sql<number>`cast(coalesce(sum(${seasonAwards.amountCents}), 0) as integer)`,
+      })
+      .from(seasonAwards)
+      .where(isNotNull(seasonAwards.ownerId))
+      .groupBy(seasonAwards.ownerId),
+  ]);
+
+  const entryFeeBySeason = new Map(
+    seasonRows.map((s) => [s.id, getSeasonRules(s.rules).payouts.entryFeeCents]),
+  );
+
+  const earnedByOwner = new Map(earningsRows.map((r) => [r.ownerId, r.earnedCents]));
+
+  const paidByOwner = new Map<number, number>();
+  const nameByOwner = new Map<number, string>();
+  for (const r of ownerSeasonRows) {
+    paidByOwner.set(r.ownerId, (paidByOwner.get(r.ownerId) ?? 0) + (entryFeeBySeason.get(r.seasonId) ?? 0));
+    nameByOwner.set(r.ownerId, r.ownerName);
+  }
+
+  return [...paidByOwner.keys()]
+    .map((ownerId) => {
+      const earnedCents = earnedByOwner.get(ownerId) ?? 0;
+      const paidCents = paidByOwner.get(ownerId) ?? 0;
+      return { ownerId, ownerName: nameByOwner.get(ownerId) ?? '', netCents: earnedCents - paidCents, earnedCents, paidCents };
+    })
+    .sort((a, b) => b.netCents - a.netCents)
+    .slice(0, 10);
 }
