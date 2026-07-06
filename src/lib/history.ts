@@ -17,7 +17,7 @@
  *
  * This module imports `@/db` and must only be used from server-side code.
  */
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 
 import {
   db,
@@ -147,19 +147,18 @@ function topByStandings(rows: SeasonStandingRow[]): SeasonStandingRow | null {
  * summary + notable records, newest year first.
  */
 export async function getSeasonHistory(): Promise<SeasonHistory[]> {
-  const options = await getSeasonOptions(); // newest year first
+  const [options, ownerSeasonRows, championRows, seasonRulesRows] = await Promise.all([
+    getSeasonOptions(),
+    db.select({ seasonId: ownerSeasons.seasonId }).from(ownerSeasons),
+    db
+      .select({ seasonId: seasonAwards.seasonId, ownerId: seasonAwards.ownerId })
+      .from(seasonAwards)
+      .where(eq(seasonAwards.type, 'champion')),
+    db.select({ id: seasons.id, rules: seasons.rules }).from(seasons),
+  ]);
 
-  // Which seasons actually have owners (data to summarize)?
-  const ownerSeasonRows = await db
-    .select({ seasonId: ownerSeasons.seasonId })
-    .from(ownerSeasons);
   const seasonsWithData = new Set(ownerSeasonRows.map((r) => r.seasonId));
 
-  // Champion awards (if any) keyed by season → ownerId. Tolerates an empty table.
-  const championRows = await db
-    .select({ seasonId: seasonAwards.seasonId, ownerId: seasonAwards.ownerId })
-    .from(seasonAwards)
-    .where(eq(seasonAwards.type, 'champion'));
   const championBySeason = new Map<number, number>();
   for (const r of championRows) {
     if (r.ownerId !== null && !championBySeason.has(r.seasonId)) {
@@ -167,115 +166,112 @@ export async function getSeasonHistory(): Promise<SeasonHistory[]> {
     }
   }
 
-  const out: SeasonHistory[] = [];
-  for (const season of options) {
-    if (!seasonsWithData.has(season.id)) continue;
+  const regularWeeksBySeason = new Map(
+    seasonRulesRows.map((r) => [r.id, getSeasonRules(r.rules).regularSeasonWeeks]),
+  );
 
-    const identities = await loadOwnerIdentities(season.id);
-    const standings = await getSeasonStandings(season.id);
+  const validSeasons = options.filter((s) => seasonsWithData.has(s.id));
 
-    // Index standings by ownerSeasonId for record lookups.
-    const standingByOwnerSeason = new Map(standings.map((s) => [s.ownerSeasonId, s]));
+  const out = await Promise.all(
+    validSeasons.map(async (season) => {
+      const regularSeasonWeeks = regularWeeksBySeason.get(season.id) ?? 18;
 
-    // weeksPlayed: the max games played by any owner approximates the number of
-    // regular-season weeks that have been scored.
-    const gamesByOwner = standings.map((s) => s.gamesPlayed);
-    const weeks = gamesByOwner.length ? Math.max(...gamesByOwner) : 0;
+      const [identities, standings, scoreRows] = await Promise.all([
+        loadOwnerIdentities(season.id),
+        getSeasonStandings(season.id),
+        db
+          .select({ ownerSeasonId: scores.ownerSeasonId, week: scores.week, dkPoints: scores.dkPoints })
+          .from(scores)
+          .where(and(eq(scores.seasonId, season.id), lte(scores.week, regularSeasonWeeks))),
+      ]);
 
-    // Top finisher: prefer a champion award row, else regular-season #1.
-    const championOwnerId = championBySeason.get(season.id);
-    let topFinisher: SeasonHistory['topFinisher'] = null;
-    if (championOwnerId !== undefined) {
-      // Find the champion's standings row by matching ownerId via identities.
-      const champSeason = [...identities.values()].find((i) => i.ownerId === championOwnerId);
-      if (champSeason) {
-        const row = standingByOwnerSeason.get(champSeason.ownerSeasonId);
-        topFinisher = {
-          ...holderFrom(champSeason),
-          isChampion: true,
-          wins: row?.wins ?? 0,
-          losses: row?.losses ?? 0,
-          ties: row?.ties ?? 0,
-          pointsFor: row?.pointsFor ?? 0,
-          winPct: row?.winPct ?? 0,
-        };
+      const standingByOwnerSeason = new Map(standings.map((s) => [s.ownerSeasonId, s]));
+      const gamesByOwner = standings.map((s) => s.gamesPlayed);
+      const weeks = gamesByOwner.length ? Math.max(...gamesByOwner) : 0;
+
+      const championOwnerId = championBySeason.get(season.id);
+      let topFinisher: SeasonHistory['topFinisher'] = null;
+      if (championOwnerId !== undefined) {
+        const champSeason = [...identities.values()].find((i) => i.ownerId === championOwnerId);
+        if (champSeason) {
+          const row = standingByOwnerSeason.get(champSeason.ownerSeasonId);
+          topFinisher = {
+            ...holderFrom(champSeason),
+            isChampion: true,
+            wins: row?.wins ?? 0,
+            losses: row?.losses ?? 0,
+            ties: row?.ties ?? 0,
+            pointsFor: row?.pointsFor ?? 0,
+            winPct: row?.winPct ?? 0,
+          };
+        }
       }
-    }
-    if (!topFinisher) {
-      const leader = topByStandings(standings);
-      const id = leader ? identities.get(leader.ownerSeasonId) : undefined;
-      if (leader && id) {
-        topFinisher = {
-          ...holderFrom(id),
-          isChampion: false,
-          wins: leader.wins,
-          losses: leader.losses,
-          ties: leader.ties,
-          pointsFor: leader.pointsFor,
-          winPct: leader.winPct,
-        };
+      if (!topFinisher) {
+        const leader = topByStandings(standings);
+        const id = leader ? identities.get(leader.ownerSeasonId) : undefined;
+        if (leader && id) {
+          topFinisher = {
+            ...holderFrom(id),
+            isChampion: false,
+            wins: leader.wins,
+            losses: leader.losses,
+            ties: leader.ties,
+            pointsFor: leader.pointsFor,
+            winPct: leader.winPct,
+          };
+        }
       }
-    }
 
-    // Highest single-week score (non-bye, non-null) in the season.
-    const scoreRows = await db
-      .select({
-        ownerSeasonId: scores.ownerSeasonId,
-        week: scores.week,
-        dkPoints: scores.dkPoints,
-      })
-      .from(scores)
-      .where(eq(scores.seasonId, season.id));
-    let highestWeek: SeasonHistory['highestWeek'] = null;
-    for (const s of scoreRows) {
-      if (s.dkPoints === null) continue;
-      const pts = Number(s.dkPoints);
-      const id = identities.get(s.ownerSeasonId);
-      if (!id) continue;
-      if (!highestWeek || pts > highestWeek.points) {
-        highestWeek = { ...holderFrom(id), week: s.week, points: pts };
+      // Regular-season only (week <= regularSeasonWeeks).
+      let highestWeek: SeasonHistory['highestWeek'] = null;
+      for (const s of scoreRows) {
+        if (s.dkPoints === null) continue;
+        const pts = Number(s.dkPoints);
+        const id = identities.get(s.ownerSeasonId);
+        if (!id) continue;
+        if (!highestWeek || pts > highestWeek.points) {
+          highestWeek = { ...holderFrom(id), week: s.week, points: pts };
+        }
       }
-    }
 
-    // Points leader: most regular-season Points For.
-    let pointsLeader: SeasonHistory['pointsLeader'] = null;
-    for (const s of standings) {
-      const id = identities.get(s.ownerSeasonId);
-      if (!id) continue;
-      if (!pointsLeader || s.pointsFor > pointsLeader.pointsFor) {
-        pointsLeader = { ...holderFrom(id), pointsFor: s.pointsFor };
+      let pointsLeader: SeasonHistory['pointsLeader'] = null;
+      for (const s of standings) {
+        const id = identities.get(s.ownerSeasonId);
+        if (!id) continue;
+        if (!pointsLeader || s.pointsFor > pointsLeader.pointsFor) {
+          pointsLeader = { ...holderFrom(id), pointsFor: s.pointsFor };
+        }
       }
-    }
 
-    // Best record: winPct → PF (already the standings leader ordering).
-    const bestRow = topByStandings(standings);
-    let bestRecord: SeasonHistory['bestRecord'] = null;
-    if (bestRow) {
-      const id = identities.get(bestRow.ownerSeasonId);
-      if (id) {
-        bestRecord = {
-          ...holderFrom(id),
-          wins: bestRow.wins,
-          losses: bestRow.losses,
-          ties: bestRow.ties,
-          winPct: bestRow.winPct,
-        };
+      const bestRow = topByStandings(standings);
+      let bestRecord: SeasonHistory['bestRecord'] = null;
+      if (bestRow) {
+        const id = identities.get(bestRow.ownerSeasonId);
+        if (id) {
+          bestRecord = {
+            ...holderFrom(id),
+            wins: bestRow.wins,
+            losses: bestRow.losses,
+            ties: bestRow.ties,
+            winPct: bestRow.winPct,
+          };
+        }
       }
-    }
 
-    out.push({
-      seasonId: season.id,
-      year: season.year,
-      seasonName: season.name,
-      status: season.status,
-      weeksPlayed: weeks,
-      ownerCount: identities.size,
-      topFinisher,
-      highestWeek,
-      pointsLeader,
-      bestRecord,
-    });
-  }
+      return {
+        seasonId: season.id,
+        year: season.year,
+        seasonName: season.name,
+        status: season.status,
+        weeksPlayed: weeks,
+        ownerCount: identities.size,
+        topFinisher,
+        highestWeek,
+        pointsLeader,
+        bestRecord,
+      };
+    }),
+  );
 
   return out;
 }
@@ -293,15 +289,19 @@ export async function getSeasonHistoryById(seasonId: number): Promise<SeasonHist
   const identities = await loadOwnerIdentities(seasonId);
   if (identities.size === 0) return null;
 
-  const standings = await getSeasonStandings(seasonId);
+  const [standings, championRow, seasonRulesRow] = await Promise.all([
+    getSeasonStandings(seasonId),
+    db
+      .select({ ownerId: seasonAwards.ownerId })
+      .from(seasonAwards)
+      .where(and(eq(seasonAwards.seasonId, seasonId), eq(seasonAwards.type, 'champion')))
+      .limit(1),
+    db.select({ rules: seasons.rules }).from(seasons).where(eq(seasons.id, seasonId)).limit(1),
+  ]);
+
+  const regularSeasonWeeks = getSeasonRules(seasonRulesRow[0]?.rules).regularSeasonWeeks;
   const standingByOwnerSeason = new Map(standings.map((s) => [s.ownerSeasonId, s]));
   const weeks = standings.length ? Math.max(...standings.map((s) => s.gamesPlayed)) : 0;
-
-  const championRow = await db
-    .select({ ownerId: seasonAwards.ownerId })
-    .from(seasonAwards)
-    .where(and(eq(seasonAwards.seasonId, seasonId), eq(seasonAwards.type, 'champion')))
-    .limit(1);
   const championOwnerId = championRow[0]?.ownerId ?? undefined;
 
   let topFinisher: SeasonHistory['topFinisher'] = null;
@@ -336,10 +336,12 @@ export async function getSeasonHistoryById(seasonId: number): Promise<SeasonHist
     }
   }
 
+  // Regular-season only (week <= regularSeasonWeeks).
   const scoreRows = await db
     .select({ ownerSeasonId: scores.ownerSeasonId, week: scores.week, dkPoints: scores.dkPoints })
     .from(scores)
-    .where(eq(scores.seasonId, seasonId));
+    .where(and(eq(scores.seasonId, seasonId), lte(scores.week, regularSeasonWeeks)));
+
   let highestWeek: SeasonHistory['highestWeek'] = null;
   for (const s of scoreRows) {
     if (s.dkPoints === null) continue;
@@ -459,7 +461,7 @@ export async function getAllTimeRivalries(): Promise<AllTimeRivalries> {
     .select({
       ownerSeasonId: ownerSeasons.id,
       ownerId: owners.id,
-      ownerName: owners.name,
+      ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
       seasonYear: seasons.year,
       teamKey: nflTeams.key,
       teamName: nflTeams.name,
@@ -691,9 +693,17 @@ export async function getAllTimeLeaders(): Promise<AllTimeLeaders> {
   /** Track latest year seen per owner so identity uses their most recent team. */
   const latestYearByOwner = new Map<number, number>();
 
-  for (const seasonId of seasonsWithData) {
-    const identities = await loadOwnerIdentities(seasonId);
-    const standings = await getSeasonStandings(seasonId);
+  const seasonDataAll = await Promise.all(
+    seasonsWithData.map(async (seasonId) => {
+      const [identities, standings] = await Promise.all([
+        loadOwnerIdentities(seasonId),
+        getSeasonStandings(seasonId),
+      ]);
+      return { seasonId, identities, standings };
+    }),
+  );
+
+  for (const { seasonId, identities, standings } of seasonDataAll) {
     const seasonYear = yearBySeason.get(seasonId) ?? 0;
 
     for (const s of standings) {
@@ -717,7 +727,6 @@ export async function getAllTimeLeaders(): Promise<AllTimeLeaders> {
         };
         byOwner.set(id.ownerId, agg);
       }
-      // Refresh display identity to the latest season's team.
       const seen = latestYearByOwner.get(id.ownerId);
       if (seen === undefined || seasonYear >= seen) {
         latestYearByOwner.set(id.ownerId, seasonYear);
@@ -843,11 +852,17 @@ export async function getOwnerSeasonTrends(): Promise<OwnerSeasonTrends> {
   /** Track the latest year seen per owner so identity (team/color) uses their most recent team. */
   const latestYearByOwner = new Map<number, number>();
 
-  for (let i = 0; i < dataSeasons.length; i++) {
-    const season = dataSeasons[i]!;
-    const identities = await loadOwnerIdentities(season.id);
-    const standings = await getSeasonStandings(season.id);
+  const seasonDataAll = await Promise.all(
+    dataSeasons.map(async (season, i) => {
+      const [identities, standings] = await Promise.all([
+        loadOwnerIdentities(season.id),
+        getSeasonStandings(season.id),
+      ]);
+      return { i, season, identities, standings };
+    }),
+  );
 
+  for (const { i, season, identities, standings } of seasonDataAll) {
     for (const s of standings) {
       const id = identities.get(s.ownerSeasonId);
       if (!id) continue;
@@ -865,7 +880,6 @@ export async function getOwnerSeasonTrends(): Promise<OwnerSeasonTrends> {
         };
         byOwner.set(id.ownerId, agg);
       }
-      // Refresh display identity to the latest season's team.
       const seen = latestYearByOwner.get(id.ownerId);
       if (seen === undefined || season.year >= seen) {
         latestYearByOwner.set(id.ownerId, season.year);
@@ -1227,8 +1241,8 @@ export interface StreakLeaders {
 }
 
 /**
- * Longest winning and losing streaks per owner across all regular-season games,
- * spanning seasons. Ties count as neither W nor L and reset both counters.
+ * Longest winning and losing streaks per owner across all regular-season games.
+ * Streaks reset at each season boundary. Ties count as neither W nor L and reset both counters.
  */
 export async function getStreakLeaders(): Promise<StreakLeaders> {
   const seasonOptions = await getSeasonOptions();
@@ -1429,7 +1443,11 @@ export async function getNetEarnings(): Promise<NetEarningsLeader[]> {
   const [seasonRows, ownerSeasonRows, earningsRows] = await Promise.all([
     db.select({ id: seasons.id, rules: seasons.rules }).from(seasons),
     db
-      .select({ ownerId: owners.id, ownerName: owners.name, seasonId: ownerSeasons.seasonId })
+      .select({
+        ownerId: owners.id,
+        ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
+        seasonId: ownerSeasons.seasonId,
+      })
       .from(ownerSeasons)
       .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id)),
     db
@@ -1461,6 +1479,5 @@ export async function getNetEarnings(): Promise<NetEarningsLeader[]> {
       const paidCents = paidByOwner.get(ownerId) ?? 0;
       return { ownerId, ownerName: nameByOwner.get(ownerId) ?? '', netCents: earnedCents - paidCents, earnedCents, paidCents };
     })
-    .sort((a, b) => b.netCents - a.netCents)
-    .slice(0, 10);
+    .sort((a, b) => b.netCents - a.netCents);
 }

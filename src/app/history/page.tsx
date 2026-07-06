@@ -31,6 +31,7 @@ import {
   getGameExtremes,
   getChampionLeaders,
   type SeasonHistory,
+  type AllTimeLeader,
   type ChampionLeader,
   type Rivalry,
   type StreakRecord,
@@ -80,6 +81,12 @@ function record(w: number, l: number, t: number): string {
   return t > 0 ? `${w}-${l}-${t}` : `${w}-${l}`;
 }
 
+function allTimeWinPct(l: AllTimeLeader): string {
+  const g = l.totalWins + l.totalLosses + l.totalTies;
+  if (g === 0) return '0.0%';
+  return ((l.totalWins + l.totalTies * 0.5) / g * 100).toFixed(1) + '%';
+}
+
 function SeasonCard({ season }: { season: SeasonHistory }) {
   const top = season.topFinisher;
   return (
@@ -89,8 +96,10 @@ function SeasonCard({ season }: { season: SeasonHistory }) {
           <div className="flex flex-col gap-1">
             <CardTitle>{season.seasonName}</CardTitle>
             <CardDescription>
-              {season.ownerCount} owners · {season.weeksPlayed} week
-              {season.weeksPlayed === 1 ? "" : "s"} played
+              {season.ownerCount} owners
+              {season.weeksPlayed > 0
+                ? ` · ${season.weeksPlayed} week${season.weeksPlayed === 1 ? "" : "s"} played`
+                : ""}
             </CardDescription>
           </div>
           <Badge variant={season.status === "completed" ? "accent" : "neutral"}>
@@ -156,6 +165,11 @@ function SeasonCard({ season }: { season: SeasonHistory }) {
                   : ""
               }
             />
+          </div>
+          <div className="flex justify-end pt-1">
+            <span className="text-xs font-medium text-accent group-hover:underline">
+              View standings &amp; bracket →
+            </span>
           </div>
         </CardBody>
       </Card>
@@ -322,15 +336,20 @@ function RivalryRow({ r }: { r: Rivalry }) {
 function RivalryTable({
   title,
   description,
+  icon: Icon,
   rows,
 }: {
   title: string;
   description: string;
+  icon?: typeof Trophy;
   rows: Rivalry[];
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
+      <div className="flex items-center gap-2">
+        {Icon && <Icon className="size-4 text-accent" aria-hidden="true" />}
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
+      </div>
       <p className="text-xs text-muted">{description}</p>
       <Table>
         <caption className="sr-only">{title}</caption>
@@ -548,8 +567,8 @@ export default async function HistoryPage() {
                 description="Total regular-season wins across every season."
                 icon={Trophy}
                 rows={topWins}
-                valueHeader="W-L-T"
-                valueOf={(l) => record(l.totalWins, l.totalLosses, l.totalTies)}
+                valueHeader="Record"
+                valueOf={(l) => `${record(l.totalWins, l.totalLosses, l.totalTies)} (${allTimeWinPct(l)})`}
               />
               <LeaderTable
                 title="Most points"
@@ -670,10 +689,10 @@ export default async function HistoryPage() {
             {(gameExtremes.closest || gameExtremes.biggestBlowout) && (
               <div className="grid gap-4 sm:grid-cols-2">
                 {gameExtremes.closest && (
-                  <GameExtremeCard label="Closest game" icon={TrendingUp} game={gameExtremes.closest} />
+                  <GameExtremeCard label="Closest game" icon={Target} game={gameExtremes.closest} />
                 )}
                 {gameExtremes.biggestBlowout && (
-                  <GameExtremeCard label="Biggest blowout" icon={TrendingDown} game={gameExtremes.biggestBlowout} />
+                  <GameExtremeCard label="Biggest blowout" icon={Flame} game={gameExtremes.biggestBlowout} />
                 )}
               </div>
             )}
@@ -689,11 +708,13 @@ export default async function HistoryPage() {
                 <RivalryTable
                   title="Most-played"
                   description="The pairs of owners who've met most often, all-time."
+                  icon={Users}
                   rows={mostPlayed}
                 />
                 <RivalryTable
                   title="Most lopsided"
                   description="Pairs with at least 3 meetings, ranked by dominance."
+                  icon={TrendingUp}
                   rows={mostLopsided}
                 />
               </div>
