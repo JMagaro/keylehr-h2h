@@ -45,6 +45,7 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+
 export const metadata: Metadata = {
   title: "History",
   description:
@@ -175,22 +176,54 @@ function SeasonCard({ season }: { season: SeasonHistory }) {
   );
 }
 
+/** Footnote shown when tied entries are hidden past the table cap. Hover to see names + detail. */
+function TiedFootnote({ items }: { items: { name: string; detail: string }[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="group relative w-fit">
+      <p className="cursor-default text-xs text-muted underline decoration-dotted underline-offset-2">
+        + {items.length} more tied
+      </p>
+      <div className="absolute bottom-full left-0 z-10 mb-1 hidden min-w-[14rem] rounded-lg border border-border bg-card px-3 py-2 shadow-lg group-hover:block">
+        {items.map(({ name, detail }) => (
+          <div key={name} className="flex items-center justify-between gap-6 whitespace-nowrap py-0.5">
+            <span className="text-xs text-foreground">{name}</span>
+            <span className="tabular-nums text-xs text-muted">{detail}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** A small all-time leaders table, generic over any row type with owner identity fields. */
 function LeaderTable<T extends { ownerId: number; ownerName: string }>({
   title,
   description,
   icon: Icon,
   rows,
+  limit = 10,
   valueHeader,
   valueOf,
+  rankKey,
 }: {
   title: string;
   description: string;
   icon: typeof Trophy;
+  /** Full sorted array — component handles slicing to `limit`. */
   rows: T[];
+  limit?: number;
   valueHeader: string;
   valueOf: (l: T) => string;
+  /** When provided, rows sharing the same value get the same rank number. */
+  rankKey?: (item: T) => number;
 }) {
+  const visible = rows.slice(0, limit);
+  const lastVal = rankKey && visible.length === limit ? rankKey(visible[visible.length - 1]) : null;
+  const hiddenItems = lastVal !== null
+    ? rows.slice(limit).filter((r) => rankKey!(r) === lastVal).map((r) => ({ name: r.ownerName, detail: valueOf(r) }))
+    : [];
+
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -210,26 +243,39 @@ function LeaderTable<T extends { ownerId: number; ownerName: string }>({
           </TR>
         </THead>
         <TBody>
-          {rows.map((l, i) => (
-            <TR key={l.ownerId}>
-              <TD align="center" className="tabular-nums text-subtle">
-                {i + 1}
-              </TD>
-              <TD>
-                <span className="font-medium text-foreground">{l.ownerName}</span>
-              </TD>
-              <TD align="right" className="tabular-nums font-semibold">
-                {valueOf(l)}
-              </TD>
-            </TR>
-          ))}
+          {visible.map((l, i) => {
+            const rank = rankKey ? rows.findIndex((r) => rankKey(r) === rankKey(l)) + 1 : i + 1;
+            return (
+              <TR key={l.ownerId}>
+                <TD align="center" className="tabular-nums text-subtle">
+                  {rank}
+                </TD>
+                <TD>
+                  <span className="font-medium text-foreground">{l.ownerName}</span>
+                </TD>
+                <TD align="right" className="tabular-nums font-semibold">
+                  {valueOf(l)}
+                </TD>
+              </TR>
+            );
+          })}
         </TBody>
       </Table>
+      <TiedFootnote items={hiddenItems} />
     </div>
   );
 }
 
-function PlayoffTable({ rows }: { rows: PlayoffStat[] }) {
+function PlayoffTable({ rows, limit = 10 }: { rows: PlayoffStat[]; limit?: number }) {
+  const visible = rows.slice(0, limit);
+  const lastApp = visible.length === limit ? visible[visible.length - 1].appearances : null;
+  const hiddenItems = lastApp !== null
+    ? rows.slice(limit).filter((r) => r.appearances === lastApp).map((r) => ({
+        name: r.ownerName,
+        detail: `${r.appearances} App · ${r.playoffWins}-${r.playoffLosses}`,
+      }))
+    : [];
+
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -248,18 +294,22 @@ function PlayoffTable({ rows }: { rows: PlayoffStat[] }) {
           </TR>
         </THead>
         <TBody>
-          {rows.map((l, i) => (
-            <TR key={l.ownerId}>
-              <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
-              <TD><span className="font-medium text-foreground">{l.ownerName}</span></TD>
-              <TD align="right" className="tabular-nums font-semibold">{l.appearances}</TD>
-              <TD align="right" className="tabular-nums text-muted">
-                {l.playoffWins}-{l.playoffLosses}
-              </TD>
-            </TR>
-          ))}
+          {visible.map((l) => {
+            const rank = rows.findIndex((r) => r.appearances === l.appearances) + 1;
+            return (
+              <TR key={l.ownerId}>
+                <TD align="center" className="tabular-nums text-subtle">{rank}</TD>
+                <TD><span className="font-medium text-foreground">{l.ownerName}</span></TD>
+                <TD align="right" className="tabular-nums font-semibold">{l.appearances}</TD>
+                <TD align="right" className="tabular-nums text-muted">
+                  {l.playoffWins}-{l.playoffLosses}
+                </TD>
+              </TR>
+            );
+          })}
         </TBody>
       </Table>
+      <TiedFootnote items={hiddenItems} />
     </div>
   );
 }
@@ -338,12 +388,30 @@ function RivalryTable({
   description,
   icon: Icon,
   rows,
+  limit = 8,
+  tiedWith,
+  detailOf,
 }: {
   title: string;
   description: string;
   icon?: typeof Trophy;
+  /** Full sorted array — component handles slicing to `limit`. */
   rows: Rivalry[];
+  limit?: number;
+  /** Returns true when a candidate beyond the limit is tied with the boundary row. */
+  tiedWith?: (boundary: Rivalry, candidate: Rivalry) => boolean;
+  /** Formats the detail string shown in the footnote tooltip. */
+  detailOf?: (r: Rivalry) => string;
 }) {
+  const visible = rows.slice(0, limit);
+  const boundary = tiedWith && visible.length === limit ? visible[visible.length - 1] : null;
+  const hiddenItems = boundary
+    ? rows.slice(limit).filter((r) => tiedWith!(boundary, r)).map((r) => ({
+        name: `${r.ownerA.ownerName} vs. ${r.ownerB.ownerName}`,
+        detail: detailOf ? detailOf(r) : `${r.meetings} games`,
+      }))
+    : [];
+
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -362,11 +430,12 @@ function RivalryTable({
           </TR>
         </THead>
         <TBody>
-          {rows.map((r) => (
+          {visible.map((r) => (
             <RivalryRow key={`${r.ownerA.ownerId}:${r.ownerB.ownerId}`} r={r} />
           ))}
         </TBody>
       </Table>
+      <TiedFootnote items={hiddenItems} />
     </div>
   );
 }
@@ -381,14 +450,26 @@ function StreakTable({
   description,
   icon: Icon,
   rows,
+  limit = 10,
   variant,
 }: {
   title: string;
   description: string;
   icon: typeof TrendingUp;
+  /** Full sorted array — component handles slicing to `limit`. */
   rows: StreakRecord[];
+  limit?: number;
   variant: "win" | "loss";
 }) {
+  const visible = rows.slice(0, limit);
+  const lastStreak = visible.length === limit ? visible[visible.length - 1].streak : null;
+  const hiddenItems = lastStreak !== null
+    ? rows.slice(limit).filter((r) => r.streak === lastStreak).map((r) => ({
+        name: r.ownerName,
+        detail: `${r.streak} · ${streakSpan(r)}`,
+      }))
+    : [];
+
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -407,20 +488,24 @@ function StreakTable({
           </TR>
         </THead>
         <TBody>
-          {rows.map((r, i) => (
-            <TR key={r.ownerId}>
-              <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
-              <TD><span className="font-medium text-foreground">{r.ownerName}</span></TD>
-              <TD align="center">
-                <span className={`tabular-nums font-bold ${variant === "win" ? "text-win" : "text-loss"}`}>
-                  {r.streak}
-                </span>
-              </TD>
-              <TD align="right" className="tabular-nums text-xs text-muted">{streakSpan(r)}</TD>
-            </TR>
-          ))}
+          {visible.map((r) => {
+            const rank = rows.findIndex((s) => s.streak === r.streak) + 1;
+            return (
+              <TR key={r.ownerId}>
+                <TD align="center" className="tabular-nums text-subtle">{rank}</TD>
+                <TD><span className="font-medium text-foreground">{r.ownerName}</span></TD>
+                <TD align="center">
+                  <span className={`tabular-nums font-bold ${variant === "win" ? "text-win" : "text-loss"}`}>
+                    {r.streak}
+                  </span>
+                </TD>
+                <TD align="right" className="tabular-nums text-xs text-muted">{streakSpan(r)}</TD>
+              </TR>
+            );
+          })}
         </TBody>
       </Table>
+      <TiedFootnote items={hiddenItems} />
     </div>
   );
 }
@@ -491,13 +576,16 @@ function MissedSubmissionsTable({ rows }: { rows: MissedSubmission[] }) {
           </TR>
         </THead>
         <TBody>
-          {visible.map((r, i) => (
-            <TR key={r.ownerId}>
-              <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
-              <TD><span className="font-medium text-foreground">{r.ownerName}</span></TD>
-              <TD align="right" className="tabular-nums font-semibold text-loss">{r.count}</TD>
-            </TR>
-          ))}
+          {visible.map((r) => {
+            const rank = visible.findIndex((s) => s.count === r.count) + 1;
+            return (
+              <TR key={r.ownerId}>
+                <TD align="center" className="tabular-nums text-subtle">{rank}</TD>
+                <TD><span className="font-medium text-foreground">{r.ownerName}</span></TD>
+                <TD align="right" className="tabular-nums font-semibold text-loss">{r.count}</TD>
+              </TR>
+            );
+          })}
         </TBody>
       </Table>
     </div>
@@ -524,11 +612,11 @@ export default async function HistoryPage() {
   ]);
 
   const hasAnyData = seasonHistory.length > 0;
-  const topWins = leaders.byWins(10);
+  const topWins = leaders.byWins();
   const topPoints = leaders.byPoints(10);
   const topWeeks = leaders.byBestWeek(10);
-  const mostPlayed = rivalries.mostPlayed(8);
-  const mostLopsided = rivalries.mostLopsided(8, 3);
+  const mostPlayed = rivalries.mostPlayed();
+  const mostLopsided = rivalries.mostLopsided(3);
 
   return (
     <Container width="wide" as="div" className="flex flex-col gap-10 py-10">
@@ -577,6 +665,7 @@ export default async function HistoryPage() {
                 rows={topWins}
                 valueHeader="Record"
                 valueOf={(l) => `${record(l.totalWins, l.totalLosses, l.totalTies)} (${allTimeWinPct(l)})`}
+                rankKey={(l) => l.totalWins}
               />
               <LeaderTable
                 title="Most points"
@@ -618,14 +707,15 @@ export default async function HistoryPage() {
                   <p className="text-xs text-muted">No championship titles recorded yet.</p>
                 </div>
               )}
-              <PlayoffTable rows={playoffStats.slice(0, 10)} />
+              <PlayoffTable rows={playoffStats} />
               <LeaderTable<WeeklyHighStat>
                 title="Most weekly highs"
                 description="Weeks where an owner posted the highest score in the league."
                 icon={Zap}
-                rows={weeklyHighs.slice(0, 10)}
+                rows={weeklyHighs}
                 valueHeader="Weeks"
                 valueOf={(l) => `${l.count}`}
+                rankKey={(l) => l.count}
               />
             </div>
           </section>
@@ -726,12 +816,19 @@ export default async function HistoryPage() {
                   description="The pairs of owners who've met most often, all-time."
                   icon={Users}
                   rows={mostPlayed}
+                  tiedWith={(b, c) => c.meetings === b.meetings}
+                  detailOf={(r) => `${r.aWins}-${r.bWins}${r.ties > 0 ? ` (${r.ties}T)` : ''} · ${r.meetings} games`}
                 />
                 <RivalryTable
                   title="Most lopsided"
                   description="Pairs with at least 3 meetings, ranked by dominance."
                   icon={TrendingUp}
                   rows={mostLopsided}
+                  tiedWith={(b, c) => {
+                    const dom = (r: Rivalry) => r.aWins + r.bWins > 0 ? Math.abs(r.aWins - r.bWins) / (r.aWins + r.bWins) : 0;
+                    return dom(c) === dom(b) && c.meetings === b.meetings;
+                  }}
+                  detailOf={(r) => `${Math.max(r.aWins, r.bWins)}-${Math.min(r.aWins, r.bWins)} (${r.meetings} games)`}
                 />
               </div>
             )}

@@ -437,13 +437,13 @@ export interface AllTimeRivalries {
   rivalries: Rivalry[];
   /** All known owner identities (by id), for lookups. */
   ownersById: Map<number, OwnerIdentity>;
-  /** Most-played rivalries (descending meetings). */
-  mostPlayed: (limit?: number) => Rivalry[];
+  /** Most-played rivalries (descending meetings), full sorted list. */
+  mostPlayed: () => Rivalry[];
   /**
    * Most lopsided rivalries: largest win-share gap among pairs with at least
-   * `minMeetings` games (descending dominance, then meetings).
+   * `minMeetings` games (descending dominance, then meetings), full sorted list.
    */
-  mostLopsided: (limit?: number, minMeetings?: number) => Rivalry[];
+  mostLopsided: (minMeetings?: number) => Rivalry[];
   /** A single person's aggregated all-time H2H record across all opponents. */
   ownerRecord: (ownerId: number) => { wins: number; losses: number; ties: number; meetings: number };
 }
@@ -583,23 +583,22 @@ export async function getAllTimeRivalries(): Promise<AllTimeRivalries> {
     rv.games.sort((a, b) => a.year - b.year || a.week - b.week);
   }
 
-  const mostPlayed = (limit = 10): Rivalry[] =>
-    [...rivalries].sort((a, b) => b.meetings - a.meetings).slice(0, limit);
+  const mostPlayed = (): Rivalry[] =>
+    [...rivalries].sort((a, b) => b.meetings - a.meetings);
 
   const dominance = (r: Rivalry): number => {
     const decisive = r.aWins + r.bWins;
     if (decisive === 0) return 0;
     return Math.abs(r.aWins - r.bWins) / decisive;
   };
-  const mostLopsided = (limit = 10, minMeetings = 3): Rivalry[] =>
+  const mostLopsided = (minMeetings = 3): Rivalry[] =>
     [...rivalries]
       .filter((r) => r.meetings >= minMeetings && r.aWins + r.bWins > 0)
       .sort((a, b) => {
         const d = dominance(b) - dominance(a);
         if (d !== 0) return d;
         return b.meetings - a.meetings;
-      })
-      .slice(0, limit);
+      });
 
   const ownerRecord = (
     ownerId: number,
@@ -654,8 +653,8 @@ export interface AllTimeLeader {
 
 export interface AllTimeLeaders {
   leaders: AllTimeLeader[];
-  /** Sorted by total wins (desc), tiebreak by win pct then points. */
-  byWins: (limit?: number) => AllTimeLeader[];
+  /** Sorted by total wins (desc) only — ties are intentionally preserved. */
+  byWins: () => AllTimeLeader[];
   /** Sorted by total points (desc). */
   byPoints: (limit?: number) => AllTimeLeader[];
   /** Sorted by best single-week score (desc). */
@@ -776,14 +775,8 @@ export async function getAllTimeLeaders(): Promise<AllTimeLeaders> {
     return g === 0 ? 0 : (l.totalWins + l.totalTies * 0.5) / g;
   };
 
-  const byWins = (limit = 10): AllTimeLeader[] =>
-    [...leaders]
-      .sort((a, b) => {
-        if (b.totalWins !== a.totalWins) return b.totalWins - a.totalWins;
-        if (winPctOf(b) !== winPctOf(a)) return winPctOf(b) - winPctOf(a);
-        return b.totalPoints - a.totalPoints;
-      })
-      .slice(0, limit);
+  const byWins = (): AllTimeLeader[] =>
+    [...leaders].sort((a, b) => b.totalWins - a.totalWins);
 
   const byPoints = (limit = 10): AllTimeLeader[] =>
     [...leaders].sort((a, b) => b.totalPoints - a.totalPoints).slice(0, limit);
@@ -1365,7 +1358,7 @@ export async function getStreakLeaders(): Promise<StreakLeaders> {
   winStreaks.sort((a, b) => b.streak - a.streak);
   lossStreaks.sort((a, b) => b.streak - a.streak);
 
-  return { longestWinStreak: winStreaks.slice(0, 10), longestLossStreak: lossStreaks.slice(0, 10) };
+  return { longestWinStreak: winStreaks, longestLossStreak: lossStreaks };
 }
 
 /* -------------------------------------------------------------------------- */
