@@ -17,6 +17,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardBody } from "@/compon
 import { TeamLogo } from "@/components/team-logo";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/data-table";
 import { OwnerTrendsPanel } from "@/components/owner-trend-chart";
+import { TiedFootnote } from "./tied-footnote";
 import { formatPoints, formatMoney, winPct } from "@/lib/utils";
 import {
   getSeasonHistory,
@@ -176,25 +177,6 @@ function SeasonCard({ season }: { season: SeasonHistory }) {
   );
 }
 
-/** Footnote shown when tied entries are hidden past the table cap. Hover to see names + detail. */
-function TiedFootnote({ items }: { items: { name: string; detail: string }[] }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="group relative w-fit">
-      <p className="cursor-default text-xs text-muted underline decoration-dotted underline-offset-2">
-        + {items.length} more tied
-      </p>
-      <div className="absolute bottom-full left-0 z-10 mb-1 hidden min-w-[14rem] rounded-lg border border-border bg-card px-3 py-2 shadow-lg group-hover:block">
-        {items.map(({ name, detail }) => (
-          <div key={name} className="flex items-center justify-between gap-6 whitespace-nowrap py-0.5">
-            <span className="text-xs text-foreground">{name}</span>
-            <span className="tabular-nums text-xs text-muted">{detail}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /** A small all-time leaders table, generic over any row type with owner identity fields. */
 function LeaderTable<T extends { ownerId: number; ownerName: string }>({
