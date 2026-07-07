@@ -264,7 +264,7 @@ function PlayoffTable({ rows, limit = 10 }: { rows: PlayoffStat[]; limit?: numbe
         <Target className="size-4 text-accent" aria-hidden="true" />
         <h3 className="text-sm font-semibold tracking-tight text-foreground">Playoff appearances</h3>
       </div>
-      <p className="text-xs text-muted">Seasons reaching the postseason, with all-time playoff W-L record.</p>
+      <p className="text-xs text-muted">Times reaching the postseason, with all-time playoff record.</p>
       <Table>
         <caption className="sr-only">Playoff appearances all-time</caption>
         <THead>
@@ -543,7 +543,7 @@ function MissedSubmissionsTable({ rows }: { rows: MissedSubmission[] }) {
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-2">
         <AlertCircle className="size-4 text-accent" aria-hidden="true" />
-        <h3 className="text-sm font-semibold tracking-tight text-foreground">Missed submissions — The Shame List</h3>
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">The Shame List</h3>
       </div>
       <p className="text-xs text-muted">
         Owners who forgot to set a lineup — at least once.
@@ -639,6 +639,7 @@ export default async function HistoryPage() {
               <Trophy className="size-5 text-accent" aria-hidden="true" />
               <h2 className="text-xl font-bold tracking-tight text-foreground">All-time leaders</h2>
             </div>
+            <p className="text-sm text-muted">Regular-season stats, aggregated across all seasons.</p>
             <div className="grid gap-6 lg:grid-cols-3">
               <LeaderTable
                 title="Most wins"
@@ -679,7 +680,7 @@ export default async function HistoryPage() {
             <div className="grid gap-6 lg:grid-cols-3">
               <LeaderTable
                 title="Best single week"
-                description="Highest single-week DraftKings score ever posted."
+                description="Highest single-week DraftKings score, all-time."
                 icon={Crown}
                 rows={topWeeks}
                 valueHeader="Points"
@@ -692,7 +693,7 @@ export default async function HistoryPage() {
               <PlayoffTable rows={playoffStats} />
               <LeaderTable<WeeklyHighStat>
                 title="Most weekly highs"
-                description="Weeks where an owner posted the highest score in the league."
+                description="Weeks an owner led the league in scoring."
                 icon={Zap}
                 rows={weeklyHighs}
                 valueHeader="Weeks"
@@ -709,7 +710,7 @@ export default async function HistoryPage() {
               <h2 className="text-xl font-bold tracking-tight text-foreground">Owner trends</h2>
             </div>
             <p className="text-sm text-muted">
-              Every owner&apos;s win count and average points scored, season by season. Search or tap an
+              Every owner&apos;s win count and average points scored, season by season. Search, tap, or hover an
               owner below to highlight their line on both charts.
             </p>
             <OwnerTrendsPanel trends={ownerTrends} />
@@ -721,6 +722,7 @@ export default async function HistoryPage() {
               <Star className="size-5 text-accent" aria-hidden="true" />
               <h2 className="text-xl font-bold tracking-tight text-foreground">Records &amp; milestones</h2>
             </div>
+            <p className="text-sm text-muted">Single-game records, individual season streaks, and financial results across all seasons.</p>
             <div className="grid gap-6 lg:grid-cols-2">
               <StreakTable
                 title="Longest winning streak"
@@ -778,7 +780,7 @@ export default async function HistoryPage() {
                 />
                 <RivalryTable
                   title="Most lopsided"
-                  description="Pairs with at least 3 meetings, ranked by dominance."
+                  description="The most one-sided rivalries, among pairs with at least 3 meetings."
                   icon={TrendingUp}
                   rows={mostLopsided}
                   tiedWith={(b, c) => {
