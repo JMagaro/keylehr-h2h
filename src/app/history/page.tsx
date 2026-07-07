@@ -657,20 +657,6 @@ export default async function HistoryPage() {
                 valueHeader="Points"
                 valueOf={(l) => formatPoints(l.totalPoints)}
               />
-              <LeaderTable
-                title="Best single week"
-                description="Highest single-week DraftKings score ever posted."
-                icon={Crown}
-                rows={topWeeks}
-                valueHeader="Points"
-                valueOf={(l) =>
-                  l.bestWeek
-                    ? `${formatPoints(l.bestWeek.points)} (${l.bestWeek.year} Wk ${l.bestWeek.week})`
-                    : "—"
-                }
-              />
-            </div>
-            <div className="grid gap-6 lg:grid-cols-3">
               {championLeaders.length > 0 ? (
                 <LeaderTable<ChampionLeader>
                   title="Most championships"
@@ -689,6 +675,20 @@ export default async function HistoryPage() {
                   <p className="text-xs text-muted">No championship titles recorded yet.</p>
                 </div>
               )}
+            </div>
+            <div className="grid gap-6 lg:grid-cols-3">
+              <LeaderTable
+                title="Best single week"
+                description="Highest single-week DraftKings score ever posted."
+                icon={Crown}
+                rows={topWeeks}
+                valueHeader="Points"
+                valueOf={(l) =>
+                  l.bestWeek
+                    ? `${formatPoints(l.bestWeek.points)} (${l.bestWeek.year} Wk ${l.bestWeek.week})`
+                    : "—"
+                }
+              />
               <PlayoffTable rows={playoffStats} />
               <LeaderTable<WeeklyHighStat>
                 title="Most weekly highs"
@@ -709,33 +709,10 @@ export default async function HistoryPage() {
               <h2 className="text-xl font-bold tracking-tight text-foreground">Owner trends</h2>
             </div>
             <p className="text-sm text-muted">
-              Every owner&apos;s win count and average points scored, season by season. Search or hover an
+              Every owner&apos;s win count and average points scored, season by season. Search or tap an
               owner below to highlight their line on both charts.
             </p>
             <OwnerTrendsPanel trends={ownerTrends} />
-          </section>
-
-          {/* Head-to-head records */}
-          <section aria-label="Head-to-head records" className="flex flex-col gap-5">
-            <div className="flex items-center gap-3">
-              <Users className="size-5 text-accent" aria-hidden="true" />
-              <h2 className="text-xl font-bold tracking-tight text-foreground">
-                Head-to-head records
-              </h2>
-            </div>
-            <Link
-              href="/history/head-to-head"
-              className="group flex items-center justify-between rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-border-strong hover:bg-surface"
-            >
-              <div className="flex flex-col gap-1">
-                <span className="font-semibold text-foreground group-hover:text-accent">
-                  View owner vs. opponent records →
-                </span>
-                <span className="text-sm text-muted">
-                  Pick any owner to see their all-time W-L record against every opponent, aggregated across all seasons.
-                </span>
-              </div>
-            </Link>
           </section>
 
           {/* Records & milestones */}
@@ -758,22 +735,8 @@ export default async function HistoryPage() {
                 icon={TrendingDown}
                 rows={streaks.longestLossStreak}
                 variant="loss"
-              />
+            />
             </div>
-            <div className="grid gap-6 lg:grid-cols-2">
-              <NetEarnersTable rows={earners.slice(0, 10)} />
-              <MissedSubmissionsTable rows={missedSubmissions} />
-            </div>
-          </section>
-
-          {/* Rivalries */}
-          <section aria-label="All-time rivalries" className="flex flex-col gap-5">
-            <div className="flex items-center gap-3">
-              <Swords className="size-5 text-accent" aria-hidden="true" />
-              <h2 className="text-xl font-bold tracking-tight text-foreground">Rivalries</h2>
-            </div>
-
-            {/* Single-game extremes */}
             {(gameExtremes.closest || gameExtremes.biggestBlowout) && (
               <div className="grid gap-4 sm:grid-cols-2">
                 {gameExtremes.closest && (
@@ -784,6 +747,18 @@ export default async function HistoryPage() {
                 )}
               </div>
             )}
+            <div className="grid gap-6 lg:grid-cols-2">
+              <NetEarnersTable rows={earners.slice(0, 10)} />
+              <MissedSubmissionsTable rows={missedSubmissions} />
+            </div>
+          </section>
+
+          {/* Rivalries & head-to-head */}
+          <section aria-label="Rivalries and head-to-head records" className="flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <Swords className="size-5 text-accent" aria-hidden="true" />
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Rivalries &amp; head-to-head</h2>
+            </div>
 
             {rivalries.rivalries.length === 0 ? (
               <EmptyState
@@ -814,6 +789,20 @@ export default async function HistoryPage() {
                 />
               </div>
             )}
+
+            <Link
+              href="/history/head-to-head"
+              className="group flex items-center justify-between rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-border-strong hover:bg-surface"
+            >
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold text-foreground group-hover:text-accent">
+                  View all owner vs. opponent records →
+                </span>
+                <span className="text-sm text-muted">
+                  Pick any owner to see their all-time W-L record against every opponent, aggregated across all seasons.
+                </span>
+              </div>
+            </Link>
           </section>
         </>
       )}
