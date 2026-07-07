@@ -595,8 +595,8 @@ export default async function HistoryPage() {
 
   const hasAnyData = seasonHistory.length > 0;
   const topWins = leaders.byWins();
-  const topPoints = leaders.byPoints(10);
-  const topWeeks = leaders.byBestWeek(10);
+  const topPoints = leaders.byPoints();
+  const topWeeks = leaders.byBestWeek();
   const mostPlayed = rivalries.mostPlayed();
   const mostLopsided = rivalries.mostLopsided(3);
 
@@ -657,6 +657,7 @@ export default async function HistoryPage() {
                 rows={topPoints}
                 valueHeader="Points"
                 valueOf={(l) => formatPoints(l.totalPoints)}
+                rankKey={(l) => l.totalPoints}
               />
               {championLeaders.length > 0 ? (
                 <LeaderTable<ChampionLeader>
@@ -666,6 +667,7 @@ export default async function HistoryPage() {
                   rows={championLeaders}
                   valueHeader="Titles"
                   valueOf={(l) => `${l.championships}`}
+                  rankKey={(l) => l.championships}
                 />
               ) : (
                 <div className="flex min-w-0 flex-col gap-3">
@@ -689,6 +691,7 @@ export default async function HistoryPage() {
                     ? `${formatPoints(l.bestWeek.points)} (${l.bestWeek.year} Wk ${l.bestWeek.week})`
                     : "—"
                 }
+                rankKey={(l) => l.bestWeek?.points ?? 0}
               />
               <PlayoffTable rows={playoffStats} />
               <LeaderTable<WeeklyHighStat>
@@ -737,7 +740,7 @@ export default async function HistoryPage() {
                 icon={TrendingDown}
                 rows={streaks.longestLossStreak}
                 variant="loss"
-            />
+              />
             </div>
             {(gameExtremes.closest || gameExtremes.biggestBlowout) && (
               <div className="grid gap-4 sm:grid-cols-2">

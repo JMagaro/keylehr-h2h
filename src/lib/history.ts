@@ -656,9 +656,9 @@ export interface AllTimeLeaders {
   /** Sorted by total wins (desc) only — ties are intentionally preserved. */
   byWins: () => AllTimeLeader[];
   /** Sorted by total points (desc). */
-  byPoints: (limit?: number) => AllTimeLeader[];
+  byPoints: () => AllTimeLeader[];
   /** Sorted by best single-week score (desc). */
-  byBestWeek: (limit?: number) => AllTimeLeader[];
+  byBestWeek: () => AllTimeLeader[];
   /** Sorted by championship count (desc), tiebreak by win pct. */
   byChampionships: (limit?: number) => AllTimeLeader[];
 }
@@ -778,14 +778,13 @@ export async function getAllTimeLeaders(): Promise<AllTimeLeaders> {
   const byWins = (): AllTimeLeader[] =>
     [...leaders].sort((a, b) => b.totalWins - a.totalWins);
 
-  const byPoints = (limit = 10): AllTimeLeader[] =>
-    [...leaders].sort((a, b) => b.totalPoints - a.totalPoints).slice(0, limit);
+  const byPoints = (): AllTimeLeader[] =>
+    [...leaders].sort((a, b) => b.totalPoints - a.totalPoints);
 
-  const byBestWeek = (limit = 10): AllTimeLeader[] =>
+  const byBestWeek = (): AllTimeLeader[] =>
     [...leaders]
       .filter((l) => l.bestWeek !== null)
-      .sort((a, b) => (b.bestWeek?.points ?? 0) - (a.bestWeek?.points ?? 0))
-      .slice(0, limit);
+      .sort((a, b) => (b.bestWeek?.points ?? 0) - (a.bestWeek?.points ?? 0));
 
   const byChampionships = (limit = 10): AllTimeLeader[] =>
     [...leaders]
