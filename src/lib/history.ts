@@ -1421,6 +1421,115 @@ export async function getMissedSubmissions(): Promise<MissedSubmission[]> {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Scoring consistency (week-to-week variance in DK scores, regular season)  */
+/* -------------------------------------------------------------------------- */
+
+export interface ScoringConsistency {
+  ownerId: number;
+  ownerName: string;
+  teamKey: string | null;
+  teamName: string | null;
+  logoEspn: string | null;
+  /** Mean weekly DK score (regular season, forfeits excluded). */
+  avgPoints: number;
+  /** Population standard deviation of weekly scores. */
+  stdDev: number;
+  /** Number of scored regular-season weeks included. */
+  weeks: number;
+}
+
+/**
+ * Scoring consistency per owner: population std deviation of their regular-season
+ * DK scores, sorted ascending (most consistent first). Forfeits (score = 0) and
+ * byes are excluded. Owners with fewer than 10 scored weeks are omitted.
+ */
+export async function getScoringConsistency(): Promise<ScoringConsistency[]> {
+  const seasonOptions = await getSeasonOptions();
+  const allSeasonIds = seasonOptions.map((s) => s.id);
+  if (allSeasonIds.length === 0) return [];
+
+  const [scoreRows, osRows, seasonRules] = await Promise.all([
+    db
+      .select({
+        seasonId: scores.seasonId,
+        ownerSeasonId: scores.ownerSeasonId,
+        week: scores.week,
+        dkPoints: scores.dkPoints,
+        isBye: scores.isBye,
+      })
+      .from(scores)
+      .where(inArray(scores.seasonId, allSeasonIds)),
+    db
+      .select({
+        ownerSeasonId: ownerSeasons.id,
+        seasonId: ownerSeasons.seasonId,
+        ownerId: owners.id,
+        ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
+        teamKey: nflTeams.key,
+        teamName: nflTeams.name,
+        logoEspn: nflTeams.logoEspn,
+      })
+      .from(ownerSeasons)
+      .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id))
+      .innerJoin(nflTeams, eq(ownerSeasons.nflTeamId, nflTeams.id)),
+    db.select({ id: seasons.id, rules: seasons.rules }).from(seasons),
+  ]);
+
+  const regularWeeksBySeason = new Map(
+    seasonRules.map((r) => [r.id, getSeasonRules(r.rules).regularSeasonWeeks]),
+  );
+
+  type Identity = {
+    ownerId: number; ownerName: string; teamKey: string | null;
+    teamName: string | null; logoEspn: string | null; seasonId: number;
+  };
+  const identityByOwnerSeason = new Map<number, Identity>();
+  const latestIdentityByOwner = new Map<number, Identity>();
+  for (const r of osRows) {
+    const identity: Identity = {
+      ownerId: r.ownerId, ownerName: r.ownerName, teamKey: r.teamKey,
+      teamName: r.teamName, logoEspn: r.logoEspn ?? null, seasonId: r.seasonId,
+    };
+    identityByOwnerSeason.set(r.ownerSeasonId, identity);
+    const prev = latestIdentityByOwner.get(r.ownerId);
+    if (!prev || r.seasonId > prev.seasonId) latestIdentityByOwner.set(r.ownerId, identity);
+  }
+
+  const pointsByOwner = new Map<number, number[]>();
+  for (const s of scoreRows) {
+    if (s.isBye || s.dkPoints === null) continue;
+    if (s.week > (regularWeeksBySeason.get(s.seasonId) ?? 18)) continue;
+    const pts = Number(s.dkPoints);
+    if (pts <= 0) continue; // exclude forfeits
+    const identity = identityByOwnerSeason.get(s.ownerSeasonId);
+    if (!identity) continue;
+    let arr = pointsByOwner.get(identity.ownerId);
+    if (!arr) { arr = []; pointsByOwner.set(identity.ownerId, arr); }
+    arr.push(pts);
+  }
+
+  const results: ScoringConsistency[] = [];
+  for (const [ownerId, pts] of pointsByOwner) {
+    if (pts.length < 10) continue;
+    const avg = pts.reduce((s, v) => s + v, 0) / pts.length;
+    const variance = pts.reduce((s, v) => s + (v - avg) ** 2, 0) / pts.length;
+    const identity = latestIdentityByOwner.get(ownerId);
+    results.push({
+      ownerId,
+      ownerName: identity?.ownerName ?? '',
+      teamKey: identity?.teamKey ?? null,
+      teamName: identity?.teamName ?? null,
+      logoEspn: identity?.logoEspn ?? null,
+      avgPoints: avg,
+      stdDev: Math.sqrt(variance),
+      weeks: pts.length,
+    });
+  }
+
+  return results.sort((a, b) => a.stdDev - b.stdDev);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Biggest earners (all-time payout totals)                                   */
 /* -------------------------------------------------------------------------- */
 
