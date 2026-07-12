@@ -300,10 +300,12 @@ function PlayoffTable({ rows, limit = 10 }: { rows: PlayoffStat[]; limit?: numbe
 function GameExtremeCard({
   label,
   icon: Icon,
+  variant,
   game,
 }: {
   label: string;
   icon: typeof TrendingUp;
+  variant: "closest" | "blowout";
   game: GameExtreme;
 }) {
   return (
@@ -326,7 +328,7 @@ function GameExtremeCard({
         </div>
       </div>
       <p className="text-xs font-medium text-accent">
-        {game.margin < 0.1 ? `Margin: ${game.margin.toFixed(2)} pts` : `Won by ${game.margin.toFixed(2)} pts`}
+        {variant === "closest" ? `Margin: ${game.margin.toFixed(2)} pts` : `Won by ${game.margin.toFixed(2)} pts`}
       </p>
     </div>
   );
@@ -495,15 +497,16 @@ function StreakTable({
 function ScheduleLuckTable({ rows }: { rows: ScheduleLuck[] }) {
   if (rows.length === 0) return null;
   return (
-    <div className="flex min-w-0 flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3 lg:row-span-3 lg:grid lg:[grid-template-rows:subgrid]">
       <div className="flex items-center gap-2">
         <Shuffle className="size-4 text-accent" aria-hidden="true" />
         <h3 className="text-sm font-semibold tracking-tight text-foreground">Schedule luck</h3>
       </div>
       <p className="text-xs text-muted">
-        Each week, your score is ranked against all opponents — expected wins count how many you&apos;d have beaten. Positive means the schedule favored you; negative means you were robbed.
+        Each week, your score is ranked against all owners — expected wins count how many you&apos;d have beaten
+        playing everyone. Positive means the schedule favored you; negative means you were robbed.
       </p>
-      <Table wrapperClassName="max-h-[28rem] overflow-y-auto">
+      <Table wrapperClassName="max-h-[32rem] overflow-y-auto">
         <caption className="sr-only">Schedule luck all-time</caption>
         <THead className="sticky top-0 z-10">
           <TR>
@@ -536,13 +539,13 @@ function MissedSubmissionsTable({ rows }: { rows: MissedSubmission[] }) {
   const visible = rows.filter((r) => r.count > 0);
   if (visible.length === 0) return null;
   return (
-    <div className="flex min-w-0 flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3 lg:row-span-3 lg:grid lg:[grid-template-rows:subgrid]">
       <div className="flex items-center gap-2">
         <AlertCircle className="size-4 text-accent" aria-hidden="true" />
         <h3 className="text-sm font-semibold tracking-tight text-foreground">The Shame List</h3>
       </div>
       <p className="text-xs text-muted">
-        Owners who forgot to set a lineup — at least once.
+        Every owner caught with an unset lineup, across all seasons.
       </p>
       <Table>
         <caption className="sr-only">Missed submissions all-time</caption>
@@ -692,7 +695,7 @@ export default async function HistoryPage() {
               <PlayoffTable rows={playoffStats} />
               <LeaderTable<WeeklyHighStat>
                 title="Most weekly highs"
-                description="Weeks an owner led the league in scoring."
+                description="Weeks an owner posted the highest score in the entire league."
                 icon={Zap}
                 rows={weeklyHighs}
                 valueHeader="Weeks"
@@ -716,12 +719,12 @@ export default async function HistoryPage() {
           </section>
 
           {/* Records & milestones */}
-          <section aria-label="Records and milestones" className="flex flex-col gap-5">
+          <section aria-label="Records and stats" className="flex flex-col gap-5">
             <div className="flex items-center gap-3">
               <Star className="size-5 text-accent" aria-hidden="true" />
-              <h2 className="text-xl font-bold tracking-tight text-foreground">Records &amp; milestones</h2>
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Records &amp; stats</h2>
             </div>
-            <p className="text-sm text-muted">Single-game records, individual season streaks, and financial results across all seasons.</p>
+            <p className="text-sm text-muted">Streaks, single-game records, scheduling luck, and the stats that tell the full story beyond wins and losses.</p>
             <div className="grid gap-6 lg:grid-cols-2">
               <StreakTable
                 title="Longest winning streak"
@@ -741,14 +744,14 @@ export default async function HistoryPage() {
             {(gameExtremes.closest || gameExtremes.biggestBlowout) && (
               <div className="grid gap-4 sm:grid-cols-2">
                 {gameExtremes.closest && (
-                  <GameExtremeCard label="Closest game" icon={Target} game={gameExtremes.closest} />
+                  <GameExtremeCard label="Closest game" icon={Target} variant="closest" game={gameExtremes.closest} />
                 )}
                 {gameExtremes.biggestBlowout && (
-                  <GameExtremeCard label="Biggest blowout" icon={Flame} game={gameExtremes.biggestBlowout} />
+                  <GameExtremeCard label="Biggest blowout" icon={Flame} variant="blowout" game={gameExtremes.biggestBlowout} />
                 )}
               </div>
             )}
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-x-6 gap-y-3 lg:grid-cols-2 lg:grid-rows-[auto_auto_auto]">
               <ScheduleLuckTable rows={scheduleLuck} />
               <MissedSubmissionsTable rows={missedSubmissions} />
             </div>
