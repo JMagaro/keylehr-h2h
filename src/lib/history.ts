@@ -1421,112 +1421,143 @@ export async function getMissedSubmissions(): Promise<MissedSubmission[]> {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Scoring consistency (week-to-week variance in DK scores, regular season)  */
+/* Schedule luck (expected wins vs actual wins, regular season)               */
 /* -------------------------------------------------------------------------- */
 
-export interface ScoringConsistency {
+export interface ScheduleLuck {
   ownerId: number;
   ownerName: string;
   teamKey: string | null;
   teamName: string | null;
   logoEspn: string | null;
-  /** Mean weekly DK score (regular season, forfeits excluded). */
-  avgPoints: number;
-  /** Population standard deviation of weekly scores. */
-  stdDev: number;
-  /** Number of scored regular-season weeks included. */
-  weeks: number;
+  /** Actual regular-season wins from the standings engine, all-time. */
+  actualWins: number;
+  /**
+   * Expected wins: each week, how many of the other owners the owner would
+   * have beaten with their score (ties split 0.5). Summed across all weeks
+   * and seasons. On the same numerical scale as `actualWins`.
+   */
+  expectedWins: number;
+  /** actualWins − expectedWins. Positive = lucky schedule; negative = unlucky. */
+  luck: number;
 }
 
 /**
- * Scoring consistency per owner: population std deviation of their regular-season
- * DK scores, sorted ascending (most consistent first). Forfeits (score = 0) and
- * byes are excluded. Owners with fewer than 10 scored weeks are omitted.
+ * Schedule luck per owner, all-time. For every regular-season week, each
+ * owner's score is ranked against every other owner's score that week; the
+ * fraction of matchups they would have won becomes their "expected win"
+ * contribution for that week. Aggregated across seasons and compared to their
+ * actual win total to produce a luck differential. Sorted by luck descending.
  */
-export async function getScoringConsistency(): Promise<ScoringConsistency[]> {
-  const seasonOptions = await getSeasonOptions();
-  const allSeasonIds = seasonOptions.map((s) => s.id);
-  if (allSeasonIds.length === 0) return [];
+export async function getScheduleLuck(): Promise<ScheduleLuck[]> {
+  const options = await getSeasonOptions();
 
-  const [scoreRows, osRows, seasonRules] = await Promise.all([
-    db
-      .select({
-        seasonId: scores.seasonId,
-        ownerSeasonId: scores.ownerSeasonId,
-        week: scores.week,
-        dkPoints: scores.dkPoints,
-        isBye: scores.isBye,
-      })
-      .from(scores)
-      .where(inArray(scores.seasonId, allSeasonIds)),
-    db
-      .select({
-        ownerSeasonId: ownerSeasons.id,
-        seasonId: ownerSeasons.seasonId,
-        ownerId: owners.id,
-        ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
-        teamKey: nflTeams.key,
-        teamName: nflTeams.name,
-        logoEspn: nflTeams.logoEspn,
-      })
-      .from(ownerSeasons)
-      .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id))
-      .innerJoin(nflTeams, eq(ownerSeasons.nflTeamId, nflTeams.id)),
-    db.select({ id: seasons.id, rules: seasons.rules }).from(seasons),
-  ]);
+  const ownerSeasonRows = await db
+    .select({ seasonId: ownerSeasons.seasonId })
+    .from(ownerSeasons);
+  const seasonsWithData = [...new Set(ownerSeasonRows.map((r) => r.seasonId))];
+  if (seasonsWithData.length === 0) return [];
 
+  const seasonRulesRows = await db
+    .select({ id: seasons.id, rules: seasons.rules })
+    .from(seasons)
+    .where(inArray(seasons.id, seasonsWithData));
   const regularWeeksBySeason = new Map(
-    seasonRules.map((r) => [r.id, getSeasonRules(r.rules).regularSeasonWeeks]),
+    seasonRulesRows.map((r) => [r.id, getSeasonRules(r.rules).regularSeasonWeeks]),
+  );
+  const yearBySeasonId = new Map(options.map((s) => [s.id, s.year]));
+
+  const byOwner = new Map<number, {
+    actualWins: number;
+    expectedWins: number;
+    latestYear: number;
+    identity: OwnerIdentityRow;
+  }>();
+
+  const seasonDataAll = await Promise.all(
+    seasonsWithData.map(async (seasonId) => {
+      const regularSeasonWeeks = regularWeeksBySeason.get(seasonId) ?? 18;
+      const [identities, standings, scoreRows] = await Promise.all([
+        loadOwnerIdentities(seasonId),
+        getSeasonStandings(seasonId),
+        db
+          .select({
+            ownerSeasonId: scores.ownerSeasonId,
+            week: scores.week,
+            dkPoints: scores.dkPoints,
+            isBye: scores.isBye,
+          })
+          .from(scores)
+          .where(and(eq(scores.seasonId, seasonId), lte(scores.week, regularSeasonWeeks))),
+      ]);
+      return { seasonId, identities, standings, scoreRows };
+    }),
   );
 
-  type Identity = {
-    ownerId: number; ownerName: string; teamKey: string | null;
-    teamName: string | null; logoEspn: string | null; seasonId: number;
-  };
-  const identityByOwnerSeason = new Map<number, Identity>();
-  const latestIdentityByOwner = new Map<number, Identity>();
-  for (const r of osRows) {
-    const identity: Identity = {
-      ownerId: r.ownerId, ownerName: r.ownerName, teamKey: r.teamKey,
-      teamName: r.teamName, logoEspn: r.logoEspn ?? null, seasonId: r.seasonId,
-    };
-    identityByOwnerSeason.set(r.ownerSeasonId, identity);
-    const prev = latestIdentityByOwner.get(r.ownerId);
-    if (!prev || r.seasonId > prev.seasonId) latestIdentityByOwner.set(r.ownerId, identity);
+  for (const { seasonId, identities, standings, scoreRows } of seasonDataAll) {
+    const year = yearBySeasonId.get(seasonId) ?? 0;
+    const winsByOwnerSeason = new Map(standings.map((s) => [s.ownerSeasonId, s.wins]));
+
+    // Group valid scores by week (skip byes and unscored weeks).
+    const weekScores = new Map<number, { ownerSeasonId: number; pts: number }[]>();
+    for (const s of scoreRows) {
+      if (s.isBye || s.dkPoints === null) continue;
+      const pts = Number(s.dkPoints);
+      let arr = weekScores.get(s.week);
+      if (!arr) { arr = []; weekScores.set(s.week, arr); }
+      arr.push({ ownerSeasonId: s.ownerSeasonId, pts });
+    }
+
+    // Expected wins: for each owner in each week, count how many others they
+    // would have beaten (ties split as 0.5), divided by (n − 1).
+    const expectedByOwnerSeason = new Map<number, number>();
+    for (const weekGroup of weekScores.values()) {
+      const n = weekGroup.length;
+      if (n < 2) continue;
+      for (const { ownerSeasonId, pts } of weekGroup) {
+        let lower = 0, equal = 0;
+        for (const { ownerSeasonId: otherId, pts: otherPts } of weekGroup) {
+          if (otherId === ownerSeasonId) continue;
+          if (otherPts < pts) lower++;
+          else if (otherPts === pts) equal++;
+        }
+        const expWin = (lower + equal * 0.5) / (n - 1);
+        expectedByOwnerSeason.set(ownerSeasonId, (expectedByOwnerSeason.get(ownerSeasonId) ?? 0) + expWin);
+      }
+    }
+
+    // Roll up to person level using the most recent identity per owner.
+    for (const [osId, identity] of identities) {
+      const ownerId = identity.ownerId;
+      const actual = winsByOwnerSeason.get(osId) ?? 0;
+      const expected = expectedByOwnerSeason.get(osId) ?? 0;
+
+      let agg = byOwner.get(ownerId);
+      if (!agg) {
+        agg = { actualWins: 0, expectedWins: 0, latestYear: 0, identity };
+        byOwner.set(ownerId, agg);
+      }
+      if (year >= agg.latestYear) {
+        agg.latestYear = year;
+        agg.identity = identity;
+      }
+      agg.actualWins += actual;
+      agg.expectedWins += expected;
+    }
   }
 
-  const pointsByOwner = new Map<number, number[]>();
-  for (const s of scoreRows) {
-    if (s.isBye || s.dkPoints === null) continue;
-    if (s.week > (regularWeeksBySeason.get(s.seasonId) ?? 18)) continue;
-    const pts = Number(s.dkPoints);
-    if (pts <= 0) continue; // exclude forfeits
-    const identity = identityByOwnerSeason.get(s.ownerSeasonId);
-    if (!identity) continue;
-    let arr = pointsByOwner.get(identity.ownerId);
-    if (!arr) { arr = []; pointsByOwner.set(identity.ownerId, arr); }
-    arr.push(pts);
-  }
-
-  const results: ScoringConsistency[] = [];
-  for (const [ownerId, pts] of pointsByOwner) {
-    if (pts.length < 10) continue;
-    const avg = pts.reduce((s, v) => s + v, 0) / pts.length;
-    const variance = pts.reduce((s, v) => s + (v - avg) ** 2, 0) / pts.length;
-    const identity = latestIdentityByOwner.get(ownerId);
-    results.push({
-      ownerId,
-      ownerName: identity?.ownerName ?? '',
-      teamKey: identity?.teamKey ?? null,
-      teamName: identity?.teamName ?? null,
-      logoEspn: identity?.logoEspn ?? null,
-      avgPoints: avg,
-      stdDev: Math.sqrt(variance),
-      weeks: pts.length,
-    });
-  }
-
-  return results.sort((a, b) => a.stdDev - b.stdDev);
+  return [...byOwner.values()]
+    .map(({ actualWins, expectedWins, identity }) => ({
+      ownerId: identity.ownerId,
+      ownerName: identity.ownerName,
+      teamKey: identity.teamKey,
+      teamName: identity.teamName,
+      logoEspn: identity.logoEspn,
+      actualWins,
+      expectedWins,
+      luck: actualWins - expectedWins,
+    }))
+    .sort((a, b) => b.luck - a.luck);
 }
 
 /* -------------------------------------------------------------------------- */

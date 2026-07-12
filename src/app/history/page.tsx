@@ -7,7 +7,7 @@
  */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart, Star, TrendingUp, TrendingDown, AlertCircle, Activity, Medal, Target, Zap } from "lucide-react";
+import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart, Star, TrendingUp, TrendingDown, AlertCircle, Shuffle, Medal, Target, Zap } from "lucide-react";
 
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
@@ -26,7 +26,7 @@ import {
   getOwnerSeasonTrends,
   getStreakLeaders,
   getMissedSubmissions,
-  getScoringConsistency,
+  getScheduleLuck,
   getPlayoffStats,
   getWeeklyHighScores,
   getGameExtremes,
@@ -37,7 +37,7 @@ import {
   type Rivalry,
   type StreakRecord,
   type MissedSubmission,
-  type ScoringConsistency,
+  type ScheduleLuck,
   type PlayoffStat,
   type WeeklyHighStat,
   type GameExtreme,
@@ -492,27 +492,27 @@ function StreakTable({
   );
 }
 
-function ScoringConsistencyTable({ rows, limit = 10 }: { rows: ScoringConsistency[]; limit?: number }) {
+function ScheduleLuckTable({ rows, limit = 10 }: { rows: ScheduleLuck[]; limit?: number }) {
   const visible = rows.slice(0, limit);
   if (visible.length === 0) return null;
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-2">
-        <Activity className="size-4 text-accent" aria-hidden="true" />
-        <h3 className="text-sm font-semibold tracking-tight text-foreground">Scoring consistency</h3>
+        <Shuffle className="size-4 text-accent" aria-hidden="true" />
+        <h3 className="text-sm font-semibold tracking-tight text-foreground">Schedule luck</h3>
       </div>
       <p className="text-xs text-muted">
-        Most consistent week-to-week DK scoring, regular season only. Sorted by lowest standard deviation.
+        Each week, your score is ranked against all opponents — expected wins count how many you&apos;d have beaten. Positive means the schedule favored you; negative means you were robbed.
       </p>
       <Table>
-        <caption className="sr-only">Scoring consistency all-time</caption>
+        <caption className="sr-only">Schedule luck all-time</caption>
         <THead>
           <TR>
             <TH align="center" className="w-8">#</TH>
             <TH>Owner</TH>
-            <TH align="right">Avg</TH>
-            <TH align="right">Std Dev</TH>
-            <TH align="right" className="hidden sm:table-cell">Wks</TH>
+            <TH align="right" className="hidden sm:table-cell">Actual W</TH>
+            <TH align="right" className="hidden sm:table-cell">Exp W</TH>
+            <TH align="right">Luck</TH>
           </TR>
         </THead>
         <TBody>
@@ -520,9 +520,11 @@ function ScoringConsistencyTable({ rows, limit = 10 }: { rows: ScoringConsistenc
             <TR key={r.ownerId}>
               <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
               <TD><span className="font-medium text-foreground">{r.ownerName}</span></TD>
-              <TD align="right" className="tabular-nums text-muted">{r.avgPoints.toFixed(2)}</TD>
-              <TD align="right" className="tabular-nums font-semibold">±{r.stdDev.toFixed(2)}</TD>
-              <TD align="right" className="hidden tabular-nums text-muted sm:table-cell">{r.weeks}</TD>
+              <TD align="right" className="hidden tabular-nums text-muted sm:table-cell">{r.actualWins}</TD>
+              <TD align="right" className="hidden tabular-nums text-muted sm:table-cell">{r.expectedWins.toFixed(1)}</TD>
+              <TD align="right" className={`tabular-nums font-semibold ${r.luck > 0 ? "text-win" : r.luck < 0 ? "text-loss" : ""}`}>
+                {r.luck > 0 ? "+" : ""}{r.luck.toFixed(1)}
+              </TD>
             </TR>
           ))}
         </TBody>
@@ -572,7 +574,7 @@ function MissedSubmissionsTable({ rows }: { rows: MissedSubmission[] }) {
 export default async function HistoryPage() {
   const [
     seasonHistory, leaders, rivalries, ownerTrends,
-    streaks, missedSubmissions, consistency,
+    streaks, missedSubmissions, scheduleLuck,
     playoffStats, weeklyHighs, gameExtremes, championLeaders,
   ] = await Promise.all([
     getSeasonHistory(),
@@ -581,7 +583,7 @@ export default async function HistoryPage() {
     getOwnerSeasonTrends(),
     getStreakLeaders(),
     getMissedSubmissions(),
-    getScoringConsistency(),
+    getScheduleLuck(),
     getPlayoffStats(),
     getWeeklyHighScores(),
     getGameExtremes(),
@@ -748,7 +750,7 @@ export default async function HistoryPage() {
               </div>
             )}
             <div className="grid gap-6 lg:grid-cols-2">
-              <ScoringConsistencyTable rows={consistency} />
+              <ScheduleLuckTable rows={scheduleLuck} />
               <MissedSubmissionsTable rows={missedSubmissions} />
             </div>
           </section>
