@@ -7,9 +7,10 @@
  *      series" against another when it has MORE WINS THAN LOSSES against them
  *      (a split, or never having played, counts as neither).
  *   2. Count each owner's series wins (how many of the other tied owners it beat).
- *   3. If an owner is head-to-head DOMINANT — for a 2-way tie, it won the series;
- *      for a 3+-way tie, it has a winning series against MORE THAN HALF the group —
- *      that owner is placed next.
+ *   3. If an owner is head-to-head DOMINANT — meaning it holds a winning series
+ *      against EVERY other tied owner (undefeated within the group) — that owner
+ *      is placed next. A single series loss eliminates the H2H advantage regardless
+ *      of group size.
  *   4. Otherwise the owner with the most POINTS FOR is placed next.
  *   5. Remove that owner and repeat on the rest (the grid is recomputed each pass).
  *
@@ -134,13 +135,11 @@ function pickTop(
     const ids = teams.map((t) => t.ownerSeasonId);
     const wins = new Map(teams.map((t) => [t.ownerSeasonId, seriesWinCount(ctx, t.ownerSeasonId, ids)]));
     const maxWins = Math.max(...wins.values());
-    const totalWins = [...wins.values()].reduce((s, n) => s + n, 0);
-    // 2-way tie: dominant means one owner actually won the series (maxWins > total/2 = 0.5).
-    // 3+-way tie: dominant means a winning series against more than half the group.
-    const threshold = teams.length === 2 ? totalWins / 2 : teams.length / 2;
-    if (maxWins > threshold) {
+    // Dominant means holding a winning series against every other tied owner (undefeated).
+    // A single series loss disqualifies H2H regardless of group size — 3-1 in a 5-team
+    // group does not qualify.
+    if (maxWins === teams.length - 1) {
       const dominant = teams.filter((t) => wins.get(t.ownerSeasonId) === maxWins);
-      // Practically unique; if not, fall back to the points tiebreakers among them.
       return bestByPoints(dominant, pointsKeys);
     }
   }

@@ -58,23 +58,12 @@ const TIEBREAKERS: Record<
     desc: "Record in games played between the tied owners.",
   },
   pf: { label: "Points For", desc: "Total fantasy points scored — higher wins." },
-  pa: { label: "Points Against", desc: "Total fantasy points allowed — higher wins." },
+  pa: { label: "Points Against", desc: "Total fantasy points allowed — lower wins." },
 };
 
 const PLAYOFF_TIE: Record<SeasonRules["playoffs"]["tieBreaker"], string> = {
   regular_season_pf: "regular-season Points For",
   higher_seed: "the higher seed",
-};
-
-const MISSED_RESULT: Record<SeasonRules["missedLineup"]["result"], string> = {
-  auto_loss: "an automatic loss for that week",
-  none: "no automatic penalty",
-};
-
-const MISSED_OPPONENT: Record<SeasonRules["missedLineup"]["opponentScores"], string> = {
-  league_average: "the league-average score for that week",
-  zero: "zero points",
-  actual: "their own actual points",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -193,6 +182,25 @@ function PrizeRow({
   );
 }
 
+/** A single tiebreaker scenario: label, situation description, and outcome. */
+function ExampleBlock({
+  label,
+  scenario,
+  outcome,
+}: {
+  label: string;
+  scenario: string;
+  outcome: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
+      <p className="text-xs font-semibold text-foreground">{label}</p>
+      <p className="text-xs text-muted">{scenario}</p>
+      <p className="text-xs font-medium text-accent">→ {outcome}</p>
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* Page                                                                        */
 /* -------------------------------------------------------------------------- */
@@ -285,50 +293,114 @@ export default async function RulesPage() {
         </RuleCard>
 
         <RuleCard
-          id="tiebreakers"
-          icon={Scale}
-          title="Standings tiebreakers"
-          description="Applied in order when records are level."
-        >
-          <ol className="flex flex-col gap-3">
-            {rules.tiebreakers.map((key, i) => (
-              <li key={key} className="flex gap-3">
-                <span
-                  aria-hidden="true"
-                  className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold tabular-nums text-accent"
-                >
-                  {i + 1}
-                </span>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-foreground">{TIEBREAKERS[key].label}</span>
-                  <span className="text-xs text-muted">{TIEBREAKERS[key].desc}</span>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </RuleCard>
-
-        <RuleCard
           id="missed-lineup"
           icon={AlertTriangle}
           title="Missed lineups"
           description="Failing to submit a valid DraftKings lineup."
         >
-          <Bullets
-            items={[
-              <>
-                An owner who fails to submit a valid lineup takes{" "}
-                <strong className="font-semibold text-foreground">{MISSED_RESULT[rules.missedLineup.result]}</strong>.
-              </>,
-              <>
-                Their opponent is credited with{" "}
-                <strong className="font-semibold text-foreground">
-                  {MISSED_OPPONENT[rules.missedLineup.opponentScores]}
-                </strong>{" "}
-                (rather than their own actual points).
-              </>,
-            ]}
-          />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
+              <p className="text-xs font-semibold text-foreground">1st incident</p>
+              <ul className="flex flex-col gap-1.5 text-xs text-muted">
+                <li className="flex gap-2">
+                  <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" />
+                  <span>$25 fine</span>
+                </li>
+                <li className="flex gap-2">
+                  <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" />
+                  <span>Automatic loss for that week</span>
+                </li>
+              </ul>
+            </div>
+            <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
+              <p className="text-xs font-semibold text-foreground">2nd incident</p>
+              <ul className="flex flex-col gap-1.5 text-xs text-muted">
+                <li className="flex gap-2">
+                  <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" />
+                  <span>Additional $25 fine ($50 total)</span>
+                </li>
+                <li className="flex gap-2">
+                  <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" />
+                  <span>Forfeit every remaining game for the season</span>
+                </li>
+                <li className="flex gap-2">
+                  <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" />
+                  <span>Opponents that week score against the league median</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </RuleCard>
+
+        <RuleCard
+          id="tiebreakers"
+          icon={Scale}
+          title="Standings tiebreakers"
+          description="Applied in order when records are level."
+          className="md:col-span-2"
+        >
+          <div className="flex flex-col gap-5">
+            <ol className="flex flex-col gap-3">
+              {rules.tiebreakers.map((key, i) => (
+                <li key={key} className="flex gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold tabular-nums text-accent"
+                  >
+                    {i + 1}
+                  </span>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-foreground">{TIEBREAKERS[key].label}</span>
+                    <span className="text-xs text-muted">{TIEBREAKERS[key].desc}</span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            <div className="flex flex-col gap-2 border-t border-border pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-subtle">Divisional tiebreakers</p>
+              <p className="text-sm text-muted">
+                When tied owners share a division, divisional tiebreakers (using the order above) are resolved first
+                to determine the division winner. The remaining tied owners then re-enter a separate wild-card tiebreaker.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-border pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-subtle">Multi-team H2H examples</p>
+              <p className="text-sm text-muted">
+                For H2H to decide a multi-team tie, one owner must hold a winning series against{" "}
+                <strong className="font-semibold text-foreground">every</strong> other tied owner. A single series
+                loss eliminates the H2H advantage — the tie then falls to Points For.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <ExampleBlock
+                  label="Ex 1 — 3-way tie, undefeated winner"
+                  scenario="Colts, Dolphins, and Broncos all finish 9-8. Colts beat both Dolphins and Broncos; Dolphins and Broncos never played each other."
+                  outcome="Colts advance via H2H (2–0 vs. the group)."
+                />
+                <ExampleBlock
+                  label="Ex 2 — 3-way tie, no undefeated winner"
+                  scenario="Colts, Dolphins, and Broncos all finish 9-8. Colts beat Dolphins but lost to Broncos; Dolphins and Broncos never played."
+                  outcome="No owner is undefeated — falls to Points For."
+                />
+                <ExampleBlock
+                  label="Ex 3 — 4-way tie, no undefeated winner"
+                  scenario="Colts, Dolphins, Broncos, and Bengals all finish 9-8. Colts beat Dolphins and Broncos but lost to Bengals; Dolphins beat Bengals."
+                  outcome="No owner is undefeated — falls to Points For."
+                />
+                <ExampleBlock
+                  label="Ex 4 — 4-way tie, two spots available"
+                  scenario="Using Ex 3 facts with two wild-card spots open. No undefeated owner — Points For gives spot 1 to the Bengals. The tiebreaker restarts for Colts, Dolphins, and Broncos. Within this sub-group, Colts beat both and are 2–0."
+                  outcome="Bengals take spot 1 via Points For. Colts take spot 2 via H2H after the restart."
+                />
+                <ExampleBlock
+                  label="Ex 5 — 5-way tie, 3-1 is not enough"
+                  scenario="Five teams tied. Team 1 went 3-1 vs. the group (one loss). No team is 4-0 against the others."
+                  outcome="3-1 does not qualify as undefeated — falls to Points For. One loss eliminates H2H regardless of group size."
+                />
+              </div>
+            </div>
+          </div>
         </RuleCard>
 
         <RuleCard

@@ -7,7 +7,7 @@
  */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart, Star, TrendingUp, TrendingDown, AlertCircle, Shuffle, Medal, Target, Zap } from "lucide-react";
+import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart, Star, TrendingUp, TrendingDown, AlertCircle, Shuffle, Medal, Target, Zap, Scale } from "lucide-react";
 
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
@@ -503,8 +503,7 @@ function ScheduleLuckTable({ rows }: { rows: ScheduleLuck[] }) {
         <h3 className="text-sm font-semibold tracking-tight text-foreground">Schedule luck</h3>
       </div>
       <p className="text-xs text-muted">
-        Each week, your score is ranked against all owners — expected wins count how many you&apos;d have beaten
-        playing everyone. Positive means the schedule favored you; negative means you were robbed.
+        Each week, scores are ranked across the full field — expected wins count how many owners each person would have beaten. Positive means a favorable schedule; negative means unlucky draws.
       </p>
       <Table wrapperClassName="max-h-[32rem] overflow-y-auto">
         <caption className="sr-only">Schedule luck all-time</caption>
@@ -638,7 +637,7 @@ export default async function HistoryPage() {
               <Trophy className="size-5 text-accent" aria-hidden="true" />
               <h2 className="text-xl font-bold tracking-tight text-foreground">All-time leaders</h2>
             </div>
-            <p className="text-sm text-muted">Regular-season stats, aggregated across all seasons.</p>
+            <p className="text-sm text-muted">Aggregated across all seasons — regular season unless noted.</p>
             <div className="grid gap-6 lg:grid-cols-3">
               <LeaderTable
                 title="Most wins"
@@ -695,7 +694,7 @@ export default async function HistoryPage() {
               <PlayoffTable rows={playoffStats} />
               <LeaderTable<WeeklyHighStat>
                 title="Most weekly highs"
-                description="Weeks an owner posted the highest score in the entire league."
+                description="Regular-season weeks an owner posted the highest score in the entire league."
                 icon={Zap}
                 rows={weeklyHighs}
                 valueHeader="Weeks"
@@ -783,7 +782,7 @@ export default async function HistoryPage() {
                 <RivalryTable
                   title="Most lopsided"
                   description="The most one-sided rivalries, among pairs with at least 3 meetings."
-                  icon={TrendingUp}
+                  icon={Scale}
                   rows={mostLopsided}
                   tiedWith={(b, c) => {
                     const dom = (r: Rivalry) => r.aWins + r.bWins > 0 ? Math.abs(r.aWins - r.bWins) / (r.aWins + r.bWins) : 0;
