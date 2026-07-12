@@ -25,10 +25,10 @@ const ALIGN: Record<Align, string> = {
   right: 'text-right',
 };
 
-/** Scroll wrapper + base table. */
-export function Table({ className, children, ...rest }: React.TableHTMLAttributes<HTMLTableElement>) {
+/** Scroll wrapper + base table. `wrapperClassName` applies to the outer div (e.g. `max-h-[28rem] overflow-y-auto` for a vertically-scrollable table). */
+export function Table({ className, wrapperClassName, children, ...rest }: React.TableHTMLAttributes<HTMLTableElement> & { wrapperClassName?: string }) {
   return (
-    <div className="w-full overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+    <div className={cn('w-full overflow-x-auto rounded-xl border border-border bg-card shadow-sm', wrapperClassName)}>
       <table className={cn('w-full border-collapse text-sm', className)} {...rest}>
         {children}
       </table>

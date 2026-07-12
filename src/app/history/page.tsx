@@ -492,9 +492,8 @@ function StreakTable({
   );
 }
 
-function ScheduleLuckTable({ rows, limit = 10 }: { rows: ScheduleLuck[]; limit?: number }) {
-  const visible = rows.slice(0, limit);
-  if (visible.length === 0) return null;
+function ScheduleLuckTable({ rows }: { rows: ScheduleLuck[] }) {
+  if (rows.length === 0) return null;
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -504,9 +503,9 @@ function ScheduleLuckTable({ rows, limit = 10 }: { rows: ScheduleLuck[]; limit?:
       <p className="text-xs text-muted">
         Each week, your score is ranked against all opponents — expected wins count how many you&apos;d have beaten. Positive means the schedule favored you; negative means you were robbed.
       </p>
-      <Table>
+      <Table wrapperClassName="max-h-[28rem] overflow-y-auto">
         <caption className="sr-only">Schedule luck all-time</caption>
-        <THead>
+        <THead className="sticky top-0 z-10">
           <TR>
             <TH align="center" className="w-8">#</TH>
             <TH>Owner</TH>
@@ -516,7 +515,7 @@ function ScheduleLuckTable({ rows, limit = 10 }: { rows: ScheduleLuck[]; limit?:
           </TR>
         </THead>
         <TBody>
-          {visible.map((r, i) => (
+          {rows.map((r, i) => (
             <TR key={r.ownerId}>
               <TD align="center" className="tabular-nums text-subtle">{i + 1}</TD>
               <TD><span className="font-medium text-foreground">{r.ownerName}</span></TD>
