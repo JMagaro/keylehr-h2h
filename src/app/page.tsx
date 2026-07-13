@@ -333,7 +333,7 @@ export default async function DashboardPage() {
                   <span className="flex flex-col">
                     <span className="font-semibold text-foreground">Playoff picture</span>
                     <span className="text-sm text-muted">
-                      Seven seeds per conference, as if today.
+                      Seven seeds per conference, as of today.
                     </span>
                   </span>
                 </span>
