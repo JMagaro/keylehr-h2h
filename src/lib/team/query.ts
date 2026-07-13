@@ -56,6 +56,7 @@ export interface TeamWeek {
   points: number | null;
   oppOwnerName: string | null;
   oppTeamKey: string | null;
+  oppLogoEspn: string | null;
   oppPoints: number | null;
   result: 'W' | 'L' | 'T' | null;
   /** This team missed its lineup that week (auto-loss under the league rule). */
@@ -137,9 +138,10 @@ export async function getTeamDashboard(
   }
   if (!header) return null;
 
-  const { entries, results, rankingOptions } = data;
+  const { entries, results, rankingOptions, brandingById } = data;
   const nameById = new Map(entries.map((e) => [e.ownerSeasonId, e.ownerName]));
   const teamKeyById = new Map(entries.map((e) => [e.ownerSeasonId, e.teamKey]));
+  const logoById = new Map(entries.map((e) => [e.ownerSeasonId, brandingById.get(e.ownerSeasonId)?.logoEspn ?? null]));
 
   // Regular-season, final results only.
   const reg = results.filter((r) => !r.isPlayoff && r.isFinal);
@@ -187,6 +189,7 @@ export async function getTeamDashboard(
         points: null,
         oppOwnerName: null,
         oppTeamKey: null,
+        oppLogoEspn: null,
         oppPoints: null,
         result: null,
         thisForfeit: false,
@@ -222,6 +225,7 @@ export async function getTeamDashboard(
       points: myPoints,
       oppOwnerName: nameById.get(oppId) ?? null,
       oppTeamKey: teamKeyById.get(oppId) ?? null,
+      oppLogoEspn: logoById.get(oppId) ?? null,
       oppPoints,
       result,
       thisForfeit,

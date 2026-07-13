@@ -45,7 +45,7 @@ import { formatPoints } from "@/lib/utils";
 export const metadata: Metadata = {
   title: "My Team",
   description:
-    "Per-team dashboard for KeyLehr H2H — weekly DraftKings scores vs the league, rank over time, schedule & results, head-to-head records, and playoff-odds trend for any team.",
+    "Per-team dashboard for KeyLehr H2H — weekly DraftKings scores vs the league, rank over time, schedule & results, and playoff-odds trend for any team.",
 };
 
 export const dynamic = "force-dynamic";
@@ -310,10 +310,12 @@ export default async function MyTeamPage({
                     {w.isBye ? (
                       <span className="text-muted">Bye</span>
                     ) : (
-                      <div className="flex flex-col">
-                        <span className="font-medium text-foreground">
-                          {w.oppTeamKey} · {w.oppOwnerName}
-                        </span>
+                      <div className="flex items-center gap-2">
+                        <TeamLogo src={w.oppLogoEspn} alt={`${w.oppTeamKey ?? ""} logo`} size={22} />
+                        <div className="flex flex-col">
+                          <span className="font-medium text-foreground">
+                            {w.oppTeamKey} · {w.oppOwnerName}
+                          </span>
                         {w.thisForfeit ? (
                           <span className="flex items-center gap-1 text-xs font-medium text-loss">
                             <AlertTriangle className="size-3" aria-hidden="true" /> Missed lineup —
@@ -322,6 +324,7 @@ export default async function MyTeamPage({
                         ) : w.oppForfeit ? (
                           <span className="text-xs text-subtle">Opponent missed lineup</span>
                         ) : null}
+                        </div>
                       </div>
                     )}
                   </TD>
