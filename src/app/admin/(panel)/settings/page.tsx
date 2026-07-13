@@ -32,6 +32,7 @@ const MISSED_RESULT_LABELS: Record<string, string> = {
 
 const MISSED_OPP_LABELS: Record<string, string> = {
   league_average: 'League average',
+  league_median: 'League median',
   zero: 'Zero',
   actual: 'Actual',
 };

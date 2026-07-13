@@ -361,6 +361,7 @@ export function SeasonRulesForm({
                   defaultValue={rules.missedLineup.opponentScores}
                 >
                   <option value="league_average">League average</option>
+                  <option value="league_median">League median</option>
                   <option value="zero">Zero</option>
                   <option value="actual">Actual</option>
                 </Select>

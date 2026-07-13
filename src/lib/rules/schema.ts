@@ -54,9 +54,9 @@ export const seasonRulesSchema = z.object({
       /** Result for the owner who missed: automatic loss. */
       result: z.enum(['auto_loss', 'none']).default('auto_loss'),
       /** What the opponent scores that week. League rule: league average. */
-      opponentScores: z.enum(['league_average', 'zero', 'actual']).default('league_average'),
+      opponentScores: z.enum(['league_average', 'league_median', 'zero', 'actual']).default('league_average'),
     })
-    .default({ result: 'auto_loss', opponentScores: 'league_average' }),
+    .default({ result: 'auto_loss', opponentScores: 'league_average' }), // 2026+ seasons should use 'league_median'
 
   /** Prize structure (cents). Mirrors the league's payout table. */
   payouts: z

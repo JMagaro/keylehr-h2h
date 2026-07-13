@@ -18,7 +18,6 @@ import {
   type LucideIcon,
   Medal,
   Scale,
-  Tag,
   Ticket,
   Trophy,
   Zap,
@@ -239,7 +238,7 @@ export default async function RulesPage() {
       <PageHeader
         eyebrow={`${seasonLabel} rules`}
         title="League Rules"
-        description="How KeyLehr H2H is played and paid out this season. These rules are configured per season by the commissioner — change them in Settings and this page updates automatically."
+        description="How KeyLehr H2H is played and paid out this season."
       />
 
       {/* Summary band — the at-a-glance shape of the season. */}
@@ -282,7 +281,8 @@ export default async function RulesPage() {
         >
           <Bullets
             items={[
-              "32 owners, one season. Each owner is assigned exactly one NFL team and plays that team's real NFL schedule.",
+              "32 owners, one season. Each owner is assigned exactly one NFL team — assignments are made randomly by the commissioners before the season begins.",
+              "Teams and divisions follow the real NFL: AFC and NFC, each split into East, North, South, and West. Your schedule is your team's actual NFL schedule.",
               "Weekly scoring is DFS, not the NFL game. Your weekly score is the fantasy points of your DraftKings lineup — the NFL schedule only decides who you face.",
               "Head-to-head: if your NFL team plays another owner's NFL team that week, you face that owner. Higher DraftKings points wins the matchup.",
               <>
@@ -297,12 +297,12 @@ export default async function RulesPage() {
           id="missed-lineup"
           icon={AlertTriangle}
           title="Missed lineups"
-          description="Failing to submit a valid DraftKings lineup."
+          description="What happens when you miss a lineup."
         >
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted">
               In either case, your opponent scores against the{" "}
-              <strong className="font-semibold text-foreground">weekly median</strong> for that week.
+              <strong className="font-semibold text-foreground">weekly median</strong> — the median score among all owners with an active matchup that week, excluding forfeits and bye weeks.
             </p>
             <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
               <p className="text-xs font-semibold text-foreground">1st incident</p>
@@ -370,6 +370,7 @@ export default async function RulesPage() {
                     </a>
                     {" "}(a single-game format with a Captain slot that scores 1.5× points) — click each for full scoring and lineup details.
                   </>,
+                  "You must submit an initial lineup before the first game kickoff of the NFL week. Individual player slots can be swapped up until that player's own game kickoff.",
                 ]}
               />
             </div>
@@ -487,13 +488,13 @@ export default async function RulesPage() {
           id="playoffs"
           icon={Trophy}
           title="Playoff format"
-          description="NFL-style postseason."
+          description="Seeding, byes, and bracket structure."
         >
           <Bullets
             items={[
               <>
-                <strong className="font-semibold text-foreground">{rules.playoffs.teamsPerConference} seeds</strong>{" "}
-                per conference: {rules.playoffs.divisionWinnersPerConference} division winners plus{" "}
+                {rules.playoffs.teamsPerConference} seeds per conference:{" "}
+                {rules.playoffs.divisionWinnersPerConference} division winners plus{" "}
                 {rules.playoffs.wildCardsPerConference} wild cards.
               </>,
               byes > 0 ? (

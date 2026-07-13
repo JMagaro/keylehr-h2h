@@ -166,39 +166,48 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
     .from(matchups)
     .where(eq(matchups.seasonId, seasonId));
 
-  // 3a. League average per regular-season week: the mean of that week's scores
-  //     among owners who HAVE a matchup that week (not on bye) and did NOT
-  //     forfeit. One value per week — what the season's `league_average` rule uses.
-  const weekTotals = new Map<number, { sum: number; n: number }>();
+  // 3a. Per-week scores (non-forfeit, non-bye, active matchups only) used to
+  //     derive the league average ('league_average') and median ('league_median')
+  //     that a forfeit opponent faces.
+  const weekScores = new Map<number, number[]>();
   for (const m of matchupRows) {
     if (m.isPlayoff) continue;
     for (const ownerSeasonId of [m.homeOwnerSeasonId, m.awayOwnerSeasonId]) {
       const key = `${ownerSeasonId}:${m.week}`;
-      if (forfeitByOwnerWeek.has(key)) continue; // forfeits excluded from the average
+      if (forfeitByOwnerWeek.has(key)) continue; // forfeits excluded
       const pts = pointsByOwnerWeek.get(key);
       if (pts === null || pts === undefined) continue; // bye / unscored excluded
-      const cur = weekTotals.get(m.week) ?? { sum: 0, n: 0 };
-      cur.sum += pts;
-      cur.n += 1;
-      weekTotals.set(m.week, cur);
+      const cur = weekScores.get(m.week) ?? [];
+      cur.push(pts);
+      weekScores.set(m.week, cur);
     }
   }
   const leagueAverageByWeek = new Map<number, number>();
-  for (const [week, { sum, n }] of weekTotals) {
-    if (n > 0) leagueAverageByWeek.set(week, sum / n);
+  const leagueMedianByWeek = new Map<number, number>();
+  for (const [week, scores] of weekScores) {
+    if (scores.length === 0) continue;
+    leagueAverageByWeek.set(week, scores.reduce((a, b) => a + b, 0) / scores.length);
+    const sorted = [...scores].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    leagueMedianByWeek.set(
+      week,
+      sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid],
+    );
   }
 
   // 3b. Translate the season's missedLineup rule into the engine's forfeit fields.
   //     - `result: 'auto_loss'` → the forfeiter takes an auto-loss (forfeitBy set).
   //       `result: 'none'`      → forfeits are scored like any other game.
-  //     - `opponentScores`: 'league_average' → the week average; 'zero' → 0;
-  //       'actual' → the forfeiter's own raw points (i.e. no special handling).
+  //     - `opponentScores`: 'league_average' → the week mean; 'league_median' → the
+  //       week median; 'zero' → 0; 'actual' → the forfeiter's own raw points.
   const applyForfeit = rules.missedLineup.result === 'auto_loss';
   const opponentScores = rules.missedLineup.opponentScores;
   const facesFor = (week: number, forfeiterPoints: number | null): number => {
     switch (opponentScores) {
       case 'league_average':
         return leagueAverageByWeek.get(week) ?? 0;
+      case 'league_median':
+        return leagueMedianByWeek.get(week) ?? 0;
       case 'zero':
         return 0;
       case 'actual':

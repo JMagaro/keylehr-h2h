@@ -84,9 +84,9 @@ export interface MatchupResult {
    * determination and their Points Against — when {@link forfeitBy} is set.
    *
    * The assembly layer derives this from the season's
-   * `missedLineup.opponentScores` rule: `'league_average'` → the week's league
-   * average, `'zero'` → 0 (an effective auto-win), `'actual'` → the forfeiter's
-   * own raw points. Defaults to 0 when omitted.
+   * `missedLineup.opponentScores` rule: `'league_average'` → week mean,
+   * `'league_median'` → week median, `'zero'` → 0 (auto-win), `'actual'` →
+   * forfeiter's own raw points. Defaults to 0 when omitted.
    */
   opponentFacesPoints?: number;
 }
