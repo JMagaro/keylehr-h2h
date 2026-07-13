@@ -284,7 +284,7 @@ export default async function RulesPage() {
             items={[
               "32 owners, one season. Each owner is assigned exactly one NFL team — assignments are made randomly by the commissioners before the season begins.",
               "Teams and divisions follow the real NFL: AFC and NFC, each split into East, North, South, and West. Your schedule is your team's actual NFL schedule.",
-              "Weekly scoring is DFS, not the NFL game. Your weekly score is the fantasy points of your DraftKings lineup — the NFL schedule only decides who you face.",
+              "Your weekly score is the fantasy points of your DraftKings lineup — the NFL schedule only decides who you face.",
               "Head-to-head: if your NFL team plays another owner's NFL team that week, you face that owner. Higher DraftKings points wins the matchup; identical scores result in a tie.",
               <>
                 Records are tracked as W-L-T with Points For and Points Against. The regular
@@ -371,17 +371,16 @@ export default async function RulesPage() {
                     </a>
                     {" "}(a single-game format with a Captain slot that scores 1.5× points) — click each for full scoring and lineup details.
                   </>,
-                  "You must submit an initial lineup before the first game kickoff of the NFL week. Individual player slots can be swapped up until that player's own game kickoff.",
                   "Scores follow DraftKings official results. If DraftKings issues a stat correction after initial scoring, the corrected score is honored.",
                 ]}
               />
             </div>
             <div className="flex flex-col gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-subtle">Entry name</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-subtle">Lineup &amp; entry name</p>
               <Bullets
                 items={[
+                  "You must submit an initial lineup before the first game kickoff of the NFL week. Individual player slots can be swapped up until that player's own game kickoff.",
                   "Each owner locks a DraftKings entry name for the season. The weekly contest leaderboard is matched to owners by that exact entry name.",
-                  "Use your locked entry name consistently every week so your scores import correctly.",
                   "Submitting under a different name is not treated as a missed lineup, but your score will not import — you are responsible for using the correct name each week.",
                 ]}
               />
@@ -524,7 +523,7 @@ export default async function RulesPage() {
         >
           <Bullets
             items={[
-              "The commissioner has final say on any situation not explicitly covered by these rules. Decisions will be made in the best interest of the league.",
+              "The commissioners have final say on any situation not explicitly covered by these rules. Decisions will be made in the best interest of the league.",
               "Owners may not deliberately submit a weak lineup or otherwise underperform to benefit another owner's standing or seeding. Suspected collusion is subject to commissioner review and may result in matchup forfeiture, prize ineligibility, or removal from the league.",
             ]}
           />
@@ -593,7 +592,7 @@ export default async function RulesPage() {
                 />
                 <PrizeRow
                   label="Weekly high score"
-                  sub={`${formatMoney(p.weeklyHighCents)} × ${p.weeklyHighWeeks} weeks`}
+                  sub={`${formatMoney(p.weeklyHighCents)} × ${p.weeklyHighWeeks} weeks · bye weeks ineligible`}
                   amount={formatMoney(weeklyHighTotalCents)}
                 />
                 <PrizeRow label="Season high score" sub="Best single-week score across the entire regular season — can stack with that week's weekly high prize" amount={formatMoney(p.seasonHighCents)} />
