@@ -76,10 +76,10 @@ export function SiteNav() {
           className="flex items-center gap-2.5 font-semibold tracking-tight text-foreground"
         >
           <Image
-            src="/keylehr-shield.png"
+            src="/keylehr-gaming-logo-transparent.png"
             alt=""
-            width={36}
-            height={29}
+            width={1536}
+            height={1024}
             priority
             className="h-8 w-auto drop-shadow-sm"
           />

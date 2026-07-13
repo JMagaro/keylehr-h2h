@@ -11,9 +11,9 @@ export interface NavLink {
 
 export const NAV_LINKS: readonly NavLink[] = [
   { href: '/', label: 'Dashboard' },
+  { href: '/my-team', label: 'My Team' },
   { href: '/standings', label: 'Standings' },
   { href: '/playoffs', label: 'Playoffs' },
-  { href: '/my-team', label: 'My Team' },
   { href: '/my-team/builder', label: 'Lineup Builder' },
   { href: '/history', label: 'History' },
   { href: '/rules', label: 'Rules' },
