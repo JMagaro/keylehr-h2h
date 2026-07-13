@@ -69,7 +69,7 @@ export default async function DashboardPage() {
   const [view, topRows, highScore] = dataSeasonId
     ? await Promise.all([
         getStandingsView(dataSeasonId),
-        getTopStandings(dataSeasonId, 6),
+        getTopStandings(dataSeasonId, 8),
         getHighestWeeklyScore(dataSeasonId),
       ])
     : [null, [], null];
