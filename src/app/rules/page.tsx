@@ -21,6 +21,7 @@ import {
   Tag,
   Ticket,
   Trophy,
+  Zap,
 } from "lucide-react";
 
 import { Container } from "@/components/container";
@@ -299,6 +300,10 @@ export default async function RulesPage() {
           description="Failing to submit a valid DraftKings lineup."
         >
           <div className="flex flex-col gap-3">
+            <p className="text-xs text-muted">
+              In either case, your opponent scores against the{" "}
+              <strong className="font-semibold text-foreground">weekly median</strong> for that week.
+            </p>
             <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
               <p className="text-xs font-semibold text-foreground">1st incident</p>
               <ul className="flex flex-col gap-1.5 text-xs text-muted">
@@ -321,13 +326,61 @@ export default async function RulesPage() {
                 </li>
                 <li className="flex gap-2">
                   <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" />
-                  <span>Forfeit every remaining game for the season</span>
+                  <span>Remainder of year suspension with automatic losses for all remaining games</span>
                 </li>
                 <li className="flex gap-2">
                   <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" />
-                  <span>Opponents that week score against the league median</span>
+                  <span>Possible ban from all future KeyLehr Gaming Ventures leagues</span>
                 </li>
               </ul>
+            </div>
+          </div>
+        </RuleCard>
+
+        <RuleCard
+          id="dk"
+          icon={Zap}
+          title="DraftKings"
+          description="Scoring format and entry name requirements."
+          className="md:col-span-2"
+        >
+          <div className="grid gap-x-10 gap-y-6 md:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-subtle">Scoring format</p>
+              <Bullets
+                items={[
+                  <>
+                    Every week uses{" "}
+                    <a
+                      href="https://www.draftkings.com/help/rules/1"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-accent underline-offset-2 hover:underline"
+                    >
+                      DraftKings Classic NFL scoring
+                    </a>
+                    {" "}— except the Super Bowl, which uses{" "}
+                    <a
+                      href="https://www.draftkings.com/help/rules/1/96"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-accent underline-offset-2 hover:underline"
+                    >
+                      Showdown Captain Mode
+                    </a>
+                    {" "}(a single-game format with a Captain slot that scores 1.5× points) — click each for full scoring and lineup details.
+                  </>,
+                ]}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-subtle">Entry name</p>
+              <Bullets
+                items={[
+                  "Each owner locks a DraftKings entry name for the season. The weekly contest leaderboard is matched to owners by that exact entry name.",
+                  "Use your locked entry name consistently every week so your scores import correctly.",
+                ]}
+              />
             </div>
           </div>
         </RuleCard>
@@ -411,7 +464,7 @@ export default async function RulesPage() {
         >
           <Bullets
             items={[
-              "If your assigned NFL team is on a bye, you have no head-to-head matchup that week.",
+              "If your assigned NFL team is on a bye, you have no head-to-head matchup that week and do not need to submit a DraftKings lineup.",
               <>
                 Bye-week points{" "}
                 <strong className="font-semibold text-foreground">
@@ -426,20 +479,6 @@ export default async function RulesPage() {
                 </strong>{" "}
                 eligible for the weekly high-score prize.
               </>,
-            ]}
-          />
-        </RuleCard>
-
-        <RuleCard
-          id="dk-entry"
-          icon={Tag}
-          title="DraftKings entry name"
-          description="How your scores are matched to you."
-        >
-          <Bullets
-            items={[
-              "Each owner locks a DraftKings entry name for the season. The weekly contest leaderboard is matched to owners by that exact entry name.",
-              "Use your locked entry name consistently every week so your scores import correctly.",
             ]}
           />
         </RuleCard>
@@ -482,8 +521,28 @@ export default async function RulesPage() {
             <div className="flex flex-col gap-0.5">
               <CardTitle>Payouts</CardTitle>
               <CardDescription>
-                Entry fee {formatMoney(entryFeeCents)} per owner · {formatMoney(totalPrizePoolCents)} paid out.
+                Entry fee {formatMoney(entryFeeCents)} per owner* · {formatMoney(totalPrizePoolCents)} paid out.
               </CardDescription>
+              <p className="text-xs text-muted pt-0.5">
+                Pay via Venmo:{" "}
+                <a
+                  href="https://venmo.com/u/joshua-lehr-2"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-accent underline-offset-2 hover:underline"
+                >
+                  @joshua-lehr-2
+                </a>
+                {" "}or{" "}
+                <a
+                  href="https://venmo.com/u/ryan-kealy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-accent underline-offset-2 hover:underline"
+                >
+                  @ryan-kealy
+                </a>
+              </p>
             </div>
           </div>
         </CardHeader>
@@ -529,13 +588,13 @@ export default async function RulesPage() {
               {formatMoney(totalPrizePoolCents)}
             </span>
           </div>
+
+          <p className="text-xs text-subtle">
+            * {formatMoney(500)} per owner is allocated to KeyLehr Gaming Ventures to offset operational expenses, including platform technology and league trophy costs.
+          </p>
         </CardBody>
       </Card>
 
-      <p className="text-xs text-subtle">
-        Rules are configured per season and operated by KeyLehr Gaming Ventures. The figures above
-        reflect the settings in effect for {seasonLabel}.
-      </p>
     </Container>
   );
 }
