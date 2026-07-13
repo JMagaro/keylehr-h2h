@@ -13,6 +13,7 @@ import {
   CalendarDays,
   Clock,
   Flame,
+  FlaskConical,
   ListOrdered,
   Trophy,
   UserRound,
@@ -333,6 +334,26 @@ export default async function DashboardPage() {
                     <span className="font-semibold text-foreground">Playoff picture</span>
                     <span className="text-sm text-muted">
                       Seven seeds per conference, as if today.
+                    </span>
+                  </span>
+                </span>
+                <ArrowRight
+                  className="size-4 text-muted transition-transform group-hover:translate-x-0.5"
+                  aria-hidden="true"
+                />
+              </Link>
+              <Link
+                href="/cohens-corner"
+                className="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-border-strong hover:bg-surface"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-accent/10 text-accent">
+                    <FlaskConical className="size-5" aria-hidden="true" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="font-semibold text-foreground">Cohen&apos;s Corner</span>
+                    <span className="text-sm text-muted">
+                      In-season analytics &amp; weekly breakdowns by Scott Cohen.
                     </span>
                   </span>
                 </span>

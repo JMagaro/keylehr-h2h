@@ -15,6 +15,7 @@ export const NAV_LINKS: readonly NavLink[] = [
   { href: '/standings', label: 'Standings' },
   { href: '/playoffs', label: 'Playoffs' },
   { href: '/my-team/builder', label: 'Lineup Builder' },
+  { href: '/cohens-corner', label: "Cohen's Corner" },
   { href: '/history', label: 'History' },
   { href: '/rules', label: 'Rules' },
 ] as const;
