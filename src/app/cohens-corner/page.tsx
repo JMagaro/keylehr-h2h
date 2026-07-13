@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/empty-state";
 export const metadata: Metadata = {
   title: "Cohen's Corner",
   description:
-    "In-season analytics for KeyLehr H2H — weekly breakdowns, trends, and insights from Scott Cohen.",
+    "In-season analytics for KeyLehr H2H — weekly breakdowns, trends, and insights from Analytics Guru Scott Cohen.",
 };
 
 export default function CohensCornerPage() {
@@ -17,7 +17,7 @@ export default function CohensCornerPage() {
       <PageHeader
         eyebrow="In-Season Analytics"
         title="Cohen's Corner"
-        description="Weekly breakdowns, trends, and insights — curated by Scott Cohen."
+        description="Weekly breakdowns, trends, and insights — curated by Analytics Guru, Scott Cohen."
       />
       <EmptyState
         icon={FlaskConical}
