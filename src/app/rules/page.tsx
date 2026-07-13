@@ -18,6 +18,7 @@ import {
   type LucideIcon,
   Medal,
   Scale,
+  Shield,
   Ticket,
   Trophy,
   Zap,
@@ -284,7 +285,7 @@ export default async function RulesPage() {
               "32 owners, one season. Each owner is assigned exactly one NFL team — assignments are made randomly by the commissioners before the season begins.",
               "Teams and divisions follow the real NFL: AFC and NFC, each split into East, North, South, and West. Your schedule is your team's actual NFL schedule.",
               "Weekly scoring is DFS, not the NFL game. Your weekly score is the fantasy points of your DraftKings lineup — the NFL schedule only decides who you face.",
-              "Head-to-head: if your NFL team plays another owner's NFL team that week, you face that owner. Higher DraftKings points wins the matchup.",
+              "Head-to-head: if your NFL team plays another owner's NFL team that week, you face that owner. Higher DraftKings points wins the matchup; identical scores result in a tie.",
               <>
                 Records are tracked as W-L-T with Points For and Points Against. The regular
                 season runs <strong className="font-semibold text-foreground">{weeks} weeks</strong>.
@@ -301,7 +302,7 @@ export default async function RulesPage() {
         >
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted">
-              In either case, your opponent scores against the{" "}
+              Whether it's your first or second incident, your opponent scores against the{" "}
               <strong className="font-semibold text-foreground">weekly median</strong> — the median score among all owners with an active matchup that week, excluding forfeits and bye weeks.
             </p>
             <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
@@ -371,6 +372,7 @@ export default async function RulesPage() {
                     {" "}(a single-game format with a Captain slot that scores 1.5× points) — click each for full scoring and lineup details.
                   </>,
                   "You must submit an initial lineup before the first game kickoff of the NFL week. Individual player slots can be swapped up until that player's own game kickoff.",
+                  "Scores follow DraftKings official results. If DraftKings issues a stat correction after initial scoring, the corrected score is honored.",
                 ]}
               />
             </div>
@@ -380,6 +382,7 @@ export default async function RulesPage() {
                 items={[
                   "Each owner locks a DraftKings entry name for the season. The weekly contest leaderboard is matched to owners by that exact entry name.",
                   "Use your locked entry name consistently every week so your scores import correctly.",
+                  "Submitting under a different name is not treated as a missed lineup, but your score will not import — you are responsible for using the correct name each week.",
                 ]}
               />
             </div>
@@ -490,6 +493,7 @@ export default async function RulesPage() {
           title="Playoff format"
           description="Seeding, byes, and bracket structure."
         >
+
           <Bullets
             items={[
               <>
@@ -505,8 +509,23 @@ export default async function RulesPage() {
               ) : (
                 "No first-round byes — every seed plays in the first round."
               ),
-              "The bracket reseeds each round (highest remaining seed plays lowest), mirroring the NFL.",
+              "The bracket reseeds each round — the best remaining seed plays the worst remaining seed — mirroring the NFL.",
               <>Playoff-matchup ties are broken by {PLAYOFF_TIE[rules.playoffs.tieBreaker]}.</>,
+            ]}
+          />
+        </RuleCard>
+
+        <RuleCard
+          id="commissioner"
+          icon={Shield}
+          title="Commissioner"
+          description="Authority, integrity, and dispute resolution."
+          className="md:col-span-2"
+        >
+          <Bullets
+            items={[
+              "The commissioner has final say on any situation not explicitly covered by these rules. Decisions will be made in the best interest of the league.",
+              "Owners may not deliberately submit a weak lineup or otherwise underperform to benefit another owner's standing or seeding. Suspected collusion is subject to commissioner review and may result in matchup forfeiture, prize ineligibility, or removal from the league.",
             ]}
           />
         </RuleCard>
@@ -577,7 +596,7 @@ export default async function RulesPage() {
                   sub={`${formatMoney(p.weeklyHighCents)} × ${p.weeklyHighWeeks} weeks`}
                   amount={formatMoney(weeklyHighTotalCents)}
                 />
-                <PrizeRow label="Season high score" amount={formatMoney(p.seasonHighCents)} />
+                <PrizeRow label="Season high score" sub="Best single-week score across the entire regular season — can stack with that week's weekly high prize" amount={formatMoney(p.seasonHighCents)} />
               </div>
             </div>
           </div>
