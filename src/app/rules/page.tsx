@@ -302,7 +302,7 @@ export default async function RulesPage() {
         >
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted">
-              Whether it's your first or second incident, your opponent scores against the{" "}
+              Whether it&apos;s your first or second incident, your opponent scores against the{" "}
               <strong className="font-semibold text-foreground">weekly median</strong> — the median score among all owners with an active matchup that week, excluding forfeits and bye weeks.
             </p>
             <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">

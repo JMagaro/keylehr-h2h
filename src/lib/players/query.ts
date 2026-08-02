@@ -21,7 +21,6 @@ import {
 import { getLeagueNews, type NewsHeadline } from './espn-news';
 import {
   computeFades,
-  fillLineupGreedy,
   groupTargets,
   isInactiveTag,
   LINEUP_SLOTS,
