@@ -432,13 +432,24 @@ export async function getStandingsView(seasonId: number): Promise<StandingsView>
   const dkEntryById = new Map(entryNameRows.map((r) => [r.id, r.dkEntryName]));
   const entryById = new Map(entries.map((e) => [e.ownerSeasonId, e]));
 
-  // Playoff tags from the conference seeding.
-  const seeds = computeConferenceSeeds(entries, results, playoffConfig, rankingOptions);
+  // Distinct regular-season weeks with a final (both-scored) matchup. Seeding is
+  // only meaningful once at least one week is in the books — before that, every
+  // owner is 0-0 and the tiebreaker chain falls through to owner-season id order,
+  // producing an arbitrary "seeding" that misleads. So we withhold playoff tags
+  // until the season is under way.
+  const weeksPlayed = new Set(
+    results.filter((r) => !r.isPlayoff && r.isFinal).map((r) => r.week),
+  ).size;
+
+  // Playoff tags from the conference seeding (only once games have been scored).
   const tagById = new Map<number, PlayoffTag>();
-  for (const conf of CONFERENCES) {
-    for (const s of seeds[conf]) {
-      const kind = s.isBye ? 'bye' : s.kind === 'division_winner' ? 'div' : 'wc';
-      tagById.set(s.ownerSeasonId, { kind, seed: s.seed } as PlayoffTag);
+  if (weeksPlayed > 0) {
+    const seeds = computeConferenceSeeds(entries, results, playoffConfig, rankingOptions);
+    for (const conf of CONFERENCES) {
+      for (const s of seeds[conf]) {
+        const kind = s.isBye ? 'bye' : s.kind === 'division_winner' ? 'div' : 'wc';
+        tagById.set(s.ownerSeasonId, { kind, seed: s.seed } as PlayoffTag);
+      }
     }
   }
 
@@ -476,10 +487,6 @@ export async function getStandingsView(seasonId: number): Promise<StandingsView>
       });
     }
   }
-
-  const weeksPlayed = new Set(
-    results.filter((r) => !r.isPlayoff && r.isFinal).map((r) => r.week),
-  ).size;
 
   return {
     hasData: true,
@@ -602,7 +609,13 @@ export interface PlayoffPictureView {
 export async function getPlayoffPicture(seasonId: number): Promise<PlayoffPictureView> {
   const { entries, results, brandingById, playoffConfig, rankingOptions } =
     await getSeasonStandingsData(seasonId);
-  if (entries.length === 0) {
+  // No owners, or no regular-season week scored yet → no meaningful picture.
+  // Before any game is final every owner is 0-0, so seeding would just reflect
+  // owner-season id order rather than the standings. Show the empty state instead.
+  const weeksPlayed = new Set(
+    results.filter((r) => !r.isPlayoff && r.isFinal).map((r) => r.week),
+  ).size;
+  if (entries.length === 0 || weeksPlayed === 0) {
     return { hasData: false, byConference: { AFC: [], NFC: [] } };
   }
   const entryById = new Map(entries.map((e) => [e.ownerSeasonId, e]));

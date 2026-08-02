@@ -143,9 +143,14 @@ export async function getTeamDashboard(
   const teamKeyById = new Map(entries.map((e) => [e.ownerSeasonId, e.teamKey]));
   const logoById = new Map(entries.map((e) => [e.ownerSeasonId, brandingById.get(e.ownerSeasonId)?.logoEspn ?? null]));
 
-  // Regular-season, final results only.
+  // Regular-season matchups. `reg` is final (both-scored) games only — used for
+  // league-average and rank-over-time, which need real scores. `regAll` is the
+  // full slate including not-yet-played weeks, so the schedule table shows the
+  // team's upcoming opponents (with blank scores) before the season starts.
   const reg = results.filter((r) => !r.isPlayoff && r.isFinal);
+  const regAll = results.filter((r) => !r.isPlayoff);
   const playedWeeks = Array.from(new Set(reg.map((r) => r.week))).sort((a, b) => a - b);
+  const scheduleWeeks = Array.from(new Set(regAll.map((r) => r.week))).sort((a, b) => a - b);
 
   // League average per week (mean of every scored side that week).
   const leagueAvgByWeek = new Map<number, number>();
@@ -174,8 +179,8 @@ export async function getTeamDashboard(
   const myWeekScores: number[] = [];
   const weeks: TeamWeek[] = [];
 
-  for (const week of playedWeeks) {
-    const wkGame = reg.find(
+  for (const week of scheduleWeeks) {
+    const wkGame = regAll.find(
       (m) =>
         m.week === week &&
         (m.homeOwnerSeasonId === ownerSeasonId || m.awayOwnerSeasonId === ownerSeasonId),
