@@ -76,6 +76,12 @@ export default async function DashboardPage() {
 
   const heroLabel = dataSeason?.name ?? currentSeason?.name ?? "KeyLehr H2H";
 
+  // Pre-season: the data season has owners assigned but no week scored yet. The
+  // standings would just be everyone at 0-0 in id order, so we show a "kicks off
+  // soon" module pointing owners at their team instead of a meaningless table.
+  const preSeason = !!view?.hasData && view.weeksPlayed === 0;
+  const ownerCount = view?.hasData ? view.ownerCount : 32;
+
   return (
     <>
       {/* Hero — transparent so the stadium backdrop shows through strongest here. */}
@@ -211,15 +217,68 @@ export default async function DashboardPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
-                <CardTitle>Top of the standings</CardTitle>
-                <Badge variant="neutral">W · L · T</Badge>
+                <CardTitle>
+                  {preSeason
+                    ? `${dataSeason?.name ?? "The season"} is almost here`
+                    : "Top of the standings"}
+                </CardTitle>
+                {preSeason ? (
+                  <Badge variant="accent">Kickoff soon</Badge>
+                ) : (
+                  <Badge variant="neutral">W · L · T</Badge>
+                )}
               </div>
               <CardDescription>
-                The best records league-wide{dataSeason ? ` for ${dataSeason.name}` : ""}.
+                {preSeason
+                  ? `All ${ownerCount} teams are assigned. Head-to-head standings and the playoff picture go live here once Week 1 scores post.`
+                  : `The best records league-wide${dataSeason ? ` for ${dataSeason.name}` : ""}.`}
               </CardDescription>
             </CardHeader>
             <CardBody>
-              {topRows.length === 0 ? (
+              {preSeason ? (
+                <div className="flex flex-col gap-3">
+                  <Link
+                    href="/my-team"
+                    className="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-border-strong hover:bg-surface"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="flex size-9 items-center justify-center rounded-full bg-accent/10 text-accent">
+                        <UserRound className="size-5" aria-hidden="true" />
+                      </span>
+                      <span className="flex flex-col">
+                        <span className="font-semibold text-foreground">See your team &amp; schedule</span>
+                        <span className="text-sm text-muted">
+                          Your assigned NFL team and full-season slate.
+                        </span>
+                      </span>
+                    </span>
+                    <ArrowRight
+                      className="size-4 text-muted transition-transform group-hover:translate-x-0.5"
+                      aria-hidden="true"
+                    />
+                  </Link>
+                  <Link
+                    href="/rules"
+                    className="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-border-strong hover:bg-surface"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="flex size-9 items-center justify-center rounded-full bg-accent/10 text-accent">
+                        <Trophy className="size-5" aria-hidden="true" />
+                      </span>
+                      <span className="flex flex-col">
+                        <span className="font-semibold text-foreground">League rules &amp; payouts</span>
+                        <span className="text-sm text-muted">
+                          How scoring, tiebreakers, and prizes work.
+                        </span>
+                      </span>
+                    </span>
+                    <ArrowRight
+                      className="size-4 text-muted transition-transform group-hover:translate-x-0.5"
+                      aria-hidden="true"
+                    />
+                  </Link>
+                </div>
+              ) : topRows.length === 0 ? (
                 <EmptyState
                   icon={ListOrdered}
                   title="No standings yet"
