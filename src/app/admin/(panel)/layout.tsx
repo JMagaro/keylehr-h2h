@@ -44,7 +44,7 @@ export default async function AdminPanelLayout({ children }: { children: React.R
             </Link>
           ))}
         </nav>
-        <div className="mt-6 hidden border-t border-border pt-4 md:block">
+        <div className="mt-6 border-t border-border pt-4">
           <p className="px-3 text-xs text-subtle">{session.user?.email}</p>
           <form
             action={async () => {
