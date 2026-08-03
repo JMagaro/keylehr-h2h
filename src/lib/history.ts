@@ -258,6 +258,15 @@ export async function getSeasonHistory(): Promise<SeasonHistory[]> {
         }
       }
 
+      // Before a season has played a week, every owner is 0-0 with 0 points, so
+      // "top finisher", "points leader", and "best record" would just be whoever
+      // sorts first by id — a misleading crown. Withhold them until games exist.
+      if (weeks === 0) {
+        topFinisher = null;
+        pointsLeader = null;
+        bestRecord = null;
+      }
+
       return {
         seasonId: season.id,
         year: season.year,
@@ -375,6 +384,13 @@ export async function getSeasonHistoryById(seasonId: number): Promise<SeasonHist
         winPct: bestRow.winPct,
       };
     }
+  }
+
+  // See getSeasonHistory: withhold 0-0 "leaders" until a week has been played.
+  if (weeks === 0) {
+    topFinisher = null;
+    pointsLeader = null;
+    bestRecord = null;
   }
 
   return {
