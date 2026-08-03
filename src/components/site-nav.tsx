@@ -72,7 +72,7 @@ export function SiteNav() {
         {/* Brand */}
         <Link
           href="/"
-          aria-label="KeyLehr DFS — home"
+          aria-label="KeyLehr H2H — home"
           className="flex items-center gap-2.5 font-semibold tracking-tight text-foreground"
         >
           <Image
@@ -84,7 +84,7 @@ export function SiteNav() {
             className="h-8 w-auto drop-shadow-sm"
           />
           <span className="text-base">
-            KeyLehr <span className="text-accent">DFS</span>
+            KeyLehr <span className="text-accent">H2H</span>
           </span>
         </Link>
 

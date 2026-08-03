@@ -1,8 +1,8 @@
 /**
  * Shared primary navigation definition. Mirrors the site's information architecture:
- * Dashboard, Standings, Playoffs, My Team, Lineup Builder, History, Rules. Used by both
- * the top nav and the footer so links stay in sync. Nested routes (e.g. the builder under
- * /my-team) rely on the nav's longest-prefix active-link matching.
+ * Dashboard, My Team, Standings, Playoffs, Lineup Builder, Cohen's Corner, History, Rules.
+ * Used by both the top nav and the footer so links stay in sync. Nested routes (e.g. the
+ * builder under /my-team) rely on the nav's longest-prefix active-link matching.
  */
 export interface NavLink {
   href: string;
