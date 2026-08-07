@@ -122,8 +122,8 @@ function SeasonCard({ season }: { season: SeasonHistory }) {
                 {season.status === "upcoming" ? "Season not yet under way" : "Kicks off Week 1"}
               </span>
               <span className="text-xs text-muted">
-                {season.ownerCount} owners assigned — standings, records, and the champion
-                populate here once Week 1 scores post.
+                Standings and records populate here once Week 1 scores post; the champion is
+                crowned at season&apos;s end.
               </span>
             </div>
           ) : (
