@@ -111,64 +111,83 @@ function SeasonCard({ season }: { season: SeasonHistory }) {
           </Badge>
         </CardHeader>
         <CardBody className="flex flex-col gap-4">
-          {top ? (
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
-              <TeamLogo src={top.logoEspn} alt={`${top.teamName} logo`} size={36} />
-              <div className="flex min-w-0 flex-col">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-semibold text-foreground">
-                    {top.ownerName}
-                  </span>
-                  <Badge variant={top.isChampion ? "div" : "accent"}>
-                    {top.isChampion ? (
-                      <>
-                        <Crown className="size-3" aria-hidden="true" /> Champion
-                      </>
-                    ) : (
-                      <>
-                        <Trophy className="size-3" aria-hidden="true" /> Regular-season #1
-                      </>
-                    )}
-                  </Badge>
-                </div>
-                <span className="text-xs text-muted">
-                  {record(top.wins, top.losses, top.ties)} ·{" "}
-                  {formatPoints(top.pointsFor)} pts
-                </span>
-              </div>
+          {season.weeksPlayed === 0 ? (
+            // Pre-season: no week has been scored, so there's no leader, no records,
+            // no champion yet — every owner is 0-0. Rather than a wall of "—", show a
+            // purposeful "not under way" state. It fills in automatically, week by
+            // week, as scores post (Highest week / Points leader / Best record), and
+            // the top-finisher block appears once the standings mean something.
+            <div className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border bg-surface p-6 text-center">
+              <span className="text-sm font-semibold text-foreground">
+                {season.status === "upcoming" ? "Season not yet under way" : "Kicks off Week 1"}
+              </span>
+              <span className="text-xs text-muted">
+                {season.ownerCount} owners assigned — standings, records, and the champion
+                populate here once Week 1 scores post.
+              </span>
             </div>
           ) : (
-            <p className="text-sm text-muted">No standings recorded for this season yet.</p>
-          )}
+            <>
+              {top ? (
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
+                  <TeamLogo src={top.logoEspn} alt={`${top.teamName} logo`} size={36} />
+                  <div className="flex min-w-0 flex-col">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-semibold text-foreground">
+                        {top.ownerName}
+                      </span>
+                      <Badge variant={top.isChampion ? "div" : "accent"}>
+                        {top.isChampion ? (
+                          <>
+                            <Crown className="size-3" aria-hidden="true" /> Champion
+                          </>
+                        ) : (
+                          <>
+                            <Trophy className="size-3" aria-hidden="true" /> Regular-season #1
+                          </>
+                        )}
+                      </Badge>
+                    </div>
+                    <span className="text-xs text-muted">
+                      {record(top.wins, top.losses, top.ties)} ·{" "}
+                      {formatPoints(top.pointsFor)} pts
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted">No standings recorded for this season yet.</p>
+              )}
 
-          <div className="divide-y divide-border">
-            <RecordLine
-              label="Highest week"
-              holder={season.highestWeek}
-              value={
-                season.highestWeek
-                  ? `${formatPoints(season.highestWeek.points)} (Wk ${season.highestWeek.week})`
-                  : ""
-              }
-            />
-            <RecordLine
-              label="Points leader"
-              holder={season.pointsLeader}
-              value={season.pointsLeader ? `${formatPoints(season.pointsLeader.pointsFor)} pts` : ""}
-            />
-            <RecordLine
-              label="Best record"
-              holder={season.bestRecord}
-              value={
-                season.bestRecord
-                  ? record(season.bestRecord.wins, season.bestRecord.losses, season.bestRecord.ties)
-                  : ""
-              }
-            />
-          </div>
+              <div className="divide-y divide-border">
+                <RecordLine
+                  label="Highest week"
+                  holder={season.highestWeek}
+                  value={
+                    season.highestWeek
+                      ? `${formatPoints(season.highestWeek.points)} (Wk ${season.highestWeek.week})`
+                      : ""
+                  }
+                />
+                <RecordLine
+                  label="Points leader"
+                  holder={season.pointsLeader}
+                  value={season.pointsLeader ? `${formatPoints(season.pointsLeader.pointsFor)} pts` : ""}
+                />
+                <RecordLine
+                  label="Best record"
+                  holder={season.bestRecord}
+                  value={
+                    season.bestRecord
+                      ? record(season.bestRecord.wins, season.bestRecord.losses, season.bestRecord.ties)
+                      : ""
+                  }
+                />
+              </div>
+            </>
+          )}
           <div className="flex justify-end pt-1">
             <span className="text-xs font-medium text-accent group-hover:underline">
-              View standings &amp; bracket →
+              {season.weeksPlayed === 0 ? "Preview season →" : "View standings & bracket →"}
             </span>
           </div>
         </CardBody>

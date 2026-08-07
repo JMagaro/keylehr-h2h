@@ -852,8 +852,15 @@ export async function getOwnerSeasonTrends(): Promise<OwnerSeasonTrends> {
     .from(ownerSeasons);
   const seasonsWithData = new Set(ownerSeasonRows.map((r) => r.seasonId));
 
+  // Only completed seasons feed the trend charts. An in-progress season has
+  // partial win totals (everyone at 2-3 wins mid-season), which would drag every
+  // line down to a fake trough at the right edge and skew the whole read — the
+  // wins chart especially, since wins is an absolute count, not a per-game rate.
+  // The season re-appears with its full totals once it's marked completed.
   // Chronological (oldest first) so the chart reads left-to-right naturally.
-  const dataSeasons = options.filter((s) => seasonsWithData.has(s.id)).sort((a, b) => a.year - b.year);
+  const dataSeasons = options
+    .filter((s) => seasonsWithData.has(s.id) && s.status === 'completed')
+    .sort((a, b) => a.year - b.year);
   const years = dataSeasons.map((s) => s.year);
 
   const byOwner = new Map<number, OwnerSeasonTrendOwner>();
