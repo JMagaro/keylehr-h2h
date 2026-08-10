@@ -1,8 +1,14 @@
 /**
  * Standings tiebreakers — a faithful port of the league's original R `resolve_ties`.
  *
- * Within a group of owners tied on overall record (win%), the order is resolved
- * ITERATIVELY:
+ * Cohorts are grouped by WIN PERCENTAGE ALONE, matching the R's
+ * `group_by(Win_Percentage)`. Raw win count is deliberately NOT part of the key: with
+ * staggered bye weeks (and any week a matchup isn't final) owners play different numbers of
+ * games, so 8-8 and 9-9 are both .500 and genuinely tied under the league rule. Keying on
+ * wins as well would split them into separate cohorts and rank the 9-9 owner ahead purely
+ * on raw wins, never consulting head-to-head or Points For.
+ *
+ * Within a cohort tied on win%, the order is resolved ITERATIVELY:
  *   1. Build the head-to-head grid among only the tied owners. An owner "wins the
  *      series" against another when it has MORE WINS THAN LOSSES against them
  *      (a split, or never having played, counts as neither).
@@ -14,7 +20,7 @@
  *   4. Otherwise the owner with the most POINTS FOR is placed next.
  *   5. Remove that owner and repeat on the rest (the grid is recomputed each pass).
  *
- * So the chain is: record → head-to-head dominance → Points For. Points Against is
+ * So the chain is: win% → head-to-head dominance → Points For. Points Against is
  * kept only as an inert final fallback for an exact Points-For tie (which never
  * happens with real decimal scores), followed by ownerSeasonId for determinism.
  *
@@ -172,7 +178,7 @@ export function rankCohort(
 
 /**
  * Compare two standings rows for ranking (pairwise). Best-first ordering:
- *   1. Overall record (win% then wins).
+ *   1. Win percentage.
  *   2. Head-to-head series winner (when the two actually played and one won).
  *   3. Points For (higher), then Points Against (lower), then ownerSeasonId.
  *
@@ -188,7 +194,6 @@ export function compareForStandings(
   order: readonly TiebreakerKey[] = DEFAULT_TIEBREAKERS,
 ): number {
   if (a.winPct !== b.winPct) return b.winPct - a.winPct;
-  if (a.wins !== b.wins) return b.wins - a.wins;
 
   if (order.includes('h2h')) {
     const aWon = wonSeries(ctx, a.ownerSeasonId, b.ownerSeasonId);
@@ -204,8 +209,8 @@ export function compareForStandings(
  * Rank a list of standings rows, resolving multi-way ties via the league's recursive
  * rule (see {@link rankCohort}).
  *
- * 1. Sort by overall record (win% then wins).
- * 2. Detect maximal cohorts of owners sharing the same record.
+ * 1. Sort by win percentage.
+ * 2. Detect maximal cohorts of owners sharing the same win percentage.
  * 3. Order each cohort by head-to-head dominance → Points For (recursively).
  *
  * @returns A new array sorted best-first. The input is not mutated.
@@ -217,7 +222,6 @@ export function rankStandings(
 ): StandingRow[] {
   const byRecord = [...rows].sort((a, b) => {
     if (a.winPct !== b.winPct) return b.winPct - a.winPct;
-    if (a.wins !== b.wins) return b.wins - a.wins;
     return a.ownerSeasonId - b.ownerSeasonId;
   });
 
@@ -225,11 +229,7 @@ export function rankStandings(
   let i = 0;
   while (i < byRecord.length) {
     let j = i + 1;
-    while (
-      j < byRecord.length &&
-      byRecord[j].winPct === byRecord[i].winPct &&
-      byRecord[j].wins === byRecord[i].wins
-    ) {
+    while (j < byRecord.length && byRecord[j].winPct === byRecord[i].winPct) {
       j++;
     }
     const cohort = byRecord.slice(i, j);

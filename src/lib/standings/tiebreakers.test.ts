@@ -221,3 +221,50 @@ describe('tiebreakers — non-transitive 4-way tie (the real 2024 NFC case)', ()
     expect(idx(S)).toBeLessThan(idx(L));
   });
 });
+
+describe('cohorts are grouped by win% alone (matching the R group_by)', () => {
+  // Owners play different numbers of games — the normal state of a season, because bye
+  // weeks are staggered (and any not-yet-final matchup has the same effect). Owner 1 goes
+  // 2-2 and owner 2 goes 1-1; both are .500 and genuinely tied under the league rule.
+  // Owner 2 won their head-to-head meeting, so owner 2 must rank first.
+  //
+  // Keying cohorts on raw wins as well as win% split these two apart and ranked owner 1
+  // first on win count alone, never consulting head-to-head.
+  const entries = [owner(1), owner(2), owner(3), owner(4)];
+  const results: MatchupResult[] = [
+    game(1, 2, 1, 130, 100), // owner 2 beats owner 1  ← the head-to-head
+    game(2, 1, 3, 120, 90), //  owner 1 beats owner 3
+    game(3, 1, 4, 80, 140), //  owner 4 beats owner 1
+    game(4, 1, 3, 150, 95), //  owner 1 beats owner 3
+    game(5, 3, 2, 145, 90), //  owner 3 beats owner 2
+  ];
+
+  it('puts a 2-2 and a 1-1 owner in the same cohort and lets head-to-head decide', () => {
+    const rows = computeStandings(entries, results);
+    const one = rows.find((r) => r.ownerSeasonId === 1)!;
+    const two = rows.find((r) => r.ownerSeasonId === 2)!;
+    expect([one.wins, one.losses]).toEqual([2, 2]);
+    expect([two.wins, two.losses]).toEqual([1, 1]);
+    expect(one.winPct).toBe(two.winPct); // both .500 — genuinely tied
+
+    const order = rank(entries, results);
+    expect(order.indexOf(2)).toBeLessThan(order.indexOf(1));
+  });
+
+  it('ranks identically regardless of input order', () => {
+    // Removing `wins` from the pre-sort changes the input order reaching rankCohort, so
+    // pin that the result does not depend on it.
+    const rows = computeStandings(entries, results);
+    const ctx = buildTiebreakerContext(rows, results);
+    const baseline = rankStandings(rows, ctx).map((r) => r.ownerSeasonId);
+
+    const permutations = [
+      [...rows].reverse(),
+      [...rows].sort((a, b) => a.pointsFor - b.pointsFor),
+      [...rows].sort((a, b) => b.ownerSeasonId - a.ownerSeasonId),
+    ];
+    for (const shuffled of permutations) {
+      expect(rankStandings(shuffled, ctx).map((r) => r.ownerSeasonId)).toEqual(baseline);
+    }
+  });
+});
