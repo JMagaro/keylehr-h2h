@@ -6,9 +6,9 @@
  * for the per-matchup results), so a team's numbers always agree with the rest of
  * the site. No new scoring logic lives here — only per-owner shaping for charts.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
-import { db, owners, ownerSeasons, nflTeams, scores } from '@/db';
+import { db, owners, ownerSeasons, nflTeams } from '@/db';
 import {
   buildTiebreakerContext,
   computeStandings,
@@ -107,26 +107,17 @@ export async function getTeamDashboard(
   seasonId: number,
   ownerSeasonId: number,
 ): Promise<TeamDashboard | null> {
-  const [view, data, oddsTrend, scoreRows] = await Promise.all([
+  const [view, data, oddsTrend] = await Promise.all([
     getStandingsView(seasonId),
     getSeasonStandingsData(seasonId),
     getOddsTrend(seasonId),
-    db
-      .select({
-        ownerSeasonId: scores.ownerSeasonId,
-        week: scores.week,
-        isForfeit: scores.isForfeit,
-      })
-      .from(scores)
-      .where(and(eq(scores.seasonId, seasonId), eq(scores.isExhibition, false))),
   ]);
 
-  // Which (owner, week) pairs were forfeits (missed lineups) — the raw fact,
-  // independent of how the season's rule scores them.
-  const forfeitSet = new Set<string>();
-  for (const s of scoreRows) {
-    if (s.isForfeit) forfeitSet.add(`${s.ownerSeasonId}:${s.week}`);
-  }
+  // Which (owner, week) pairs were missed lineups. Taken from the standings load rather
+  // than re-read from `scores.isForfeit`: that column is only ever written by the historical
+  // backfills, so on a live season this page would show zero forfeits while /standings was
+  // applying auto-losses. One source, one answer — and one fewer round-trip.
+  const forfeitSet = data.forfeitByOwnerWeek;
 
   // Authoritative header row (record, rank, PF/PA, streak, playoff tag, branding).
   let header: StandingsViewRow | null = null;

@@ -19,7 +19,10 @@
  */
 import { and, desc, eq, sql } from 'drizzle-orm';
 
-import { db, matchups, nflTeams, owners, ownerSeasons, scores, seasons } from '@/db';
+import { db, matchups, nflGames, nflTeams, owners, ownerSeasons, scores, seasons } from '@/db';
+import { weekIsFinal } from '@/lib/schedule/final';
+import { assembleMatchupResults } from './assemble';
+import { deriveForfeits, type ScoreRow as DerivedScoreRow } from './forfeit-derive';
 import { getSeasonRules, type SeasonRules } from '@/lib/rules/schema';
 import {
   computeConferenceSeeds,
@@ -62,6 +65,19 @@ export interface SeasonStandingsData {
   /** The season's effective (defaults-filled) rules. */
   rules: SeasonRules;
   /**
+   * Regular-season week count from the CANONICAL `seasons.regularSeasonWeeks` column.
+   * Prefer this over `rules.regularSeasonWeeks`, which is a mirror the Settings page
+   * deliberately leaves untouched and which therefore drifts.
+   */
+  regularSeasonWeeks: number;
+  /**
+   * Owner-weeks treated as missed lineups — derived from the schedule and unioned with any
+   * stored `scores.isForfeit`. Exposed so consumers (My Team, history) report forfeits
+   * identically to the standings rather than re-deriving from raw points.
+   * Keys are `${ownerSeasonId}:${week}`.
+   */
+  forfeitByOwnerWeek: ReadonlySet<string>;
+  /**
    * Rule-derived ranking knobs (tiebreaker order + bye Points-For), ready to pass
    * straight to `computeStandings` / `computeConferenceSeeds` / `computeDivisionStandings`.
    */
@@ -80,11 +96,14 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
   //    scored. We read them here so the behavior is per-season configurable from
   //    the Settings page rather than hardcoded.
   const [seasonRow] = await db
-    .select({ rules: seasons.rules })
+    .select({ rules: seasons.rules, regularSeasonWeeks: seasons.regularSeasonWeeks })
     .from(seasons)
     .where(eq(seasons.id, seasonId))
     .limit(1);
   const rules = getSeasonRules(seasonRow?.rules);
+  // The canonical column, not the `rules` JSONB mirror — the Settings page writes the
+  // column and deliberately leaves the mirror alone, so the two drift.
+  const regularSeasonWeeks = seasonRow?.regularSeasonWeeks ?? rules.regularSeasonWeeks;
 
   // 1. Owners for the season → OwnerEntry[].
   const ownerRows = await db
@@ -136,121 +155,69 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
     // Exhibition (preseason) scores are tracked but NEVER count toward standings.
     .where(and(eq(scores.seasonId, seasonId), eq(scores.isExhibition, false)));
 
-  /** key `${ownerSeasonId}:${week}` → points (null when bye / unscored). */
-  const pointsByOwnerWeek = new Map<string, number | null>();
-  /** key `${ownerSeasonId}:${week}` → true when that owner-week is a forfeit. */
-  const forfeitByOwnerWeek = new Set<string>();
-  /** Sum of bye-week points per owner — added to Points For when the rule is on. */
-  const byePointsForByOwner = new Map<number, number>();
-  for (const s of scoreRows) {
-    const key = `${s.ownerSeasonId}:${s.week}`;
-    const pts = s.isBye || s.dkPoints === null ? null : Number(s.dkPoints);
-    pointsByOwnerWeek.set(key, pts);
-    if (s.isForfeit) forfeitByOwnerWeek.add(key);
-    if (s.isBye && s.dkPoints !== null) {
-      byePointsForByOwner.set(
-        s.ownerSeasonId,
-        (byePointsForByOwner.get(s.ownerSeasonId) ?? 0) + Number(s.dkPoints),
-      );
-    }
+  // `numeric` arrives as a string; convert exactly once, here.
+  const parsedScores: DerivedScoreRow[] = scoreRows.map((s) => ({
+    ownerSeasonId: s.ownerSeasonId,
+    week: s.week,
+    dkPoints: s.dkPoints === null ? null : Number(s.dkPoints),
+    isBye: s.isBye,
+    isForfeit: s.isForfeit,
+  }));
+
+  // 3. Matchups + the NFL schedule. Matchups say who was scheduled to play; the schedule
+  //    says which weeks have actually finished, which gates forfeit derivation.
+  const [matchupRows, gameRows] = await Promise.all([
+    db
+      .select({
+        week: matchups.week,
+        homeOwnerSeasonId: matchups.homeOwnerSeasonId,
+        awayOwnerSeasonId: matchups.awayOwnerSeasonId,
+        isPlayoff: matchups.isPlayoff,
+      })
+      .from(matchups)
+      // Exhibition (preseason) matchups are tracked but NEVER count toward standings.
+      .where(and(eq(matchups.seasonId, seasonId), eq(matchups.isExhibition, false))),
+    db
+      .select({ week: nflGames.week, status: nflGames.status, kickoff: nflGames.kickoff })
+      .from(nflGames)
+      .where(and(eq(nflGames.seasonId, seasonId), eq(nflGames.isExhibition, false))),
+  ]);
+
+  // 3a. A week is SETTLED once every one of its NFL games is final. Only settled weeks
+  //     derive missed lineups: mid-Sunday every owner legitimately sits on 0.00 points,
+  //     and deriving then would resolve the week as 32 forfeits with cascading auto-losses.
+  const gamesByWeek = new Map<number, { status: string | null; kickoff: Date | null }[]>();
+  for (const g of gameRows) {
+    const cur = gamesByWeek.get(g.week) ?? [];
+    cur.push({ status: g.status, kickoff: g.kickoff });
+    gamesByWeek.set(g.week, cur);
+  }
+  const now = new Date();
+  const settledWeeks = new Set<number>();
+  for (const [week, games] of gamesByWeek) {
+    if (weekIsFinal(games, now)) settledWeeks.add(week);
   }
 
-  // 3. Matchups → MatchupResult[]. A matchup is final only when both sides have a
-  //    non-bye score; otherwise it has not been played and must not be counted.
-  const matchupRows = await db
-    .select({
-      week: matchups.week,
-      homeOwnerSeasonId: matchups.homeOwnerSeasonId,
-      awayOwnerSeasonId: matchups.awayOwnerSeasonId,
-      isPlayoff: matchups.isPlayoff,
-    })
-    .from(matchups)
-    // Exhibition (preseason) matchups are tracked but NEVER count toward standings.
-    .where(and(eq(matchups.seasonId, seasonId), eq(matchups.isExhibition, false)));
+  // 3b. Missed lineups: derived from the schedule, unioned with any stored `isForfeit`
+  //     (the commissioner's manual override). The live DraftKings ingest never writes that
+  //     column, so without this the league's missed-lineup rule would not apply at all.
+  const forfeitByOwnerWeek = deriveForfeits({
+    scores: parsedScores,
+    matchups: matchupRows,
+    settledWeeks,
+    regularSeasonWeeks,
+  });
 
-  // 3a. Per-week scores (non-forfeit, non-bye, active matchups only) used to
-  //     derive the league average ('league_average') and median ('league_median')
-  //     that a forfeit opponent faces.
-  const weekScores = new Map<number, number[]>();
-  for (const m of matchupRows) {
-    if (m.isPlayoff) continue;
-    for (const ownerSeasonId of [m.homeOwnerSeasonId, m.awayOwnerSeasonId]) {
-      const key = `${ownerSeasonId}:${m.week}`;
-      if (forfeitByOwnerWeek.has(key)) continue; // forfeits excluded
-      const pts = pointsByOwnerWeek.get(key);
-      if (pts === null || pts === undefined) continue; // bye / unscored excluded
-      const cur = weekScores.get(m.week) ?? [];
-      cur.push(pts);
-      weekScores.set(m.week, cur);
-    }
-  }
-  const leagueAverageByWeek = new Map<number, number>();
-  const leagueMedianByWeek = new Map<number, number>();
-  for (const [week, scores] of weekScores) {
-    if (scores.length === 0) continue;
-    leagueAverageByWeek.set(week, scores.reduce((a, b) => a + b, 0) / scores.length);
-    const sorted = [...scores].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    leagueMedianByWeek.set(
-      week,
-      sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid],
-    );
-  }
-
-  // 3b. Translate the season's missedLineup rule into the engine's forfeit fields.
-  //     - `result: 'auto_loss'` → the forfeiter takes an auto-loss (forfeitBy set).
-  //       `result: 'none'`      → forfeits are scored like any other game.
-  //     - `opponentScores`: 'league_average' → the week mean; 'league_median' → the
-  //       week median; 'zero' → 0; 'actual' → the forfeiter's own raw points.
-  const applyForfeit = rules.missedLineup.result === 'auto_loss';
-  const opponentScores = rules.missedLineup.opponentScores;
-  const facesFor = (week: number, forfeiterPoints: number | null): number => {
-    switch (opponentScores) {
-      case 'league_average':
-        return leagueAverageByWeek.get(week) ?? 0;
-      case 'league_median':
-        return leagueMedianByWeek.get(week) ?? 0;
-      case 'zero':
-        return 0;
-      case 'actual':
-        return forfeiterPoints ?? 0;
-    }
-  };
-
-  const results: MatchupResult[] = matchupRows.map((m) => {
-    const homePoints = pointsByOwnerWeek.get(`${m.homeOwnerSeasonId}:${m.week}`) ?? null;
-    const awayPoints = pointsByOwnerWeek.get(`${m.awayOwnerSeasonId}:${m.week}`) ?? null;
-    const isFinal = homePoints !== null && awayPoints !== null;
-
-    const base: MatchupResult = {
-      week: m.week,
-      isPlayoff: m.isPlayoff,
-      isFinal,
-      homeOwnerSeasonId: m.homeOwnerSeasonId,
-      awayOwnerSeasonId: m.awayOwnerSeasonId,
-      homePoints,
-      awayPoints,
-    };
-
-    // Forfeit handling only applies to counted regular-season games when the
-    // season's rule asks for an auto-loss and the opponent faces something other
-    // than the forfeiter's actual points ('actual' is "no special handling").
-    if (!applyForfeit || m.isPlayoff || !isFinal || opponentScores === 'actual') {
-      return base;
-    }
-    const homeForfeit = forfeitByOwnerWeek.has(`${m.homeOwnerSeasonId}:${m.week}`);
-    const awayForfeit = forfeitByOwnerWeek.has(`${m.awayOwnerSeasonId}:${m.week}`);
-    if (!homeForfeit && !awayForfeit) return base;
-
-    if (homeForfeit && awayForfeit) {
-      // Both forfeited → both face the week average (or 0). Pass the average; the
-      // engine gives both a loss regardless.
-      return { ...base, forfeitBy: 'both', opponentFacesPoints: facesFor(m.week, null) };
-    }
-    if (homeForfeit) {
-      return { ...base, forfeitBy: 'home', opponentFacesPoints: facesFor(m.week, homePoints) };
-    }
-    return { ...base, forfeitBy: 'away', opponentFacesPoints: facesFor(m.week, awayPoints) };
+  // 4. Assemble the engine's MatchupResult[]. Pure and unit-tested (`assemble.ts`):
+  //    reconciles byes against the schedule, scores a derived forfeit that left no row as
+  //    0 (so the game counts and the opponent gets the win the rule owes them), computes
+  //    the week's league average/median, and applies the season's missedLineup rule.
+  const { results, byePointsForByOwner } = assembleMatchupResults({
+    scores: parsedScores,
+    matchups: matchupRows,
+    forfeits: forfeitByOwnerWeek,
+    missedLineup: rules.missedLineup,
+    regularSeasonWeeks,
   });
 
   // Rule-derived ranking knobs, ready for the engine: the configured tiebreaker
@@ -265,6 +232,8 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
     results,
     brandingById,
     rules,
+    regularSeasonWeeks,
+    forfeitByOwnerWeek,
     rankingOptions,
     playoffConfig: playoffConfigFromRules(rules),
   };
