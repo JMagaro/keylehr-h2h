@@ -24,7 +24,7 @@
  * Server-only: this module touches the DB (Neon Node driver). Never import it
  * into a `'use client'` component or an edge route.
  */
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 import {
   db,
@@ -50,6 +50,8 @@ import {
   type SeededOwner,
 } from '@/lib/standings';
 import { getSeasonStandingsData } from '@/lib/standings/query';
+import { recomputeSeasonAwards } from '@/lib/awards/service';
+import { staleGameIds } from './prune';
 
 /* -------------------------------------------------------------------------- */
 /* Round → week mapping                                                        */
@@ -142,6 +144,13 @@ function gameKey(round: PlayoffRound, conference: Conference | null, highSeed: n
  * Upsert one round's games. Matches existing rows by (round, conference,
  * highSeed, lowSeed) so re-running never duplicates and preserves any already
  * recorded points/winner. Inserts new games with the round's week set.
+ *
+ * AUTHORITATIVE for the (round, conference) slices it writes: any pre-existing row in those
+ * slices that is not part of the new pairing set is deleted. Without that, an admin override
+ * via `setGameWinner` produces a different next-round pairing, the new row is inserted under
+ * a new key and the old one survives as a phantom game — which then gets scored, counts
+ * toward "is the round resolved?", and can put three owners into a conference final or
+ * create a second championship row that a $2000 payout is read from.
  */
 async function upsertRoundGames(seasonId: number, games: PlayoffGame[]): Promise<void> {
   const existing = await db
@@ -180,6 +189,27 @@ async function upsertRoundGames(seasonId: number, games: PlayoffGame[]): Promise
         lowOwnerSeasonId: g.lowOwnerSeasonId,
       });
     }
+  }
+
+  // Remove rows this write supersedes (see the note above). Done last so a failure leaves a
+  // stale row rather than a missing game.
+  const stale = staleGameIds(
+    existing.map((e) => ({
+      id: e.id,
+      round: e.round,
+      conference: e.conference,
+      highSeed: e.highSeed,
+      lowSeed: e.lowSeed,
+    })),
+    games.map((g) => ({
+      round: g.round,
+      conference: g.conference,
+      highSeed: g.highSeed,
+      lowSeed: g.lowSeed,
+    })),
+  );
+  if (stale.length > 0) {
+    await db.delete(playoffMatchups).where(inArray(playoffMatchups.id, stale));
   }
 }
 
@@ -404,14 +434,19 @@ export async function advancePlayoffs(seasonId: number): Promise<AdvanceResult> 
 
     resolvedRounds.push(round);
 
-    // 2. Championship resolved → record the champion award, then stop.
+    // 2. Championship resolved → rebuild the season's award ledger, then stop.
     if (round === 'championship') {
       const champ = results[0];
       if (champ) {
         championOwnerSeasonId =
           champ.winnerOwnerSeasonId ?? resolveGameWinner(champ, tieRule);
         if (championOwnerSeasonId !== null) {
-          await recordChampion(seasonId, championOwnerSeasonId);
+          // Recompute the whole ledger rather than inserting a bare champion row. The old
+          // path wrote `champion` with a NULL amountCents, so the $2000 showed as $0 in net
+          // earnings until someone remembered to run the awards importer -- and runner-up,
+          // 3rd and 4th were never recorded live at all. (3rd/4th still need the
+          // commissioner to say which semi-final loser placed 3rd: `import:awards --third`.)
+          await recomputeSeasonAwards(seasonId);
         }
       }
       break;
@@ -461,40 +496,6 @@ function resolveGameWinner(
   }
   // higher_seed (or PF unavailable / tied): the better (lower) seed = high slot.
   return r.highOwnerSeasonId;
-}
-
-/**
- * Record (idempotently) the season champion as a `seasonAwards` 'champion' row
- * carrying the ownerId + ownerSeasonId. Re-running updates the existing row
- * rather than inserting a duplicate.
- */
-async function recordChampion(seasonId: number, championOwnerSeasonId: number): Promise<void> {
-  const [os] = await db
-    .select({ ownerId: ownerSeasons.ownerId })
-    .from(ownerSeasons)
-    .where(eq(ownerSeasons.id, championOwnerSeasonId))
-    .limit(1);
-  if (!os) return;
-
-  const existing = await db
-    .select({ id: seasonAwards.id })
-    .from(seasonAwards)
-    .where(and(eq(seasonAwards.seasonId, seasonId), eq(seasonAwards.type, 'champion')))
-    .limit(1);
-
-  if (existing[0]) {
-    await db
-      .update(seasonAwards)
-      .set({ ownerId: os.ownerId, ownerSeasonId: championOwnerSeasonId })
-      .where(eq(seasonAwards.id, existing[0].id));
-  } else {
-    await db.insert(seasonAwards).values({
-      seasonId,
-      type: 'champion',
-      ownerId: os.ownerId,
-      ownerSeasonId: championOwnerSeasonId,
-    });
-  }
 }
 
 /* -------------------------------------------------------------------------- */
