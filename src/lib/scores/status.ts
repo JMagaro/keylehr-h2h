@@ -21,6 +21,7 @@
 import { and, eq, isNotNull } from 'drizzle-orm';
 
 import { db, matchups, nflGames, scores, scoreImportRuns, seasons } from '@/db';
+import { gameIsFinal } from '@/lib/schedule/final';
 
 /** Derived per-week health, in roughly increasing severity for display ordering. */
 export type SyncHealth =
@@ -72,15 +73,6 @@ export interface SeasonSyncStatus {
   regularSeasonWeeks: number;
   weeks: WeekSyncStatus[];
   summary: SeasonSyncSummary;
-}
-
-/** A safe margin after kickoff before we assume a game with no status is over. */
-const FINAL_FALLBACK_MS = 6 * 60 * 60 * 1000; // 6 hours
-
-/** True when an ESPN status string (e.g. "STATUS_FINAL") indicates a finished game. */
-function statusIsFinal(status: string | null): boolean | null {
-  if (!status) return null;
-  return /final|complete|full[-_ ]?time|postgame/i.test(status);
 }
 
 /** Empty health tally, for accumulation. */
@@ -198,14 +190,7 @@ export async function getSeasonSyncStatus(
   for (const g of gameRows) {
     const cur = gamesByWeek.get(g.week) ?? { total: 0, final: 0 };
     cur.total += 1;
-    const explicit = statusIsFinal(g.status);
-    const isFinal =
-      explicit === true ||
-      // Status missing/unknown: fall back to "kicked off long enough ago".
-      (explicit === null &&
-        g.kickoff != null &&
-        now.getTime() - g.kickoff.getTime() >= FINAL_FALLBACK_MS);
-    if (isFinal) cur.final += 1;
+    if (gameIsFinal({ status: g.status, kickoff: g.kickoff }, now)) cur.final += 1;
     gamesByWeek.set(g.week, cur);
   }
 
