@@ -77,8 +77,12 @@ export default async function AdminPreseasonPage({
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>2 · Enter scores</CardTitle>
-            <CardDescription>Paste each team&apos;s DraftKings total.</CardDescription>
+            <CardTitle>2 · Scores</CardTitle>
+            <CardDescription>
+              Use the <strong>DK Sync extension</strong> — tick <strong>Preseason</strong> and set
+              week {preseasonWeek}, same as any regular week. The paste box below is the fallback
+              for when there&apos;s no DraftKings contest to pull from.
+            </CardDescription>
           </CardHeader>
           <CardBody>
             <PasteScoresForm seasonId={seasonId} preseasonWeek={preseasonWeek} />

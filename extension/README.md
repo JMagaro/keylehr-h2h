@@ -138,9 +138,40 @@ auto-fills (see below) — no manual Contest ID needed.
 - A **Season** dropdown (populated from `/api/seasons`, defaulting to the app's current season).
 - A **Week** input, **auto-filled** by parsing a trailing `#<number>` from the contest name
   (e.g. "…#18" → 18), falling back to the selected season's `currentWeek`. Editable.
+- A **Preseason** checkbox — see [Preseason (exhibition) syncs](#preseason-exhibition-syncs).
 - A big **Sync Week N** button (disabled until a contest is detected and a season is selected).
 - The result banner, plus a persistent **Last synced: Week N · HH:MM · matched Y/Z** line.
 - A **Paste manually** expander for the JSON fallback.
+
+### Preseason (exhibition) syncs
+
+**First**, sync the schedule in **Admin → Preseason** so the exhibition matchups exist —
+otherwise every owner is written as a bye (byes come from the `matchups` table). The paste form
+on that page remains as a fallback.
+
+Then tick **Preseason** in the popup. The Week input now means *preseason week* and accepts
+**1–3**; the extension POSTs it offset into the exhibition namespace (`100 + week` →
+101/102/103), and the labels switch to "Sync Preseason Wk 2".
+
+That offset week is the *only* signal the server needs: `ingestLeaderboard` derives
+`isExhibition` from it, so the scores appear on **/preseason** but never reach standings,
+seeding, playoffs, payouts, or all-time records. Live Sync works unchanged in this mode — it
+carries the offset week through, and its auto-stop reads the contest's completion state
+(status field / no time-or-points remaining), which is week-agnostic.
+
+Two guards worth knowing:
+
+- The regular (1–25) and exhibition (101–103) week ranges are **disjoint**, so a typo can't
+  silently land a preseason score in a real week — the API rejects anything in between with
+  *"Week must be 1–25 (regular/playoff) or 101–103 (preseason exhibition)."*
+- Switching the checkbox **re-derives the week** rather than carrying the number across; a
+  regular week 7 is not preseason week 7. Contest-name and `currentWeek` auto-fill hints are
+  ignored in preseason mode, since both are regular-season numbers.
+
+> `popup.js` **mirrors** `PRESEASON_WEEK_BASE` / `MAX_PRESEASON_WEEK` from
+> `src/lib/schedule/preseason.ts` (and `MAX_REGULAR_WEEK` from the ingest route). If those ever
+> change, change them in both places — `src/lib/schedule/preseason.test.ts` pins the namespace
+> invariants server-side only.
 
 ---
 

@@ -18,11 +18,17 @@
  *      own JSON verbatim; we map common DK field names → entryName/points server-side.
  *
  * Always also requires `{ seasonId, week }`; `contestId` is optional (stored for traceability).
+ *
+ * `week` accepts BOTH namespaces: a regular/playoff week (1–25) and a preseason EXHIBITION
+ * week (101–103, i.e. `PRESEASON_WEEK_BASE + preseasonWeek`). Nothing extra is needed to mark
+ * an exhibition sync — `ingestLeaderboard` derives `isExhibition` from the week alone, so
+ * posting week 102 records scores that never reach standings, seeding, payouts or all-time.
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { ingestLeaderboard, type LeaderboardEntry } from '@/lib/scores/ingest';
+import { PRESEASON_WEEK_BASE, MAX_PRESEASON_WEEK } from '@/lib/schedule/preseason';
 
 // Neon's serverless driver requires the Node.js runtime.
 export const runtime = 'nodejs';
@@ -48,10 +54,34 @@ const entrySchema = z.object({
  */
 const rawEntrySchema = z.record(z.string(), z.unknown());
 
+/** Highest regular/playoff week we accept (18 regular + playoffs 19–22, with headroom). */
+const MAX_REGULAR_WEEK = 25;
+const MIN_EXHIBITION_WEEK = PRESEASON_WEEK_BASE + 1;
+const MAX_EXHIBITION_WEEK = PRESEASON_WEEK_BASE + MAX_PRESEASON_WEEK;
+
+/**
+ * A stored week value. Two disjoint namespaces are legal — regular/playoff (1–25) and
+ * preseason exhibition (101–103) — and the gap between them is deliberate: it means a
+ * typo'd week can never silently land in the wrong namespace.
+ */
+const weekSchema = z
+  .number()
+  .int()
+  .refine(
+    (w) =>
+      (w >= 1 && w <= MAX_REGULAR_WEEK) ||
+      (w >= MIN_EXHIBITION_WEEK && w <= MAX_EXHIBITION_WEEK),
+    {
+      message:
+        `Week must be 1–${MAX_REGULAR_WEEK} (regular/playoff) or ` +
+        `${MIN_EXHIBITION_WEEK}–${MAX_EXHIBITION_WEEK} (preseason exhibition).`,
+    },
+  );
+
 const bodySchema = z
   .object({
     seasonId: z.number().int().positive(),
-    week: z.number().int().min(1).max(25),
+    week: weekSchema,
     contestId: z.string().optional(),
     entries: z.array(entrySchema).optional(),
     rawLeaderboard: z.array(rawEntrySchema).optional(),

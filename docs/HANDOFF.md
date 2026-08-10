@@ -3,22 +3,23 @@
 A running "where things stand" doc so a fresh Claude/context window (or contributor) can pick up
 without re-deriving everything. Update the **Next up** and **Recent work** sections as you go.
 
-_Last updated: 2026-08-10 (preseason exhibition games, rebased onto origin's History / Rules /
-Cohen's Corner work — **local, not yet pushed**; prior: tiebreaker fix + 2023/2024 playoffs +
+_Last updated: 2026-08-10 (preseason syncing from the DK Chrome extension — **uncommitted in the
+working tree**; prior: preseason exhibition games, tiebreaker fix + 2023/2024 playoffs +
 per-season owner names + DK salary + model performance tracker)._
 
 ---
 
 ## Snapshot
 
-- **Live app:** Vercel (`keylehr-h2h.vercel.app`), auto-deploys from `main`. **The two preseason
-  exhibition commits (`77991fb` code, `07647b4` docs) are rebased onto `origin/main` but NOT pushed
-  yet**, so they are not deployed. Everything before them is live.
+- **Live app:** Vercel (`keylehr-h2h.vercel.app`), auto-deploys from `main`. The preseason
+  exhibition commits (`77991fb` code, `07647b4` docs, plus follow-ups `c3b559a`/`aa903b3`) **are
+  pushed** — `main` and `origin/main` are both at `aa903b3`. **Uncommitted in the working tree:**
+  preseason syncing from the DK extension (see the DONE section) — not committed, not deployed.
 - **Stack:** Next.js 16.2.9 (App Router, Turbopack) · React 19 · Tailwind v4 (CSS `@theme`, no
   config file) · Drizzle + Neon Postgres (**HTTP driver** — every query is a network round-trip) ·
   NextAuth (commissioner login) · a Chrome extension for DraftKings sync.
 - **Verification:** `npm run verify` runs the whole gate (see below). It is **green** as of this
-  handoff (typecheck · lint · **72 unit tests** · production build · ESPN health · engine invariants ·
+  handoff (typecheck · lint · **77 unit tests** · production build · ESPN health · engine invariants ·
   2025 ground-truth replay).
 - **Seasons in DB:** 2023, 2024, 2025 fully imported (regular season **and** playoffs, validated
   against the sheets) + 2026 (upcoming; schedule synced, **all 32 owners assigned**, and 16 preseason
@@ -70,9 +71,21 @@ all-time records.
   `src/lib/preseason/query.ts`) showing the exhibition matchups/scores/winners, labeled
   "exhibition — doesn't count"; and an admin **`/admin/preseason`**
   (`src/app/admin/(panel)/preseason/`) to pick the preseason week, sync + generate matchups, and
-  paste scores. Nav gained **Preseason** (public + admin) — after origin's nav refresh the public
+  enter scores. Nav gained **Preseason** (public + admin) — after origin's nav refresh the public
   order in `src/components/nav-links.ts` is Dashboard · My Team · Standings · Playoffs ·
   **Preseason** · Lineup Builder · Cohen's Corner · History · Rules. `npm run verify` 7/7.
+- **Scoring a preseason week (updated — the extension now does it):** the DK Sync extension has a
+  **Preseason** checkbox; the Week input then means preseason week 1–3 and the extension POSTs the
+  offset week (101–103). `POST /api/ingest/draftkings` accepts **two disjoint week ranges** —
+  `1–25` (regular/playoff) and `101–103` (preseason exhibition) — and rejects everything in
+  between, so a typo can't land a preseason score in a real week. Nothing else flags the sync:
+  `ingestLeaderboard` derives `isExhibition` from the week. The paste form on Admin → Preseason is
+  now the **fallback** (for when there's no DK contest to pull from), not the only path. Live Sync
+  works in preseason mode with no change to `extension/background.js` — it carries the week through
+  opaquely and auto-stops on DK contest completion, which is week-agnostic. **Gotcha:**
+  `extension/popup.js` *mirrors* `PRESEASON_WEEK_BASE`/`MAX_PRESEASON_WEEK` (and the route's
+  `MAX_REGULAR_WEEK`) as plain constants — an extension can't import app code, so those move
+  together. `src/lib/schedule/preseason.test.ts` pins the invariants on the server side.
 
 ## ✅ DONE — tiebreaker engine fixed to the league's real rule + 2023/2024 playoffs imported
 
@@ -237,15 +250,23 @@ Sleeper PPR as a free proxy).
 
 ## Recent work (newest first)
 
+- **Preseason syncing from the DK Chrome extension** (`extension/popup.{html,css,js}`,
+  `src/app/api/ingest/draftkings/route.ts`, `src/lib/schedule/preseason.test.ts`) — **uncommitted
+  working-tree change.** A **Preseason** checkbox in the popup switches the Week input to preseason
+  weeks 1–3 and POSTs them offset (101–103); the ingest endpoint's `week` went from
+  `min(1).max(25)` to a refinement accepting the two **disjoint** ranges `1–25` and `101–103`.
+  Admin → Preseason card 2 is retitled "Scores" and now points at the extension, with the paste box
+  as the fallback. `background.js` unchanged (Live Sync is week-agnostic). +5 tests (72 → 77);
+  `npm run verify` 7/7. See the DONE section.
 - **Preseason exhibition games** (migration 0008 `isExhibition` on `nfl_games`/`matchups`/`scores`;
   `src/lib/schedule/preseason.ts`; `syncPreseasonWeek`; `/preseason` + Admin → Preseason): tracked
   owner-vs-owner preseason matchups + DK scores at a separate week namespace (`week = 100 +
   preseasonWeek`) that **never** affect standings/seeding/playoffs/payouts/all-time. Every real-stats
   query and the pure engine exclude `isExhibition`; unit-tested. See the DONE section.
-  **Now rebased onto origin's History / Rules / Cohen's Corner work** — the merge point was
+  **Rebased onto origin's History / Rules / Cohen's Corner work** — the merge point was
   `src/lib/history.ts`, whose new all-time analytics all had to pick up the exhibition filter (see
-  the maintenance rule in the DONE section). `npm run verify` is 7/7 post-rebase. **Local only —
-  not pushed, not deployed.**
+  the maintenance rule in the DONE section). `npm run verify` is 7/7 post-rebase. **Pushed** (see
+  Snapshot).
 - **History / Rules / Cohen's Corner (upstream, `origin/main`)** — landed while the preseason branch
   was out; **none of it is written up in these docs yet** (see "Known minor follow-ups"):
   - `/history` overhaul — per-season detail pages (`/history/[year]`), a head-to-head page
@@ -310,6 +331,13 @@ Sleeper PPR as a free proxy).
 
 ## Known minor follow-ups (not blocking)
 
+- **Stale "Planned" markers survive in the older design docs.** Corrected where the preseason /
+  ingest work touched them; still outstanding: `docs/ARCHITECTURE.md` §1–§2 tag Server Actions /
+  public pages / route handlers as "Planned" and claim "only the scaffolded landing page is
+  served", and §6 says `npm run admin:hash` is "not yet present in the repo" (it is —
+  `scripts/hash-password.ts`); `docs/DATA_MODEL.md` still marks `weekly_contests` "(Planned, Phase
+  3)" (Admin → Slates and the playoffs actions write it) and `playoff_matchups` "(Planned, Phase
+  4)". Factual, contained, and worth one pass.
 - **The upstream History / Rules / Cohen's Corner work is under-documented.** Those 37 commits
   touched no docs at all: `README.md` (page + npm-script lists), `docs/DATA_MODEL.md`
   (`seasons.rules`, and how `season_awards` is now populated), and `docs/ARCHITECTURE.md` (the
@@ -322,9 +350,9 @@ Sleeper PPR as a free proxy).
 
 ## Start here (fresh session)
 
-The rebuild is **feature-complete** vs the old Google-Sheets workflow. One thing is genuinely
-outstanding: **the two preseason-exhibition commits on `main` (`77991fb`, `07647b4`) are rebased onto
-`origin/main` but not pushed**, so they aren't deployed — confirm with `git log origin/main..main`.
+The rebuild is **feature-complete** vs the old Google-Sheets workflow. The preseason-exhibition
+commits are pushed and deployed; what's outstanding is **uncommitted**: the DK-extension preseason
+sync described at the top of "Recent work" — confirm with `git status` / `git log origin/main..main`.
 Otherwise there is no specific task queued. Read this doc + the linked memories, run `npm run verify`
 (must be 7/7) before any push, and pick up from whatever the user asks. The most likely future asks: training the lineup models into ML
 `v1.0` once the 2026 season produces graded weeks (the tracker collects the data), the My Team
@@ -343,10 +371,13 @@ season + playoffs) is in and validated.
   `/history/[year]`, `/history/head-to-head`. Aggregates by PERSON (`owners.id`), not per-season
   owner. **Every query here that touches `scores`/`matchups` must filter `isExhibition` —
   see the maintenance rule in the preseason DONE section.**
-- Preseason (exhibition) games: `src/lib/schedule/preseason.ts` (week-namespace helpers, pure),
-  `src/lib/schedule/sync.ts` `syncPreseasonWeek`, `src/lib/preseason/query.ts` (public read model);
-  routes `/preseason` (`src/app/preseason/`) + Admin → Preseason (`src/app/admin/(panel)/preseason/`).
-  Rows carry `isExhibition` (migration 0008) and are excluded from every stats query.
+- Preseason (exhibition) games: `src/lib/schedule/preseason.ts` (week-namespace helpers, pure,
+  `preseason.test.ts`), `src/lib/schedule/sync.ts` `syncPreseasonWeek`, `src/lib/preseason/query.ts`
+  (public read model); routes `/preseason` (`src/app/preseason/`) + Admin → Preseason
+  (`src/app/admin/(panel)/preseason/`). Rows carry `isExhibition` (migration 0008) and are excluded
+  from every stats query. Scores arrive through the normal ingest endpoint at the offset week —
+  `POST /api/ingest/draftkings` accepts `1–25` **or** `101–103` — driven by the extension's
+  **Preseason** toggle (`extension/popup.js`, which mirrors the constants).
 - Player signals + lineup builder: `src/lib/players/{sleeper,espn-news,recommend,query}.ts`
   (`recommend.ts` is the pure engine; `query.ts` is the DB/schedule orchestration hub)
 - DraftKings salaries + cap optimizer: `src/lib/draftkings/{draftables,match}.ts`, `src/lib/players/optimize.ts`

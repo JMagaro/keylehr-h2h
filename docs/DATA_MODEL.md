@@ -220,7 +220,8 @@ The shared DraftKings contest used to score a given week. (DraftKings pipeline �
 
 ## `score_import_runs`
 
-Audit log: one row per DraftKings leaderboard pull (auto or manual). (Planned, Phase 3.)
+Audit log: one row per DraftKings leaderboard pull (auto or manual). Written by every
+`ingestLeaderboard` / `writeTeamScores` call — see [`DRAFTKINGS.md` §6](DRAFTKINGS.md#6-audit-log-score_import_runs).
 
 | Column             | Type            | Notes                                                       |
 | ------------------ | --------------- | ----------------------------------------------------------- |
@@ -232,7 +233,7 @@ Audit log: one row per DraftKings leaderboard pull (auto or manual). (Planned, P
 | `entriesTotal`     | integer         | NOT NULL, default 0. Leaderboard entries seen.              |
 | `entriesMatched`   | integer         | NOT NULL, default 0. Mapped to an owner.                    |
 | `entriesUnmatched` | integer         | NOT NULL, default 0. Could not be mapped.                   |
-| `triggeredBy`      | varchar(64)     | e.g. `cron`, `admin:<email>`, `manual-paste`.               |
+| `triggeredBy`      | varchar(64)     | Free-form; today `extension` (ingest API), `admin:preseason` (paste form), `backfill` (importers). |
 | `error`            | text            | Nullable failure detail.                                    |
 | `rawPayload`       | jsonb           | Raw leaderboard payload retained for debugging/replay.      |
 | `createdAt`        | timestamptz     | NOT NULL, default `now()`.                                  |

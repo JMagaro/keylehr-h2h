@@ -29,12 +29,13 @@ dev). They mirror [`.env.example`](../.env.example).
 | `AUTH_SECRET`         | Yes (P1 auth)   | Auth.js signing secret. Generate with `openssl rand -base64 32`.                                       |
 | `ADMIN_EMAIL`         | Yes (P1 auth)   | The single commissioner/admin login email for v1.                                                      |
 | `ADMIN_PASSWORD_HASH` | Yes (P1 auth)   | **Bcrypt hash** of the admin password (never the plaintext). See [§5](#5-admin-password-hash).         |
+| `INGEST_TOKEN`        | **Yes, to score** | Bearer token the DK Sync Chrome extension sends to `POST /api/ingest/draftkings` (and `/api/seasons`). **Without it every sync 401s** — the server rejects all ingest when it's unset. Same value in the extension's Settings screen. See [`extension/README.md`](../extension/README.md). |
 | `DK_SESSION_COOKIE`   | P3 only         | Authenticated DraftKings session for the leaderboard read. Leave blank until Phase 3. See [`DRAFTKINGS.md`](DRAFTKINGS.md). |
 | `CRON_SECRET`         | P3 only         | Secret guarding the Vercel Cron score-pull endpoint. Generate with `openssl rand -base64 32`.          |
 | `NEXTAUTH_URL`        | Yes             | Base URL of the deployed app (used for absolute links / Auth.js). `http://localhost:3000` locally; your production URL on Vercel. |
 
 > **Secrets:** `.env*` files are git-ignored. Never commit `DATABASE_URL`, `AUTH_SECRET`,
-> `ADMIN_PASSWORD_HASH`, `DK_SESSION_COOKIE`, or `CRON_SECRET`.
+> `ADMIN_PASSWORD_HASH`, `INGEST_TOKEN`, `DK_SESSION_COOKIE`, or `CRON_SECRET`.
 
 > **Note on `NEXTAUTH_URL`:** the variable shipped in `.env.example` is `NEXTAUTH_URL` (the
 > NextAuth v4 name). This project uses `next-auth` v5 (beta), which generally prefers `AUTH_URL`

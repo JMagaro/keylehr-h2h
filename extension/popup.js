@@ -5,8 +5,12 @@
  *   • Settings screen — App Base URL + Ingest Token + "Test connection" (GET /api/seasons) + Save.
  *     Shown first-run (when unconfigured) or via the gear icon.
  *   • Main screen — a connection chip, the detected DK contest, a Season dropdown (from
- *     /api/seasons), an auto-filled Week, a big "Sync Week N" button, the result banner, a
- *     persistent "Last synced" line, and a tucked-away "Paste manually" fallback.
+ *     /api/seasons), an auto-filled Week, a "Preseason" toggle, a big "Sync Week N" button,
+ *     the result banner, a persistent "Last synced" line, and a "Paste manually" fallback.
+ *
+ * Preseason mode: the Week input means "preseason week 1–3" and the POSTed week is offset into
+ * the exhibition namespace (101–103). That single number is all the server needs — it flags the
+ * scores `isExhibition`, so they show on /preseason but never touch standings or payouts.
  *
  * Sync still POSTs normalized `entries` to <AppBaseURL>/api/ingest/draftkings with the bearer
  * token (POST shape unchanged). Two paths:
@@ -17,11 +21,25 @@
  *       extractor runs locally and the entries are POSTed.
  */
 
+/**
+ * Preseason (exhibition) week namespace — mirrors src/lib/schedule/preseason.ts.
+ *
+ * A preseason week is POSTed at an OFFSET (101/102/103) so it can never collide with a
+ * regular-season (1–18) or playoff (19–22) week. The server needs nothing else to know it's
+ * an exhibition: `ingestLeaderboard` derives `isExhibition` from the week alone, and every
+ * standings/stats query excludes those rows. The user still types 1–3 — the offset is applied
+ * here so the storage detail never reaches the UI.
+ */
+const PRESEASON_WEEK_BASE = 100;
+const MAX_PRESEASON_WEEK = 3;
+const MAX_REGULAR_WEEK = 25;
+
 const DEFAULTS = {
   appBaseUrl: 'http://localhost:3000',
   ingestToken: '',
   seasonId: '',
   week: '',
+  preseason: false, // exhibition mode — Week means "preseason week 1–3"
   lastSync: null, // { week, time (ms), matched, total }
 };
 
@@ -42,6 +60,7 @@ const els = {
   contestBody: document.getElementById('contestBody'),
   seasonSelect: document.getElementById('seasonSelect'),
   week: document.getElementById('week'),
+  preseasonToggle: document.getElementById('preseasonToggle'),
   syncBtn: document.getElementById('syncBtn'),
   syncSpinner: document.getElementById('syncSpinner'),
   syncLabel: document.getElementById('syncLabel'),
@@ -77,6 +96,7 @@ function loadSettings() {
         ingestToken: s.ingestToken || '',
         seasonId: s.seasonId || '',
         week: s.week || '',
+        preseason: Boolean(s.preseason),
         lastSync: s.lastSync || null,
       };
       resolve(state.settings);
@@ -194,6 +214,10 @@ function showSettings() {
 function showMain() {
   els.settingsScreen.hidden = true;
   els.mainScreen.hidden = false;
+  // Restore preseason mode BEFORE anything auto-fills the week — the mode decides both
+  // the input's range and which auto-fill hints apply.
+  els.preseasonToggle.checked = Boolean(state.settings.preseason);
+  els.week.max = String(maxWeekForMode());
   renderLastSynced();
   refreshChipAndSeasons();
   detectContest();
@@ -421,6 +445,18 @@ function renderContestCard() {
  */
 function maybeAutofillWeek() {
   if (weekUserEdited) return;
+
+  // In preseason mode both hints are meaningless: a contest's trailing "#18" and the
+  // season's currentWeek are regular-season numbers, and either would land outside the
+  // 1–3 preseason range. Fall back to the saved preseason week, else 2 (the usual one).
+  if (preseasonMode()) {
+    const saved = Number(state.settings.week);
+    const valid = Number.isInteger(saved) && saved >= 1 && saved <= MAX_PRESEASON_WEEK;
+    els.week.value = String(valid ? saved : 2);
+    updateSyncButton();
+    return;
+  }
+
   const fromName = state.contest ? weekFromContestName(state.contest.name) : null;
   const season = selectedSeason();
   const fallback = season ? season.currentWeek : Number(state.settings.week) || null;
@@ -431,20 +467,52 @@ function maybeAutofillWeek() {
   updateSyncButton();
 }
 
+/** Apply preseason mode to the Week input + re-derive a sensible week for the new mode. */
+function applyPreseasonMode() {
+  els.week.max = String(maxWeekForMode());
+  // The typed number means something different in each mode, so never carry it across
+  // (a regular week 7 is not preseason week 7).
+  weekUserEdited = false;
+  maybeAutofillWeek();
+}
+
 let weekUserEdited = false;
 
 /* -------------------------------------------------------------------------- */
 /* sync button state                                                           */
 /* -------------------------------------------------------------------------- */
 
+/** True when the popup is in preseason (exhibition) mode. */
+function preseasonMode() {
+  return Boolean(els.preseasonToggle.checked);
+}
+
+/** Highest week the Week input accepts in the current mode. */
+function maxWeekForMode() {
+  return preseasonMode() ? MAX_PRESEASON_WEEK : MAX_REGULAR_WEEK;
+}
+
+/**
+ * The week value to POST: the typed week, offset into the exhibition namespace when
+ * preseason mode is on. Returns null when the input isn't valid for the current mode —
+ * which is what disables the Sync button, so an out-of-range week can't be sent.
+ */
 function currentWeek() {
   const n = Number(els.week.value);
-  return Number.isInteger(n) && n >= 1 && n <= 25 ? n : null;
+  if (!Number.isInteger(n) || n < 1 || n > maxWeekForMode()) return null;
+  return preseasonMode() ? PRESEASON_WEEK_BASE + n : n;
+}
+
+/** Human label for a POSTed week, e.g. 102 → "Preseason Wk 2"; 7 → "Week 7". */
+function weekLabel(week) {
+  return week > PRESEASON_WEEK_BASE
+    ? `Preseason Wk ${week - PRESEASON_WEEK_BASE}`
+    : `Week ${week}`;
 }
 
 function updateSyncButton() {
   const week = currentWeek();
-  els.syncLabel.textContent = week ? `Sync Week ${week}` : 'Sync';
+  els.syncLabel.textContent = week ? `Sync ${weekLabel(week)}` : 'Sync';
   const ready = !state.busy && isConfigured() && state.contest && selectedSeason() && week != null;
   els.syncBtn.disabled = !ready;
 }
@@ -498,7 +566,7 @@ async function postIngest(payload) {
 
 function renderSuccess(sent, json) {
   const unmatched = json.unmatched || [];
-  const title = `✅ Week ${json.week} synced — sent ${sent}, matched ${json.matched}, unmatched ${unmatched.length}`;
+  const title = `✅ ${weekLabel(json.week)} synced — sent ${sent}, matched ${json.matched}, unmatched ${unmatched.length}`;
   const lines = [];
   if (typeof json.byes === 'number' && json.byes > 0) lines.push(`Byes: ${json.byes}`);
   if (unmatched.length) {
@@ -535,7 +603,7 @@ function renderLastSynced() {
   const hh = String(time.getHours()).padStart(2, '0');
   const mm = String(time.getMinutes()).padStart(2, '0');
   els.lastSynced.hidden = false;
-  els.lastSynced.textContent = `Last synced: Week ${ls.week} · ${hh}:${mm} · matched ${ls.matched}/${ls.total}`;
+  els.lastSynced.textContent = `Last synced: ${weekLabel(ls.week)} · ${hh}:${mm} · matched ${ls.matched}/${ls.total}`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -574,7 +642,7 @@ async function onSync() {
   const season = selectedSeason();
   const week = currentWeek();
   if (!season) return setResultBanner('❌ Pick a season.', [], 'err');
-  if (week == null) return setResultBanner('❌ Week must be 1–25.', [], 'err');
+  if (week == null) return setResultBanner(`❌ Week must be 1–${maxWeekForMode()}.`, [], 'err');
   if (!state.contest) {
     return setResultBanner(
       '❌ No contest detected',
@@ -624,7 +692,7 @@ async function onSync() {
     renderContestCard();
   }
 
-  setBanner(`Captured ${entries.length} entries from contest ${contestId}. Syncing Week ${week}…`, 'info');
+  setBanner(`Captured ${entries.length} entries from contest ${contestId}. Syncing ${weekLabel(week)}…`, 'info');
 
   const payload = {
     seasonId: season.id,
@@ -659,7 +727,7 @@ async function onPaste() {
   const season = selectedSeason();
   const week = currentWeek();
   if (!season) return setResultBanner('❌ Pick a season.', [], 'err');
-  if (week == null) return setResultBanner('❌ Week must be 1–25.', [], 'err');
+  if (week == null) return setResultBanner(`❌ Week must be 1–${maxWeekForMode()}.`, [], 'err');
 
   const text = els.pasteJson.value.trim();
   if (!text) return setResultBanner('❌ Paste some leaderboard JSON first.', [], 'err');
@@ -687,7 +755,7 @@ async function onPaste() {
   }
 
   setBusy(true);
-  setBanner(`Parsed ${entries.length} entries from pasted JSON. Syncing Week ${week}…`, 'info');
+  setBanner(`Parsed ${entries.length} entries from pasted JSON. Syncing ${weekLabel(week)}…`, 'info');
 
   const payload = {
     seasonId: season.id,
@@ -759,7 +827,7 @@ function renderLive(live) {
 
   const ls = live.lastSync;
   const synced = ls
-    ? `last synced Week ${ls.week} at ${fmtClock(ls.time)}` +
+    ? `last synced ${weekLabel(ls.week)} at ${fmtClock(ls.time)}` +
       (typeof ls.matched === 'number' ? ` (${ls.matched} matched)` : '')
     : 'no sync yet';
 
@@ -1056,9 +1124,15 @@ els.week.addEventListener('input', () => {
 });
 
 // Save the week on change so it survives reopen (until auto-fill overrides next open).
+// Store the TYPED value, not the POSTed one — in preseason mode those differ by the offset,
+// and persisting 102 would refill an input whose valid range is 1–3.
 els.week.addEventListener('change', () => {
-  const w = currentWeek();
-  if (w != null) persist({ week: String(w) });
+  if (currentWeek() != null) persist({ week: els.week.value });
+});
+
+els.preseasonToggle.addEventListener('change', () => {
+  persist({ preseason: preseasonMode() });
+  applyPreseasonMode();
 });
 
 // ---- init ----

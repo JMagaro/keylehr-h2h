@@ -139,6 +139,11 @@ at the offset week `100 + preseasonWeek` (`src/lib/schedule/preseason.ts`) so it
 with the regular season (1–18) or playoffs (19–22) on the same unique index. Same conflict key and
 idempotency as the regular sync. Driven from **Admin → Preseason**, not from `schedule:pull`.
 
+Scoring those weeks uses the **same ingest path as any other week** — no separate pipeline. The
+ingest endpoint accepts two disjoint `week` namespaces (`1–25` and `101–103`), and the Chrome
+extension's **Preseason** toggle posts the offset value; `isExhibition` is derived from the week
+alone. See [`DRAFTKINGS.md` §10](DRAFTKINGS.md#10-the-ingest-endpoint-implemented).
+
 ### `src/lib/matchups/generate.ts`
 
 `generateMatchups(seasonId)` maps each season's `owner_seasons` to NFL teams, then converts each
@@ -204,11 +209,19 @@ persists results. This keeps the engine fast and trivially unit-testable.
 The `npm run admin:hash` script declared in `package.json` (to generate `ADMIN_PASSWORD_HASH`)
 is part of this phase and **not yet present** in the repo.
 
-## 7. DraftKings scoring pipeline (Planned, Phase 3)
+## 7. DraftKings scoring pipeline (Implemented — via the browser extension)
 
-The automated scoring pipeline is fully designed in [`DRAFTKINGS.md`](DRAFTKINGS.md) and its
-**database tables already exist** (`weekly_contests`, `scores`, `score_import_runs`), but the
-pipeline code, cron route, and manual-fallback UI are not yet built. In brief:
+> **What actually runs today:** the **Chrome extension** (`extension/`) reads the shared private
+> contest leaderboard from the commissioner's logged-in DraftKings session and POSTs it to
+> `POST /api/ingest/draftkings` (bearer `INGEST_TOKEN`), which matches entries to owners and
+> upserts `scores` via `src/lib/scores/ingest.ts`. The `week` field accepts a regular/playoff week
+> (`1–25`) **or** a preseason exhibition week (`101–103`), which is how preseason games are scored
+> — see [`DRAFTKINGS.md` §10](DRAFTKINGS.md#10-the-ingest-endpoint-implemented) for the full
+> contract and [`extension/README.md`](../extension/README.md) for the operator's guide.
+
+The originally designed **server-side cron pull** below was **not** built — there is no
+`/api/cron/pull` route and no `src/lib/dk` module, and `DK_SESSION_COOKIE` is unused. It is kept
+here because it remains the shape any future unattended pull would take:
 
 ```text
 Vercel Cron (weekly)

@@ -31,7 +31,7 @@ For the deeper design, see the docs linked below.
 | Auth           | Auth.js (`next-auth` v5 beta) — single commissioner login    |
 | Validation     | Zod                                                          |
 | External data  | ESPN unofficial scoreboard API (NFL schedule)               |
-| Scoring source | DraftKings unofficial API (Planned, Phase 3)                |
+| Scoring source | DraftKings unofficial leaderboard API, read by the Chrome extension in `extension/` |
 | Hosting / cron | Vercel + Vercel Cron                                         |
 | Tests          | Vitest                                                       |
 
@@ -122,6 +122,7 @@ DailyFantasy/
 │  ├─ DRAFTKINGS.md
 │  ├─ DEPLOYMENT.md
 │  └─ NEXTJS16_NOTES.md
+├─ extension/                   # Chrome extension (MV3): DK leaderboard → POST /api/ingest/draftkings
 ├─ scripts/
 │  └─ pull-schedule.ts          # CLI: ESPN schedule sync + matchup generation
 ├─ src/
@@ -158,7 +159,7 @@ DailyFantasy/
 | **P4** | Playoffs / history                                                    | **Done.** Config-driven seeding + bracket, history/all-time pages, playoff-odds Monte-Carlo.    |
 | **P5** | Migrate prior season(s) from the Google Sheet                         | **Done for 2023–2025** (regular season **and** playoff brackets) — `import-season3.ts` (2025, the verify anchor) + the generic `import-season.ts` / `import-playoffs.ts`. Each validates against the published sheets. |
 | **P6** | My Team Phase B — lineup builder + player news                        | **Done.** Free Sleeper/ESPN signals, 3 risk models, **DraftKings salary + $50k cap optimization**, a player-news strip, and a **model-performance tracker** (Admin → Models) that the models will train into ML v1.0 from. |
-| **P7** | Preseason exhibition games                                            | **Done.** Optional for-fun preseason game — owner-vs-owner matchups + DK scores at a separate week namespace (`week = 100 + preseasonWeek`), surfaced on the public **`/preseason`** page and driven from **Admin → Preseason**. Tracked in the app but **never** counted toward standings, seeding, playoffs, payouts, or all-time records. |
+| **P7** | Preseason exhibition games                                            | **Done.** Optional for-fun preseason game — owner-vs-owner matchups + DK scores at a separate week namespace (`week = 100 + preseasonWeek`), surfaced on the public **`/preseason`** page and driven from **Admin → Preseason**. Scored by the DK Sync extension's **Preseason** toggle (paste form as fallback); the ingest API accepts `1–25` or `101–103`. Tracked in the app but **never** counted toward standings, seeding, playoffs, payouts, or all-time records. |
 | **Next** | —                                                                   | Rebuild is feature-complete vs the Sheets workflow; no task queued. See [`docs/HANDOFF.md`](docs/HANDOFF.md). |
 
 ## Documentation
@@ -166,7 +167,8 @@ DailyFantasy/
 - [`docs/HANDOFF.md`](docs/HANDOFF.md) — **current state, what's next, and gotchas — start here.**
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture and data flow.
 - [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — every table, constraint, and relationship.
-- [`docs/DRAFTKINGS.md`](docs/DRAFTKINGS.md) — the DraftKings scoring pipeline design.
+- [`docs/DRAFTKINGS.md`](docs/DRAFTKINGS.md) — the DraftKings scoring pipeline + the ingest endpoint contract.
+- [`extension/README.md`](extension/README.md) — the DraftKings Sync Chrome extension (install, weekly + preseason syncs).
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deploying to Vercel + Neon, env vars, cron.
 - [`docs/NEXTJS16_NOTES.md`](docs/NEXTJS16_NOTES.md) — Next.js 16 conventions and gotchas.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev workflow, conventions, and migrations.

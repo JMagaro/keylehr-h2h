@@ -3,6 +3,8 @@
 > **Status: Implemented.** The scoring ingest (`src/app/api/ingest/draftkings/`, `src/lib/scores/`)
 > + the **Chrome extension** (`extension/`) read a shared contest leaderboard and write each owner's
 > weekly points into `scores`. Tables: `weekly_contests`, `scores`, `score_import_runs`.
+> **The endpoint's request contract — including the two accepted `week` namespaces (regular/playoff
+> and preseason exhibition) — is in [§10](#10-the-ingest-endpoint-implemented).**
 >
 > **Two distinct DraftKings integrations — don't conflate them:**
 > 1. **Scoring** (this doc): the *leaderboard* of a shared private contest → owner weekly totals.
@@ -118,7 +120,7 @@ has a complete, replayable history. Key fields (full table in [`DATA_MODEL.md`](
 | ---------------------------------------------- | ------------------------------------------------------------- |
 | `status` (`success`/`partial`/`failed`)        | Outcome of the run.                                           |
 | `entriesTotal` / `entriesMatched` / `entriesUnmatched` | Reconciliation counts (expect 32 matched in steady state). |
-| `triggeredBy` (`cron` / `admin:<email>` / `manual-paste`) | Who/what initiated the run.                          |
+| `triggeredBy` (`extension` / `admin:preseason` / `backfill`) | Who/what initiated the run.                       |
 | `error`                                        | Failure detail (e.g. auth/session expiry).                   |
 | `rawPayload` (jsonb)                           | The raw leaderboard payload, retained for debugging/replay.   |
 
@@ -158,4 +160,88 @@ the same audit and standings recomputation.
 | `DK_SESSION_COOKIE` | Authenticated DK session used to read the private contest leaderboard.  |
 | `CRON_SECRET`       | Shared secret guarding the cron-triggered pull endpoint.                |
 
-Both are present in `.env.example` and left blank until Phase 3.
+Both are present in `.env.example` and left blank. **Neither is read by any code today** — the
+implemented path is the browser extension (§10), which authenticates with **`INGEST_TOKEN`**.
+
+## 10. The ingest endpoint (implemented)
+
+`POST /api/ingest/draftkings` (`src/app/api/ingest/draftkings/route.ts`) is the endpoint that
+actually scores a week. The leaderboard read happens in the commissioner's own browser — the
+Chrome extension in [`extension/`](../extension/README.md) — so the server never holds DK
+credentials, and sections 4–5 above (a stored `DK_SESSION_COOKIE` + a cron pull) describe a design
+that was **not** built. The endpoint only accepts an already-captured leaderboard.
+
+**Auth.** `Authorization: Bearer <INGEST_TOKEN>`, compared in constant time. A missing header, a
+wrong token, or a server with no `INGEST_TOKEN` set all return `401 Unauthorized`.
+
+**Body.**
+
+| Field            | Type                                            | Required | Notes                                                                 |
+| ---------------- | ----------------------------------------------- | -------- | --------------------------------------------------------------------- |
+| `seasonId`       | positive int                                    | yes      | `seasons.id` (the extension picks it from `/api/seasons`).            |
+| `week`           | int                                             | yes      | Two accepted namespaces — see below.                                  |
+| `contestId`      | string                                          | no       | Stored on the scores + audit row for traceability.                    |
+| `entries`        | `{ entryName, points, rank?, entryKey? }[]`     | either   | Already normalized to the app's shape.                                |
+| `rawLeaderboard` | DK leaderboard objects                          | either   | DK's own field names, normalized server-side.                         |
+
+At least one of `entries` / `rawLeaderboard` must be non-empty. If both are sent they are merged,
+with explicit `entries` winning on duplicate names.
+
+### The `week` contract — two disjoint namespaces
+
+| Namespace              | Accepted    | Meaning                                                                      |
+| ---------------------- | ----------- | ---------------------------------------------------------------------------- |
+| Regular / playoff      | `1`–`25`    | Stored as-is. 18 regular weeks + playoffs 19–22, with headroom (`MAX_REGULAR_WEEK`). |
+| Preseason exhibition   | `101`–`103` | `PRESEASON_WEEK_BASE + preseasonWeek` (`src/lib/schedule/preseason.ts`).      |
+
+Everything else — including the whole gap `26`–`100` and anything above `103` — is a `400`:
+
+```text
+Week must be 1–25 (regular/playoff) or 101–103 (preseason exhibition).
+```
+
+The gap between the ranges is deliberate: a typo'd week can never silently land in the wrong
+namespace. **Nothing else marks an exhibition sync** — `ingestLeaderboard` derives `isExhibition`
+from the week alone (`isExhibitionWeek`), so a week-`102` POST writes scores that surface on
+`/preseason` and are excluded from standings, seeding, playoffs, payouts, and all-time records.
+`src/lib/schedule/preseason.test.ts` pins these invariants; the extension mirrors the same
+constants client-side (its **Preseason** toggle is what produces a 101–103 week).
+
+**Example — scoring preseason week 2** (the body the extension sends with **Preseason** ticked;
+both sync paths post normalized `entries`, so `normalizedFromRaw` stays `0`):
+
+```json
+{
+  "seasonId": 4,
+  "week": 102,
+  "contestId": "182734567",
+  "entries": [
+    { "entryName": "Brandon", "points": 241.68, "rank": 1 },
+    { "entryName": "Josh", "points": 198.42, "rank": 2 }
+  ]
+}
+```
+
+**Response (200).**
+
+```json
+{
+  "matched": 2,
+  "unmatched": [],
+  "week": 102,
+  "seasonId": 4,
+  "total": 2,
+  "byes": 0,
+  "importRunId": 91,
+  "normalizedFromRaw": 0,
+  "skippedFromRaw": 0
+}
+```
+
+**Errors.** `401 Unauthorized` · `400 Invalid JSON body` · `400 Validation failed` (with Zod
+`issues`, e.g. the week message above) · `400` when no usable entries survive normalization ·
+`500 Ingest failed: <message>`.
+
+Every accepted call runs `ingestLeaderboard` with `source = 'auto'` and
+`triggeredBy = 'extension'`, so it lands in the `score_import_runs` audit log (§6) like any other
+run. Re-posting the same week is safe — scores upsert on `(ownerSeasonId, week)`.
