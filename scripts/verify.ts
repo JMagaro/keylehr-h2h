@@ -161,15 +161,17 @@ async function checkHistoricalSnapshot(): Promise<CheckResult> {
  * Each is a precondition that, while it holds, makes a specific change provably safe:
  *
  *   1. derived forfeits == stored `isForfeit`  → deriving forfeits at read time changes nothing
- *   2. every owner played the same number of games → win% ties imply equal wins, so dropping
+ *   2. `nfl_games`-derived byes == stored `isBye` → sourcing byes from the NFL schedule
+ *      instead of the `matchups` table changes nothing
+ *   3. every owner played the same number of games → win% ties imply equal wins, so dropping
  *      `wins` from the tiebreaker cohort key cannot regroup anyone
- *   3. 2023-2025 still scored on `league_average` → nobody "consistency-fixed" history to median
+ *   4. 2023-2025 still scored on `league_average` → nobody "consistency-fixed" history to median
  *
  * If one of these ever fails, the corresponding change is NOT safe and needs a fresh look.
  */
 async function checkEngineNoOpProofs(): Promise<CheckResult> {
   const { and, eq, inArray } = await import('drizzle-orm');
-  const { db, matchups, scores, seasons: seasonsTable } = await import('@/db');
+  const { db, matchups, nflGames, ownerSeasons, scores, seasons: seasonsTable } = await import('@/db');
   const { getSeasonOptions, getSeasonStandingsData } = await import('@/lib/standings/query');
   const { FROZEN_YEARS } = await import('./snapshot-standings');
 
@@ -179,7 +181,7 @@ async function checkEngineNoOpProofs(): Promise<CheckResult> {
   const problems: string[] = [];
   const seasonIds = options.map((s) => s.id);
 
-  const [scoreRows, matchupRows, seasonRows] = await Promise.all([
+  const [scoreRows, matchupRows, seasonRows, gameRows, ownerRows] = await Promise.all([
     db
       .select({
         seasonId: scores.seasonId,
@@ -205,6 +207,23 @@ async function checkEngineNoOpProofs(): Promise<CheckResult> {
       .select({ id: seasonsTable.id, regularSeasonWeeks: seasonsTable.regularSeasonWeeks })
       .from(seasonsTable)
       .where(inArray(seasonsTable.id, seasonIds)),
+    db
+      .select({
+        seasonId: nflGames.seasonId,
+        week: nflGames.week,
+        homeTeamId: nflGames.homeTeamId,
+        awayTeamId: nflGames.awayTeamId,
+      })
+      .from(nflGames)
+      .where(inArray(nflGames.seasonId, seasonIds)),
+    db
+      .select({
+        id: ownerSeasons.id,
+        seasonId: ownerSeasons.seasonId,
+        nflTeamId: ownerSeasons.nflTeamId,
+      })
+      .from(ownerSeasons)
+      .where(inArray(ownerSeasons.seasonId, seasonIds)),
   ]);
 
   const weeksById = new Map(seasonRows.map((s) => [s.id, s.regularSeasonWeeks ?? 18]));
@@ -241,9 +260,36 @@ async function checkEngineNoOpProofs(): Promise<CheckResult> {
       );
     }
 
+    // PROOF 2 — byes sourced from the NFL schedule match the stored flags. The two can only
+    // differ when a game exists whose teams are not both assigned to owners, which cannot
+    // happen in a fully-assigned historical season.
+    const teamsPlayingByWeek = new Map<number, Set<number>>();
+    for (const g of gameRows) {
+      if (g.seasonId !== season.id) continue;
+      const set = teamsPlayingByWeek.get(g.week) ?? new Set<number>();
+      set.add(g.homeTeamId);
+      set.add(g.awayTeamId);
+      teamsPlayingByWeek.set(g.week, set);
+    }
+    const teamByOwnerSeason = new Map(
+      ownerRows.filter((o) => o.seasonId === season.id).map((o) => [o.id, o.nflTeamId]),
+    );
+    let byeMismatches = 0;
+    for (const s of scoreRows) {
+      if (s.seasonId !== season.id || s.week > regularWeeks) continue;
+      const playingTeams = teamsPlayingByWeek.get(s.week);
+      if (!playingTeams || playingTeams.size === 0) continue; // safety-valve week
+      const teamId = teamByOwnerSeason.get(s.ownerSeasonId);
+      if (teamId === undefined) continue;
+      if (!playingTeams.has(teamId) !== s.isBye) byeMismatches += 1;
+    }
+    if (byeMismatches > 0) {
+      problems.push(`${season.year}: ${byeMismatches} owner-week(s) where schedule-derived bye != stored isBye`);
+    }
+
     const data = await getSeasonStandingsData(season.id);
 
-    // PROOF 2 — equal games played ⇒ the tiebreaker cohort key can drop `wins` safely.
+    // PROOF 3 — equal games played ⇒ the tiebreaker cohort key can drop `wins` safely.
     const games = new Map<number, number>();
     for (const m of data.results) {
       if (!m.isFinal || m.isPlayoff || m.isExhibition) continue;
@@ -255,7 +301,7 @@ async function checkEngineNoOpProofs(): Promise<CheckResult> {
       problems.push(`${season.year}: unequal gamesPlayed (${distinct.sort((a, b) => a - b).join('/')})`);
     }
 
-    // PROOF 3 — history stays on league_average; 2026+ is the season that uses league_median.
+    // PROOF 4 — history stays on league_average; 2026+ is the season that uses league_median.
     if (data.rules.missedLineup.opponentScores !== 'league_average') {
       problems.push(
         `${season.year}: opponentScores is '${data.rules.missedLineup.opponentScores}', expected 'league_average'`,
@@ -264,7 +310,7 @@ async function checkEngineNoOpProofs(): Promise<CheckResult> {
   }
 
   return problems.length === 0
-    ? { ok: true, detail: `${options.length} frozen season(s): forfeits derivable, games equal, rules unchanged` }
+    ? { ok: true, detail: `${options.length} frozen season(s): forfeits derivable, byes match schedule, games equal, rules unchanged` }
     : { ok: false, detail: problems.slice(0, 6).join('; ') };
 }
 

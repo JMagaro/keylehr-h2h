@@ -13,24 +13,31 @@
  * trimmed `entryName` against that season's `owner_seasons.dkEntryName` (falling back
  * to `owners.dkUsername`). Unmatched entries are reported, not persisted.
  *
- * Byes: an owner whose NFL team is on a bye that week has no `matchups` row that week.
- * Such an owner-week is marked `isBye = true` so the standings engine ignores it (a bye
- * score must never count toward PF/PA or W-L-T). Byes are derived from the `matchups`
- * table — the single source of truth for who actually plays a given week.
+ * Byes: an owner whose NFL team has no game that week is marked `isBye = true`, so the
+ * standings engine ignores the row (a bye score must never count toward PF/PA or W-L-T).
+ * Byes are derived from `nfl_games` — the actual NFL schedule — NOT from `matchups`, which
+ * is itself derived and may be missing, incomplete, or structurally absent (see
+ * {@link loadByeOwnerSeasonIds}). Playoff and preseason weeks never produce byes.
+ *
+ * Forfeits: this path deliberately does NOT write `scores.isForfeit`. A missed lineup is
+ * derived at read time (`standings/forfeit-derive.ts`), because the worst case — an owner
+ * who never enters the DK contest — leaves no row here to flag. A manually set
+ * `isForfeit` is still honored as the commissioner's override.
  *
  * Idempotent: scores upsert on the `(ownerSeasonId, week)` unique index, and re-running
  * converges. Every call also writes a `scoreImportRuns` audit row.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import {
   db,
-  matchups,
+  nflGames,
   nflTeams,
   owners,
   ownerSeasons,
   scoreImportRuns,
   scores,
+  seasons,
 } from '@/db';
 import { isExhibitionWeek } from '@/lib/schedule/preseason';
 
@@ -70,7 +77,7 @@ export interface IngestResult {
   unmatched: string[];
   /** Total leaderboard entries supplied. */
   total: number;
-  /** Owner-weeks marked as byes (these had a written score but no matchup). */
+  /** Owner-weeks marked as byes (a score was written, but their NFL team had no game). */
   byes: number;
   /** The id of the `scoreImportRuns` audit row created. */
   importRunId: number;
@@ -119,31 +126,65 @@ async function loadNameMap(seasonId: number): Promise<{
   return { byName, rows };
 }
 
-/** Load the set of ownerSeasonIds that have a matchup (i.e. are NOT on bye) this week. */
-async function loadPlayingOwnerSeasonIds(
-  seasonId: number,
-  week: number,
-): Promise<Set<number>> {
-  const rows = await db
-    .select({
-      home: matchups.homeOwnerSeasonId,
-      away: matchups.awayOwnerSeasonId,
-    })
-    .from(matchups)
-    .where(and(eq(matchups.seasonId, seasonId), eq(matchups.week, week)));
+/**
+ * The ownerSeasonIds on a BYE this week, derived from the NFL schedule.
+ *
+ * Deliberately reads `nfl_games`, not `matchups`. `matchups` is itself derived and is the
+ * wrong authority in three situations that all really happen:
+ *
+ *   - it may not exist yet (scores synced before `generateMatchups` ran for the week), in
+ *     which case every owner would look like a bye and lose their Points For;
+ *   - it omits games whose teams are not both assigned to an owner (see
+ *     `matchups/generate.ts`), so a playing owner could be mistaken for a bye;
+ *   - it holds regular-season rows ONLY — playoff games live in `playoff_matchups` — so
+ *     "no matchup row" is meaningless for weeks 19-22.
+ *
+ * A bye is a property of the NFL schedule: the owner's team simply has no game that week.
+ */
+async function loadByeOwnerSeasonIds(seasonId: number, week: number): Promise<Set<number>> {
+  const [ownerRows, gameRows] = await Promise.all([
+    db
+      .select({ ownerSeasonId: ownerSeasons.id, nflTeamId: ownerSeasons.nflTeamId })
+      .from(ownerSeasons)
+      .where(eq(ownerSeasons.seasonId, seasonId)),
+    db
+      .select({ homeTeamId: nflGames.homeTeamId, awayTeamId: nflGames.awayTeamId })
+      .from(nflGames)
+      .where(and(eq(nflGames.seasonId, seasonId), eq(nflGames.week, week))),
+  ]);
 
-  const playing = new Set<number>();
-  for (const r of rows) {
-    playing.add(r.home);
-    playing.add(r.away);
+  // SAFETY VALVE: no schedule rows for this week means we simply do not know who is on a
+  // bye — most likely the schedule has not been pulled yet. Marking all 32 owners as byes
+  // is the catastrophic direction (it erases a whole week of Points For and the weekly-high
+  // prize); marking none is benign and self-corrects on the next sync.
+  if (gameRows.length === 0) return new Set();
+
+  const playingTeams = new Set<number>();
+  for (const g of gameRows) {
+    playingTeams.add(g.homeTeamId);
+    playingTeams.add(g.awayTeamId);
   }
-  return playing;
+
+  const byes = new Set<number>();
+  for (const o of ownerRows) {
+    if (!playingTeams.has(o.nflTeamId)) byes.add(o.ownerSeasonId);
+  }
+  return byes;
 }
 
 /**
  * Upsert a batch of `(ownerSeasonId → points)` scores for one season/week.
- * Shared by {@link ingestLeaderboard} and {@link writeTeamScores}. Marks isBye for any
- * owner with no matchup that week. Returns how many byes were written.
+ * Shared by {@link ingestLeaderboard} and {@link writeTeamScores}. Returns how many
+ * owner-weeks were written as byes.
+ *
+ * Byes come from the NFL schedule (see {@link loadByeOwnerSeasonIds}), and only ever apply
+ * to the regular season: playoff weeks (19-22) and preseason exhibition weeks (101-103) are
+ * written `isBye = false` unconditionally, matching what the playoff importers do.
+ *
+ * Note this never writes `isForfeit`. A missed lineup is derived at read time from the
+ * schedule plus the settled-week gate (`standings/forfeit-derive.ts`), because it cannot be
+ * known at ingest: the owner who forfeits hardest is the one who never enters the contest
+ * at all, and so has no row here to flag.
  */
 async function upsertScores(params: {
   seasonId: number;
@@ -152,48 +193,73 @@ async function upsertScores(params: {
   source: ScoreSource;
   contestId?: string;
   importRunId: number;
-  playing: Set<number>;
+  byeOwnerSeasonIds: ReadonlySet<number>;
 }): Promise<number> {
-  const { seasonId, week, byOwnerSeason, source, contestId, importRunId, playing } = params;
+  const { seasonId, week, byOwnerSeason, source, contestId, importRunId, byeOwnerSeasonIds } =
+    params;
   // A preseason week (stored at the exhibition offset) → flag the scores as exhibition so
   // every standings/stats query excludes them, exactly like the matchups.
   const isExhibition = isExhibitionWeek(week);
   let byes = 0;
 
-  for (const [ownerSeasonId, { points, entryKey }] of byOwnerSeason) {
-    const isBye = !playing.has(ownerSeasonId);
+  const rows = [...byOwnerSeason].map(([ownerSeasonId, { points, entryKey }]) => {
+    const isBye = byeOwnerSeasonIds.has(ownerSeasonId);
     if (isBye) byes += 1;
+    return {
+      seasonId,
+      ownerSeasonId,
+      week,
+      dkPoints: points.toFixed(2),
+      source,
+      isBye,
+      isExhibition,
+      dkContestId: contestId ?? null,
+      dkEntryKey: entryKey ?? null,
+      importRunId,
+    };
+  });
+  if (rows.length === 0) return 0;
 
+  // Chunked multi-row upserts rather than one round-trip per owner. Every Neon HTTP query
+  // is a network round-trip, so 32 sequential inserts eat a serverless function's budget —
+  // the same failure mode that once broke the schedule pull. `byOwnerSeason` is already
+  // keyed by ownerSeasonId, so the rows are unique on the conflict target.
+  const UPSERT_BATCH = 100;
+  for (let i = 0; i < rows.length; i += UPSERT_BATCH) {
     await db
       .insert(scores)
-      .values({
-        seasonId,
-        ownerSeasonId,
-        week,
-        dkPoints: points.toFixed(2),
-        source,
-        isBye,
-        isExhibition,
-        dkContestId: contestId ?? null,
-        dkEntryKey: entryKey ?? null,
-        importRunId,
-      })
+      .values(rows.slice(i, i + UPSERT_BATCH))
       .onConflictDoUpdate({
         target: [scores.ownerSeasonId, scores.week],
         set: {
-          dkPoints: points.toFixed(2),
-          source,
-          isBye,
-          isExhibition,
-          dkContestId: contestId ?? null,
-          dkEntryKey: entryKey ?? null,
-          importRunId,
+          dkPoints: sql`excluded.dk_points`,
+          source: sql`excluded.source`,
+          isBye: sql`excluded.is_bye`,
+          isExhibition: sql`excluded.is_exhibition`,
+          dkContestId: sql`excluded.dk_contest_id`,
+          dkEntryKey: sql`excluded.dk_entry_key`,
+          importRunId: sql`excluded.import_run_id`,
           updatedAt: new Date(),
         },
       });
   }
 
   return byes;
+}
+
+/**
+ * The byes to apply when writing scores for a week. Regular-season weeks read the NFL
+ * schedule; playoff and exhibition weeks never have byes.
+ */
+async function resolveByes(seasonId: number, week: number): Promise<Set<number>> {
+  if (isExhibitionWeek(week)) return new Set();
+  const [season] = await db
+    .select({ regularSeasonWeeks: seasons.regularSeasonWeeks })
+    .from(seasons)
+    .where(eq(seasons.id, seasonId))
+    .limit(1);
+  if (week > (season?.regularSeasonWeeks ?? 18)) return new Set(); // playoff weeks
+  return loadByeOwnerSeasonIds(seasonId, week);
 }
 
 /**
@@ -207,7 +273,7 @@ export async function ingestLeaderboard(params: IngestParams): Promise<IngestRes
   const { seasonId, week, entries, contestId, source, triggeredBy } = params;
 
   const { byName } = await loadNameMap(seasonId);
-  const playing = await loadPlayingOwnerSeasonIds(seasonId, week);
+  const byeOwnerSeasonIds = await resolveByes(seasonId, week);
 
   const byOwnerSeason = new Map<number, { points: number; entryKey?: string }>();
   const unmatched: string[] = [];
@@ -248,7 +314,7 @@ export async function ingestLeaderboard(params: IngestParams): Promise<IngestRes
     source,
     contestId,
     importRunId: run.id,
-    playing,
+    byeOwnerSeasonIds,
   });
 
   return { matched, unmatched, total: entries.length, byes, importRunId: run.id };
@@ -299,7 +365,7 @@ export async function writeTeamScores(
   const byTeamNameLc = new Map<string, number>();
   for (const r of teamRows) byTeamNameLc.set(r.teamName.trim().toLowerCase(), r.ownerSeasonId);
 
-  const playing = await loadPlayingOwnerSeasonIds(seasonId, week);
+  const byeOwnerSeasonIds = await resolveByes(seasonId, week);
 
   const byOwnerSeason = new Map<number, { points: number }>();
   const unmatched: string[] = [];
@@ -336,7 +402,7 @@ export async function writeTeamScores(
     source,
     contestId,
     importRunId: run.id,
-    playing,
+    byeOwnerSeasonIds,
   });
 
   return { matched, unmatched, byes, importRunId: run.id };
