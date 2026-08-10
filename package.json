@@ -24,6 +24,8 @@
     "verify": "tsx scripts/verify.ts",
     "verify:quick": "tsx scripts/verify.ts --quick",
     "verify:ground-truth": "tsx scripts/import-season3.ts",
+    "verify:baseline": "tsx scripts/snapshot-standings.ts --write",
+    "snapshot:standings": "tsx scripts/snapshot-standings.ts",
     "import:season": "tsx scripts/import-season.ts",
     "import:playoffs": "tsx scripts/import-playoffs.ts",
     "import:awards": "tsx scripts/import-awards.ts",

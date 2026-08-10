@@ -15,7 +15,8 @@
  *          e.g. invalid "use server" exports — that `next dev` silently allows.)
  *   DATA  ESPN schedule API reachable · standings/seeding engine invariants
  *         (read-only — no DB writes)
- *   TRUTH ground-truth replay of the 2025 season vs published standings
+ *   TRUTH historical snapshot unchanged (2023-2025 frozen) · engine no-op proofs ·
+ *         ground-truth replay of the 2025 season vs published standings
  *         (scripts/import-season3.ts; idempotent re-import of a frozen season)
  *
  * Requires DATABASE_URL (loaded via @/load-env) for the DATA + TRUTH checks; the
@@ -109,6 +110,164 @@ async function checkEngineInvariants(): Promise<CheckResult> {
     : { ok: false, detail: problems.slice(0, 6).join('; ') };
 }
 
+/**
+ * The 2023-2025 seasons are FROZEN by league decision: corrections apply to 2026 forward.
+ * This diffs the engine's full derived output — including the seed ORDER that the
+ * ground-truth replay never asserts — against the committed baseline.
+ *
+ * Re-baseline ONLY with explicit sign-off:  npx tsx scripts/snapshot-standings.ts --write
+ */
+async function checkHistoricalSnapshot(): Promise<CheckResult> {
+  const { readFileSync, existsSync } = await import('node:fs');
+  const { buildSnapshot, BASELINE_PATH } = await import('./snapshot-standings');
+
+  if (!existsSync(BASELINE_PATH)) {
+    return { ok: false, detail: 'no baseline committed — run: npx tsx scripts/snapshot-standings.ts --write' };
+  }
+  const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as Awaited<ReturnType<typeof buildSnapshot>>;
+  const current = await buildSnapshot();
+
+  if (baseline.version !== current.version) {
+    return { ok: false, detail: `snapshot shape changed (v${baseline.version} → v${current.version}) — re-baseline deliberately` };
+  }
+
+  // Compare season-by-season so the failure names the year and the exact field.
+  const diffs: string[] = [];
+  const byYear = new Map(current.seasons.map((s) => [s.year, s]));
+  for (const want of baseline.seasons) {
+    const got = byYear.get(want.year);
+    if (!got) {
+      diffs.push(`${want.year}: missing from current output`);
+      continue;
+    }
+    const a = JSON.stringify(want);
+    const b = JSON.stringify(got);
+    if (a === b) continue;
+    // Narrow to the first differing top-level field for a readable message.
+    for (const k of Object.keys(want) as (keyof typeof want)[]) {
+      const wa = JSON.stringify(want[k]);
+      const gb = JSON.stringify(got[k]);
+      if (wa !== gb) diffs.push(`${want.year}.${String(k)} changed`);
+    }
+  }
+
+  return diffs.length === 0
+    ? { ok: true, detail: `${baseline.seasons.length} frozen season(s) byte-identical (records, order, seeds, awards)` }
+    : { ok: false, detail: `HISTORY MOVED — ${diffs.slice(0, 8).join('; ')}` };
+}
+
+/**
+ * Mechanical proofs that the planned Phase-1 engine changes are no-ops on historical data.
+ * Each is a precondition that, while it holds, makes a specific change provably safe:
+ *
+ *   1. derived forfeits == stored `isForfeit`  → deriving forfeits at read time changes nothing
+ *   2. every owner played the same number of games → win% ties imply equal wins, so dropping
+ *      `wins` from the tiebreaker cohort key cannot regroup anyone
+ *   3. 2023-2025 still scored on `league_average` → nobody "consistency-fixed" history to median
+ *
+ * If one of these ever fails, the corresponding change is NOT safe and needs a fresh look.
+ */
+async function checkEngineNoOpProofs(): Promise<CheckResult> {
+  const { and, eq, inArray } = await import('drizzle-orm');
+  const { db, matchups, scores, seasons: seasonsTable } = await import('@/db');
+  const { getSeasonOptions, getSeasonStandingsData } = await import('@/lib/standings/query');
+  const { FROZEN_YEARS } = await import('./snapshot-standings');
+
+  const options = (await getSeasonOptions()).filter((s) => (FROZEN_YEARS as readonly number[]).includes(s.year));
+  if (options.length === 0) return { ok: true, detail: 'no frozen seasons in DB — skipped' };
+
+  const problems: string[] = [];
+  const seasonIds = options.map((s) => s.id);
+
+  const [scoreRows, matchupRows, seasonRows] = await Promise.all([
+    db
+      .select({
+        seasonId: scores.seasonId,
+        ownerSeasonId: scores.ownerSeasonId,
+        week: scores.week,
+        dkPoints: scores.dkPoints,
+        isBye: scores.isBye,
+        isForfeit: scores.isForfeit,
+      })
+      .from(scores)
+      .where(and(inArray(scores.seasonId, seasonIds), eq(scores.isExhibition, false))),
+    db
+      .select({
+        seasonId: matchups.seasonId,
+        week: matchups.week,
+        home: matchups.homeOwnerSeasonId,
+        away: matchups.awayOwnerSeasonId,
+        isPlayoff: matchups.isPlayoff,
+      })
+      .from(matchups)
+      .where(and(inArray(matchups.seasonId, seasonIds), eq(matchups.isExhibition, false))),
+    db
+      .select({ id: seasonsTable.id, regularSeasonWeeks: seasonsTable.regularSeasonWeeks })
+      .from(seasonsTable)
+      .where(inArray(seasonsTable.id, seasonIds)),
+  ]);
+
+  const weeksById = new Map(seasonRows.map((s) => [s.id, s.regularSeasonWeeks ?? 18]));
+
+  for (const season of options) {
+    const regularWeeks = weeksById.get(season.id) ?? 18;
+
+    // Owners holding a regular-season matchup in a given week.
+    const playing = new Set<string>();
+    for (const m of matchupRows) {
+      if (m.seasonId !== season.id || m.isPlayoff) continue;
+      playing.add(`${m.home}:${m.week}`);
+      playing.add(`${m.away}:${m.week}`);
+    }
+
+    // PROOF 1 — the derivation the historical importers encode:
+    //   not bye ∧ has a regular-season matchup ∧ dkPoints === 0
+    const stored = new Set<string>();
+    const derived = new Set<string>();
+    for (const s of scoreRows) {
+      if (s.seasonId !== season.id) continue;
+      const key = `${s.ownerSeasonId}:${s.week}`;
+      if (s.isForfeit) stored.add(key);
+      if (s.week > regularWeeks) continue;
+      if (!s.isBye && s.dkPoints !== null && Number(s.dkPoints) === 0 && playing.has(key)) {
+        derived.add(key);
+      }
+    }
+    const onlyStored = [...stored].filter((k) => !derived.has(k));
+    const onlyDerived = [...derived].filter((k) => !stored.has(k));
+    if (onlyStored.length || onlyDerived.length) {
+      problems.push(
+        `${season.year}: forfeit derivation differs (stored-only ${onlyStored.length}, derived-only ${onlyDerived.length})`,
+      );
+    }
+
+    const data = await getSeasonStandingsData(season.id);
+
+    // PROOF 2 — equal games played ⇒ the tiebreaker cohort key can drop `wins` safely.
+    const games = new Map<number, number>();
+    for (const m of data.results) {
+      if (!m.isFinal || m.isPlayoff || m.isExhibition) continue;
+      games.set(m.homeOwnerSeasonId, (games.get(m.homeOwnerSeasonId) ?? 0) + 1);
+      games.set(m.awayOwnerSeasonId, (games.get(m.awayOwnerSeasonId) ?? 0) + 1);
+    }
+    const distinct = [...new Set(games.values())];
+    if (distinct.length > 1) {
+      problems.push(`${season.year}: unequal gamesPlayed (${distinct.sort((a, b) => a - b).join('/')})`);
+    }
+
+    // PROOF 3 — history stays on league_average; 2026+ is the season that uses league_median.
+    if (data.rules.missedLineup.opponentScores !== 'league_average') {
+      problems.push(
+        `${season.year}: opponentScores is '${data.rules.missedLineup.opponentScores}', expected 'league_average'`,
+      );
+    }
+  }
+
+  return problems.length === 0
+    ? { ok: true, detail: `${options.length} frozen season(s): forfeits derivable, games equal, rules unchanged` }
+    : { ok: false, detail: problems.slice(0, 6).join('; ') };
+}
+
 async function main() {
   const checks: Check[] = [
     cmd('CODE', 'typecheck', 'npm run typecheck'),
@@ -117,6 +276,8 @@ async function main() {
     ...(QUICK ? [] : [cmd('CODE', 'production build', 'npm run build')]),
     { group: 'DATA', name: 'ESPN schedule API', run: checkEspn },
     { group: 'DATA', name: 'standings/seeding invariants', run: checkEngineInvariants },
+    { group: 'TRUTH', name: 'historical snapshot unchanged', run: checkHistoricalSnapshot },
+    { group: 'TRUTH', name: 'engine no-op proofs', run: checkEngineNoOpProofs },
     ...(QUICK ? [] : [cmd('TRUTH', 'ground-truth replay (2025)', 'npx tsx scripts/import-season3.ts')]),
   ];
 

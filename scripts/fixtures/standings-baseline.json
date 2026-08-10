@@ -1,0 +1,2159 @@
+{
+  "version": 1,
+  "seasons": [
+    {
+      "year": 2023,
+      "seasonId": 11,
+      "status": "completed",
+      "opponentScores": "league_average",
+      "regularSeasonWeeks": 18,
+      "owners": {
+        "ARI": {
+          "ownerName": "Christian Tepley",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2046.72,
+          "pointsAgainst": 2283.95,
+          "winPct": 0.4706,
+          "streak": "W2"
+        },
+        "ATL": {
+          "ownerName": "Rob Thomson",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2118.32,
+          "pointsAgainst": 2135.54,
+          "winPct": 0.4118,
+          "streak": "L1"
+        },
+        "BAL": {
+          "ownerName": "JT Tepley",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2369.28,
+          "pointsAgainst": 2193.06,
+          "winPct": 0.5882,
+          "streak": "W1"
+        },
+        "BUF": {
+          "ownerName": "Greg Lehr",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2218,
+          "pointsAgainst": 2158.08,
+          "winPct": 0.5294,
+          "streak": "W4"
+        },
+        "CAR": {
+          "ownerName": "Jimmy Robinson",
+          "wins": 3,
+          "losses": 14,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1906.06,
+          "pointsAgainst": 2262.76,
+          "winPct": 0.1765,
+          "streak": "L3"
+        },
+        "CHI": {
+          "ownerName": "Brandon Corsentino",
+          "wins": 6,
+          "losses": 11,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2183.36,
+          "pointsAgainst": 2356.48,
+          "winPct": 0.3529,
+          "streak": "L2"
+        },
+        "CIN": {
+          "ownerName": "Jake Feldman",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2317.54,
+          "pointsAgainst": 2085.46,
+          "winPct": 0.6471,
+          "streak": "W1"
+        },
+        "CLE": {
+          "ownerName": "Josh Lehr",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2127.72,
+          "pointsAgainst": 2228.52,
+          "winPct": 0.4118,
+          "streak": "L2"
+        },
+        "DAL": {
+          "ownerName": "Ben Miller",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2203.44,
+          "pointsAgainst": 2323,
+          "winPct": 0.4118,
+          "streak": "W1"
+        },
+        "DEN": {
+          "ownerName": "Josh Kravec",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2116.14,
+          "pointsAgainst": 2148.22,
+          "winPct": 0.4118,
+          "streak": "L2"
+        },
+        "DET": {
+          "ownerName": "Troy Knecht",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2187.12,
+          "pointsAgainst": 2106.64,
+          "winPct": 0.5882,
+          "streak": "L1"
+        },
+        "GB": {
+          "ownerName": "Andy Myers",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2337.96,
+          "pointsAgainst": 2214.72,
+          "winPct": 0.6471,
+          "streak": "W4"
+        },
+        "HOU": {
+          "ownerName": "Will Thomas",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2161.52,
+          "pointsAgainst": 2253.26,
+          "winPct": 0.4706,
+          "streak": "W1"
+        },
+        "IND": {
+          "ownerName": "Jared Magaro",
+          "wins": 6,
+          "losses": 11,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2083,
+          "pointsAgainst": 2175.26,
+          "winPct": 0.3529,
+          "streak": "L1"
+        },
+        "JAX": {
+          "ownerName": "Jarrod Catlette",
+          "wins": 12,
+          "losses": 5,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2370.94,
+          "pointsAgainst": 1999.46,
+          "winPct": 0.7059,
+          "streak": "L1"
+        },
+        "KC": {
+          "ownerName": "Matt Leslie",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2290.4,
+          "pointsAgainst": 2095,
+          "winPct": 0.6471,
+          "streak": "W2"
+        },
+        "LAC": {
+          "ownerName": "Ryan Block",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2255.06,
+          "pointsAgainst": 2174.28,
+          "winPct": 0.4706,
+          "streak": "L1"
+        },
+        "LAR": {
+          "ownerName": "Myles Hyman",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2369.24,
+          "pointsAgainst": 2195.72,
+          "winPct": 0.5882,
+          "streak": "W1"
+        },
+        "LV": {
+          "ownerName": "Brian Darby",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2103.58,
+          "pointsAgainst": 2248.92,
+          "winPct": 0.5294,
+          "streak": "W1"
+        },
+        "MIA": {
+          "ownerName": "Scott Cohen",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2329.54,
+          "pointsAgainst": 2193.82,
+          "winPct": 0.5882,
+          "streak": "L1"
+        },
+        "MIN": {
+          "ownerName": "James Myers",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2124.2,
+          "pointsAgainst": 2239.6,
+          "winPct": 0.4706,
+          "streak": "W1"
+        },
+        "NE": {
+          "ownerName": "Scott Koretsky",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2340.8,
+          "pointsAgainst": 2228.1,
+          "winPct": 0.5294,
+          "streak": "W1"
+        },
+        "NO": {
+          "ownerName": "Jeff Bennett",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2265.84,
+          "pointsAgainst": 2283.78,
+          "winPct": 0.5294,
+          "streak": "W2"
+        },
+        "NYG": {
+          "ownerName": "Chris deMartino",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2440,
+          "pointsAgainst": 2144.24,
+          "winPct": 0.5882,
+          "streak": "L1"
+        },
+        "NYJ": {
+          "ownerName": "Matt Tepley",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2233.98,
+          "pointsAgainst": 2202.94,
+          "winPct": 0.6471,
+          "streak": "L1"
+        },
+        "PHI": {
+          "ownerName": "Jake Rachlin",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2064.66,
+          "pointsAgainst": 2142.6,
+          "winPct": 0.5294,
+          "streak": "W1"
+        },
+        "PIT": {
+          "ownerName": "Gary Lehr",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2243.58,
+          "pointsAgainst": 2265.3,
+          "winPct": 0.4706,
+          "streak": "L1"
+        },
+        "SEA": {
+          "ownerName": "Marc Downing",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1994.06,
+          "pointsAgainst": 2285.86,
+          "winPct": 0.4118,
+          "streak": "L3"
+        },
+        "SF": {
+          "ownerName": "Trevor Golat",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2234.58,
+          "pointsAgainst": 2222.92,
+          "winPct": 0.5294,
+          "streak": "L1"
+        },
+        "TB": {
+          "ownerName": "Grant Mandato",
+          "wins": 6,
+          "losses": 11,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2025.9,
+          "pointsAgainst": 2110.52,
+          "winPct": 0.3529,
+          "streak": "W1"
+        },
+        "TEN": {
+          "ownerName": "Andrew Lepore",
+          "wins": 6,
+          "losses": 11,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2185.88,
+          "pointsAgainst": 2494.32,
+          "winPct": 0.3529,
+          "streak": "W3"
+        },
+        "WSH": {
+          "ownerName": "Ryan Kealy",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2123.9,
+          "pointsAgainst": 2179.28,
+          "winPct": 0.4706,
+          "streak": "L2"
+        }
+      },
+      "divisionOrder": {
+        "AFC East": [
+          "NYJ",
+          "MIA",
+          "BUF",
+          "NE"
+        ],
+        "AFC North": [
+          "CIN",
+          "BAL",
+          "PIT",
+          "CLE"
+        ],
+        "AFC South": [
+          "JAX",
+          "HOU",
+          "IND",
+          "TEN"
+        ],
+        "AFC West": [
+          "KC",
+          "LV",
+          "LAC",
+          "DEN"
+        ],
+        "NFC East": [
+          "NYG",
+          "PHI",
+          "WSH",
+          "DAL"
+        ],
+        "NFC North": [
+          "GB",
+          "DET",
+          "MIN",
+          "CHI"
+        ],
+        "NFC South": [
+          "NO",
+          "ATL",
+          "TB",
+          "CAR"
+        ],
+        "NFC West": [
+          "LAR",
+          "SF",
+          "ARI",
+          "SEA"
+        ]
+      },
+      "conferenceOrder": {
+        "AFC": [
+          "JAX",
+          "KC",
+          "CIN",
+          "NYJ",
+          "MIA",
+          "BAL",
+          "LV",
+          "BUF",
+          "NE",
+          "LAC",
+          "HOU",
+          "PIT",
+          "CLE",
+          "DEN",
+          "IND",
+          "TEN"
+        ],
+        "NFC": [
+          "GB",
+          "NYG",
+          "LAR",
+          "DET",
+          "NO",
+          "PHI",
+          "SF",
+          "MIN",
+          "ARI",
+          "WSH",
+          "DAL",
+          "ATL",
+          "SEA",
+          "TB",
+          "CHI",
+          "CAR"
+        ]
+      },
+      "seeds": {
+        "AFC": [
+          {
+            "seed": 1,
+            "teamKey": "JAX",
+            "kind": "division_winner",
+            "isBye": true
+          },
+          {
+            "seed": 2,
+            "teamKey": "KC",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 3,
+            "teamKey": "CIN",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 4,
+            "teamKey": "NYJ",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 5,
+            "teamKey": "MIA",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 6,
+            "teamKey": "BAL",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 7,
+            "teamKey": "LV",
+            "kind": "wild_card",
+            "isBye": false
+          }
+        ],
+        "NFC": [
+          {
+            "seed": 1,
+            "teamKey": "GB",
+            "kind": "division_winner",
+            "isBye": true
+          },
+          {
+            "seed": 2,
+            "teamKey": "NYG",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 3,
+            "teamKey": "LAR",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 4,
+            "teamKey": "NO",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 5,
+            "teamKey": "DET",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 6,
+            "teamKey": "PHI",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 7,
+            "teamKey": "SF",
+            "kind": "wild_card",
+            "isBye": false
+          }
+        ]
+      },
+      "highestWeeklyScore": {
+        "teamKey": "CAR",
+        "week": 3,
+        "points": 231.28
+      },
+      "mostPointsLeader": {
+        "teamKey": "NYG",
+        "pointsFor": 2440
+      },
+      "awards": [
+        {
+          "type": "champion",
+          "week": null,
+          "teamKey": "NO",
+          "amountCents": 200000,
+          "value": null
+        },
+        {
+          "type": "fourth",
+          "week": null,
+          "teamKey": "MIA",
+          "amountCents": 15000,
+          "value": null
+        },
+        {
+          "type": "most_points",
+          "week": null,
+          "teamKey": "BAL",
+          "amountCents": 40000,
+          "value": "2814.32"
+        },
+        {
+          "type": "runner_up",
+          "week": null,
+          "teamKey": "BAL",
+          "amountCents": 100000,
+          "value": null
+        },
+        {
+          "type": "season_high",
+          "week": null,
+          "teamKey": "CAR",
+          "amountCents": 5000,
+          "value": "231.28"
+        },
+        {
+          "type": "third",
+          "week": null,
+          "teamKey": "GB",
+          "amountCents": 30000,
+          "value": null
+        },
+        {
+          "type": "weekly_high",
+          "week": 1,
+          "teamKey": "ARI",
+          "amountCents": 5000,
+          "value": "181.74"
+        },
+        {
+          "type": "weekly_high",
+          "week": 2,
+          "teamKey": "NYG",
+          "amountCents": 5000,
+          "value": "183.72"
+        },
+        {
+          "type": "weekly_high",
+          "week": 3,
+          "teamKey": "CAR",
+          "amountCents": 5000,
+          "value": "231.28"
+        },
+        {
+          "type": "weekly_high",
+          "week": 4,
+          "teamKey": "MIA",
+          "amountCents": 5000,
+          "value": "177.52"
+        },
+        {
+          "type": "weekly_high",
+          "week": 5,
+          "teamKey": "NE",
+          "amountCents": 5000,
+          "value": "201.06"
+        },
+        {
+          "type": "weekly_high",
+          "week": 6,
+          "teamKey": "BAL",
+          "amountCents": 5000,
+          "value": "171.08"
+        },
+        {
+          "type": "weekly_high",
+          "week": 7,
+          "teamKey": "BUF",
+          "amountCents": 5000,
+          "value": "154.28"
+        },
+        {
+          "type": "weekly_high",
+          "week": 8,
+          "teamKey": "GB",
+          "amountCents": 5000,
+          "value": "192.46"
+        },
+        {
+          "type": "weekly_high",
+          "week": 9,
+          "teamKey": "NO",
+          "amountCents": 5000,
+          "value": "165.84"
+        },
+        {
+          "type": "weekly_high",
+          "week": 10,
+          "teamKey": "TB",
+          "amountCents": 5000,
+          "value": "213.66"
+        },
+        {
+          "type": "weekly_high",
+          "week": 11,
+          "teamKey": "BAL",
+          "amountCents": 5000,
+          "value": "182.12"
+        },
+        {
+          "type": "weekly_high",
+          "week": 12,
+          "teamKey": "NO",
+          "amountCents": 5000,
+          "value": "190.36"
+        },
+        {
+          "type": "weekly_high",
+          "week": 13,
+          "teamKey": "IND",
+          "amountCents": 5000,
+          "value": "173.90"
+        },
+        {
+          "type": "weekly_high",
+          "week": 14,
+          "teamKey": "KC",
+          "amountCents": 5000,
+          "value": "157.94"
+        },
+        {
+          "type": "weekly_high",
+          "week": 15,
+          "teamKey": "MIA",
+          "amountCents": 5000,
+          "value": "165.08"
+        },
+        {
+          "type": "weekly_high",
+          "week": 16,
+          "teamKey": "JAX",
+          "amountCents": 5000,
+          "value": "182.20"
+        },
+        {
+          "type": "weekly_high",
+          "week": 17,
+          "teamKey": "ATL",
+          "amountCents": 5000,
+          "value": "162.18"
+        },
+        {
+          "type": "weekly_high",
+          "week": 18,
+          "teamKey": "GB",
+          "amountCents": 5000,
+          "value": "178.78"
+        }
+      ]
+    },
+    {
+      "year": 2024,
+      "seasonId": 9,
+      "status": "completed",
+      "opponentScores": "league_average",
+      "regularSeasonWeeks": 18,
+      "owners": {
+        "ARI": {
+          "ownerName": "Marc Downing",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2053.36,
+          "pointsAgainst": 2021.37,
+          "winPct": 0.4706,
+          "streak": "L1"
+        },
+        "ATL": {
+          "ownerName": "Christian Tepley",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2054.36,
+          "pointsAgainst": 2102.5,
+          "winPct": 0.5294,
+          "streak": "L1"
+        },
+        "BAL": {
+          "ownerName": "Josh Kravec",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2088.9,
+          "pointsAgainst": 1992.74,
+          "winPct": 0.5882,
+          "streak": "L1"
+        },
+        "BUF": {
+          "ownerName": "Josh Lehr",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2119.72,
+          "pointsAgainst": 2038.76,
+          "winPct": 0.5294,
+          "streak": "L4"
+        },
+        "CAR": {
+          "ownerName": "Scott Koretsky",
+          "wins": 13,
+          "losses": 4,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2238.34,
+          "pointsAgainst": 2005.72,
+          "winPct": 0.7647,
+          "streak": "W4"
+        },
+        "CHI": {
+          "ownerName": "Ryan Walsh",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2036.58,
+          "pointsAgainst": 2155.26,
+          "winPct": 0.4706,
+          "streak": "L1"
+        },
+        "CIN": {
+          "ownerName": "Jake Feldman",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2224.76,
+          "pointsAgainst": 2125.68,
+          "winPct": 0.5882,
+          "streak": "L1"
+        },
+        "CLE": {
+          "ownerName": "Ben Miller",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2224.72,
+          "pointsAgainst": 2113.12,
+          "winPct": 0.6471,
+          "streak": "W9"
+        },
+        "DAL": {
+          "ownerName": "Myles Hyman",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2075.72,
+          "pointsAgainst": 2209.36,
+          "winPct": 0.4118,
+          "streak": "L1"
+        },
+        "DEN": {
+          "ownerName": "Ryan Block",
+          "wins": 4,
+          "losses": 13,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1865.96,
+          "pointsAgainst": 2192.46,
+          "winPct": 0.2353,
+          "streak": "L5"
+        },
+        "DET": {
+          "ownerName": "Greg Lehr",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2206,
+          "pointsAgainst": 2147.74,
+          "winPct": 0.5294,
+          "streak": "W5"
+        },
+        "GB": {
+          "ownerName": "Andy Myers",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2274.06,
+          "pointsAgainst": 2181.9,
+          "winPct": 0.5294,
+          "streak": "W1"
+        },
+        "HOU": {
+          "ownerName": "Troy Knecht",
+          "wins": 4,
+          "losses": 13,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2004.98,
+          "pointsAgainst": 2272.86,
+          "winPct": 0.2353,
+          "streak": "L11"
+        },
+        "IND": {
+          "ownerName": "James Myers",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2178.62,
+          "pointsAgainst": 2078.82,
+          "winPct": 0.5294,
+          "streak": "W5"
+        },
+        "JAX": {
+          "ownerName": "Will Thomas",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2304.34,
+          "pointsAgainst": 2263.84,
+          "winPct": 0.4706,
+          "streak": "L1"
+        },
+        "KC": {
+          "ownerName": "Matt Leslie",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2203.46,
+          "pointsAgainst": 2193.92,
+          "winPct": 0.4706,
+          "streak": "W1"
+        },
+        "LAC": {
+          "ownerName": "JT Tepley",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2407.72,
+          "pointsAgainst": 2226.76,
+          "winPct": 0.5882,
+          "streak": "W4"
+        },
+        "LAR": {
+          "ownerName": "Gary Lehr",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2206.04,
+          "pointsAgainst": 2080.88,
+          "winPct": 0.5882,
+          "streak": "W1"
+        },
+        "LV": {
+          "ownerName": "Jimmy Robinson",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2155,
+          "pointsAgainst": 2181.82,
+          "winPct": 0.4706,
+          "streak": "L1"
+        },
+        "MIA": {
+          "ownerName": "Jared Magaro",
+          "wins": 5,
+          "losses": 12,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1763.12,
+          "pointsAgainst": 2154.3,
+          "winPct": 0.2941,
+          "streak": "L2"
+        },
+        "MIN": {
+          "ownerName": "Rob Thomson",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2241.56,
+          "pointsAgainst": 2161.9,
+          "winPct": 0.5294,
+          "streak": "L1"
+        },
+        "NE": {
+          "ownerName": "Scott Cohen",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2208.44,
+          "pointsAgainst": 2175.48,
+          "winPct": 0.5294,
+          "streak": "W1"
+        },
+        "NO": {
+          "ownerName": "Jake Rachlin",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2019.96,
+          "pointsAgainst": 2109.28,
+          "winPct": 0.4706,
+          "streak": "W1"
+        },
+        "NYG": {
+          "ownerName": "Matt Tepley",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2007.78,
+          "pointsAgainst": 2083.42,
+          "winPct": 0.5294,
+          "streak": "W1"
+        },
+        "NYJ": {
+          "ownerName": "Ryan Kealy",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2178.06,
+          "pointsAgainst": 2032.2,
+          "winPct": 0.6471,
+          "streak": "W2"
+        },
+        "PHI": {
+          "ownerName": "Trevor Golat",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2046.58,
+          "pointsAgainst": 2081.38,
+          "winPct": 0.4706,
+          "streak": "L2"
+        },
+        "PIT": {
+          "ownerName": "Brandon Corsentino",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2126.26,
+          "pointsAgainst": 2183.06,
+          "winPct": 0.4706,
+          "streak": "W2"
+        },
+        "SEA": {
+          "ownerName": "Jeff Bennett",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2093.72,
+          "pointsAgainst": 2017.52,
+          "winPct": 0.5294,
+          "streak": "L4"
+        },
+        "SF": {
+          "ownerName": "Chris deMartino",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2064.86,
+          "pointsAgainst": 2124.84,
+          "winPct": 0.5882,
+          "streak": "W1"
+        },
+        "TB": {
+          "ownerName": "Jarrod Catlette",
+          "wins": 6,
+          "losses": 11,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1973.06,
+          "pointsAgainst": 2151.94,
+          "winPct": 0.3529,
+          "streak": "L6"
+        },
+        "TEN": {
+          "ownerName": "Andrew Lepore",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2044.36,
+          "pointsAgainst": 2121.78,
+          "winPct": 0.4706,
+          "streak": "W1"
+        },
+        "WSH": {
+          "ownerName": "Brian Darby",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2075.98,
+          "pointsAgainst": 2141.34,
+          "winPct": 0.4118,
+          "streak": "W1"
+        }
+      },
+      "divisionOrder": {
+        "AFC East": [
+          "NYJ",
+          "NE",
+          "BUF",
+          "MIA"
+        ],
+        "AFC North": [
+          "CLE",
+          "CIN",
+          "BAL",
+          "PIT"
+        ],
+        "AFC South": [
+          "IND",
+          "JAX",
+          "TEN",
+          "HOU"
+        ],
+        "AFC West": [
+          "LAC",
+          "KC",
+          "LV",
+          "DEN"
+        ],
+        "NFC East": [
+          "NYG",
+          "PHI",
+          "WSH",
+          "DAL"
+        ],
+        "NFC North": [
+          "GB",
+          "MIN",
+          "DET",
+          "CHI"
+        ],
+        "NFC South": [
+          "CAR",
+          "ATL",
+          "NO",
+          "TB"
+        ],
+        "NFC West": [
+          "LAR",
+          "SF",
+          "SEA",
+          "ARI"
+        ]
+      },
+      "conferenceOrder": {
+        "AFC": [
+          "CLE",
+          "NYJ",
+          "LAC",
+          "CIN",
+          "BAL",
+          "NE",
+          "BUF",
+          "IND",
+          "JAX",
+          "KC",
+          "LV",
+          "PIT",
+          "TEN",
+          "MIA",
+          "HOU",
+          "DEN"
+        ],
+        "NFC": [
+          "CAR",
+          "LAR",
+          "SF",
+          "GB",
+          "MIN",
+          "DET",
+          "SEA",
+          "ATL",
+          "NYG",
+          "ARI",
+          "PHI",
+          "CHI",
+          "NO",
+          "WSH",
+          "DAL",
+          "TB"
+        ]
+      },
+      "seeds": {
+        "AFC": [
+          {
+            "seed": 1,
+            "teamKey": "CLE",
+            "kind": "division_winner",
+            "isBye": true
+          },
+          {
+            "seed": 2,
+            "teamKey": "NYJ",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 3,
+            "teamKey": "LAC",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 4,
+            "teamKey": "IND",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 5,
+            "teamKey": "CIN",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 6,
+            "teamKey": "BAL",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 7,
+            "teamKey": "NE",
+            "kind": "wild_card",
+            "isBye": false
+          }
+        ],
+        "NFC": [
+          {
+            "seed": 1,
+            "teamKey": "CAR",
+            "kind": "division_winner",
+            "isBye": true
+          },
+          {
+            "seed": 2,
+            "teamKey": "LAR",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 3,
+            "teamKey": "GB",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 4,
+            "teamKey": "NYG",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 5,
+            "teamKey": "SF",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 6,
+            "teamKey": "MIN",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 7,
+            "teamKey": "SEA",
+            "kind": "wild_card",
+            "isBye": false
+          }
+        ]
+      },
+      "highestWeeklyScore": {
+        "teamKey": "DET",
+        "week": 11,
+        "points": 200.58
+      },
+      "mostPointsLeader": {
+        "teamKey": "LAC",
+        "pointsFor": 2407.72
+      },
+      "awards": [
+        {
+          "type": "champion",
+          "week": null,
+          "teamKey": "SF",
+          "amountCents": 200000,
+          "value": null
+        },
+        {
+          "type": "fourth",
+          "week": null,
+          "teamKey": "CLE",
+          "amountCents": 15000,
+          "value": null
+        },
+        {
+          "type": "most_points",
+          "week": null,
+          "teamKey": "LAC",
+          "amountCents": 40000,
+          "value": "2822.70"
+        },
+        {
+          "type": "runner_up",
+          "week": null,
+          "teamKey": "LAC",
+          "amountCents": 100000,
+          "value": null
+        },
+        {
+          "type": "season_high",
+          "week": null,
+          "teamKey": "DET",
+          "amountCents": 5000,
+          "value": "200.58"
+        },
+        {
+          "type": "third",
+          "week": null,
+          "teamKey": "CAR",
+          "amountCents": 30000,
+          "value": null
+        },
+        {
+          "type": "weekly_high",
+          "week": 1,
+          "teamKey": "LV",
+          "amountCents": 5000,
+          "value": "163.56"
+        },
+        {
+          "type": "weekly_high",
+          "week": 2,
+          "teamKey": "TB",
+          "amountCents": 5000,
+          "value": "154.44"
+        },
+        {
+          "type": "weekly_high",
+          "week": 3,
+          "teamKey": "LAR",
+          "amountCents": 5000,
+          "value": "200.18"
+        },
+        {
+          "type": "weekly_high",
+          "week": 4,
+          "teamKey": "SF",
+          "amountCents": 5000,
+          "value": "168.50"
+        },
+        {
+          "type": "weekly_high",
+          "week": 5,
+          "teamKey": "WSH",
+          "amountCents": 5000,
+          "value": "158.66"
+        },
+        {
+          "type": "weekly_high",
+          "week": 6,
+          "teamKey": "HOU",
+          "amountCents": 5000,
+          "value": "155.82"
+        },
+        {
+          "type": "weekly_high",
+          "week": 7,
+          "teamKey": "SEA",
+          "amountCents": 5000,
+          "value": "142.90"
+        },
+        {
+          "type": "weekly_high",
+          "week": 8,
+          "teamKey": "LAC",
+          "amountCents": 5000,
+          "value": "174.46"
+        },
+        {
+          "type": "weekly_high",
+          "week": 9,
+          "teamKey": "NYJ",
+          "amountCents": 5000,
+          "value": "175.22"
+        },
+        {
+          "type": "weekly_high",
+          "week": 10,
+          "teamKey": "ATL",
+          "amountCents": 5000,
+          "value": "140.72"
+        },
+        {
+          "type": "weekly_high",
+          "week": 11,
+          "teamKey": "DET",
+          "amountCents": 5000,
+          "value": "200.58"
+        },
+        {
+          "type": "weekly_high",
+          "week": 12,
+          "teamKey": "DEN",
+          "amountCents": 5000,
+          "value": "156.42"
+        },
+        {
+          "type": "weekly_high",
+          "week": 13,
+          "teamKey": "LV",
+          "amountCents": 5000,
+          "value": "162.14"
+        },
+        {
+          "type": "weekly_high",
+          "week": 14,
+          "teamKey": "CLE",
+          "amountCents": 5000,
+          "value": "186.08"
+        },
+        {
+          "type": "weekly_high",
+          "week": 15,
+          "teamKey": "LAC",
+          "amountCents": 5000,
+          "value": "158.24"
+        },
+        {
+          "type": "weekly_high",
+          "week": 16,
+          "teamKey": "CAR",
+          "amountCents": 5000,
+          "value": "186.04"
+        },
+        {
+          "type": "weekly_high",
+          "week": 17,
+          "teamKey": "JAX",
+          "amountCents": 5000,
+          "value": "200.16"
+        },
+        {
+          "type": "weekly_high",
+          "week": 18,
+          "teamKey": "CAR",
+          "amountCents": 5000,
+          "value": "184.68"
+        }
+      ]
+    },
+    {
+      "year": 2025,
+      "seasonId": 2,
+      "status": "completed",
+      "opponentScores": "league_average",
+      "regularSeasonWeeks": 18,
+      "owners": {
+        "ARI": {
+          "ownerName": "James Myers",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2175.24,
+          "pointsAgainst": 2315.02,
+          "winPct": 0.5294,
+          "streak": "W2"
+        },
+        "ATL": {
+          "ownerName": "Ryan Walsh",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1960.18,
+          "pointsAgainst": 2141.72,
+          "winPct": 0.4118,
+          "streak": "L2"
+        },
+        "BAL": {
+          "ownerName": "Matt Tepley",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2249.24,
+          "pointsAgainst": 2089.52,
+          "winPct": 0.6471,
+          "streak": "W3"
+        },
+        "BUF": {
+          "ownerName": "Josh Kravec",
+          "wins": 6,
+          "losses": 11,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2031.56,
+          "pointsAgainst": 2202.08,
+          "winPct": 0.3529,
+          "streak": "L1"
+        },
+        "CAR": {
+          "ownerName": "Jared Magaro",
+          "wins": 4,
+          "losses": 13,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1790.2,
+          "pointsAgainst": 2273.08,
+          "winPct": 0.2353,
+          "streak": "L1"
+        },
+        "CHI": {
+          "ownerName": "Ryan Block",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2084.86,
+          "pointsAgainst": 2140.06,
+          "winPct": 0.5882,
+          "streak": "W1"
+        },
+        "CIN": {
+          "ownerName": "JT Tepley",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2396.44,
+          "pointsAgainst": 2135.72,
+          "winPct": 0.5294,
+          "streak": "W1"
+        },
+        "CLE": {
+          "ownerName": "Jarrod Catlette",
+          "wins": 4,
+          "losses": 13,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2104.62,
+          "pointsAgainst": 2250.64,
+          "winPct": 0.2353,
+          "streak": "L1"
+        },
+        "DAL": {
+          "ownerName": "Ryan Kealy",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2151.12,
+          "pointsAgainst": 2181.8,
+          "winPct": 0.6471,
+          "streak": "W7"
+        },
+        "DEN": {
+          "ownerName": "Brian Darby",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2439.78,
+          "pointsAgainst": 2393.45,
+          "winPct": 0.5882,
+          "streak": "L1"
+        },
+        "DET": {
+          "ownerName": "Chris deMartino",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2431.86,
+          "pointsAgainst": 2383.14,
+          "winPct": 0.5294,
+          "streak": "L2"
+        },
+        "GB": {
+          "ownerName": "Marc Downing",
+          "wins": 6,
+          "losses": 11,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1957.82,
+          "pointsAgainst": 2209.16,
+          "winPct": 0.3529,
+          "streak": "W1"
+        },
+        "HOU": {
+          "ownerName": "Scott Cohen",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2383.24,
+          "pointsAgainst": 2132.02,
+          "winPct": 0.6471,
+          "streak": "W2"
+        },
+        "IND": {
+          "ownerName": "Josh Lehr",
+          "wins": 13,
+          "losses": 4,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2573.64,
+          "pointsAgainst": 2216.94,
+          "winPct": 0.7647,
+          "streak": "L1"
+        },
+        "JAX": {
+          "ownerName": "Myles Hyman",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2369.74,
+          "pointsAgainst": 2291.14,
+          "winPct": 0.5882,
+          "streak": "W1"
+        },
+        "KC": {
+          "ownerName": "Nick Fiorello and Mason Koral",
+          "wins": 5,
+          "losses": 12,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2093.78,
+          "pointsAgainst": 2287.32,
+          "winPct": 0.2941,
+          "streak": "L3"
+        },
+        "LAC": {
+          "ownerName": "Jimmy Robinson",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2121.04,
+          "pointsAgainst": 2257.78,
+          "winPct": 0.4118,
+          "streak": "W1"
+        },
+        "LAR": {
+          "ownerName": "Greg Lehr",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2154.38,
+          "pointsAgainst": 2126.56,
+          "winPct": 0.4118,
+          "streak": "L1"
+        },
+        "LV": {
+          "ownerName": "Ben Miller",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2197.82,
+          "pointsAgainst": 2087.73,
+          "winPct": 0.6471,
+          "streak": "W1"
+        },
+        "MIA": {
+          "ownerName": "Will Thomas",
+          "wins": 10,
+          "losses": 7,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2158.08,
+          "pointsAgainst": 2081.8,
+          "winPct": 0.5882,
+          "streak": "L1"
+        },
+        "MIN": {
+          "ownerName": "Jake Feldman",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2435.28,
+          "pointsAgainst": 2213.56,
+          "winPct": 0.6471,
+          "streak": "L1"
+        },
+        "NE": {
+          "ownerName": "Rob Thomson",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2072.18,
+          "pointsAgainst": 2105.3,
+          "winPct": 0.5294,
+          "streak": "W1"
+        },
+        "NO": {
+          "ownerName": "Scott Koretsky",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2213.02,
+          "pointsAgainst": 1992.08,
+          "winPct": 0.6471,
+          "streak": "W5"
+        },
+        "NYG": {
+          "ownerName": "Andy Myers",
+          "wins": 12,
+          "losses": 5,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2426.14,
+          "pointsAgainst": 2280.24,
+          "winPct": 0.7059,
+          "streak": "L1"
+        },
+        "NYJ": {
+          "ownerName": "Trevor Golat",
+          "wins": 8,
+          "losses": 9,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2253.16,
+          "pointsAgainst": 2255.88,
+          "winPct": 0.4706,
+          "streak": "W2"
+        },
+        "PHI": {
+          "ownerName": "Jake Rachlin",
+          "wins": 6,
+          "losses": 11,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2077.48,
+          "pointsAgainst": 2280.3,
+          "winPct": 0.3529,
+          "streak": "L8"
+        },
+        "PIT": {
+          "ownerName": "Andrew Lepore",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1773.8,
+          "pointsAgainst": 2046.74,
+          "winPct": 0.4118,
+          "streak": "L3"
+        },
+        "SEA": {
+          "ownerName": "Christian Tepley",
+          "wins": 9,
+          "losses": 8,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2076.7,
+          "pointsAgainst": 2029,
+          "winPct": 0.5294,
+          "streak": "L2"
+        },
+        "SF": {
+          "ownerName": "Gary Lehr",
+          "wins": 11,
+          "losses": 6,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 2317.96,
+          "pointsAgainst": 2087.45,
+          "winPct": 0.6471,
+          "streak": "W2"
+        },
+        "TB": {
+          "ownerName": "Nick Scianna",
+          "wins": 6,
+          "losses": 11,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1909.7,
+          "pointsAgainst": 2094.36,
+          "winPct": 0.3529,
+          "streak": "W1"
+        },
+        "TEN": {
+          "ownerName": "Troy Knecht",
+          "wins": 4,
+          "losses": 13,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1989.54,
+          "pointsAgainst": 2351.16,
+          "winPct": 0.2353,
+          "streak": "L4"
+        },
+        "WSH": {
+          "ownerName": "Jeff Bennett",
+          "wins": 7,
+          "losses": 10,
+          "ties": 0,
+          "gamesPlayed": 17,
+          "pointsFor": 1944.72,
+          "pointsAgainst": 2189.96,
+          "winPct": 0.4118,
+          "streak": "W1"
+        }
+      },
+      "divisionOrder": {
+        "AFC East": [
+          "MIA",
+          "NE",
+          "NYJ",
+          "BUF"
+        ],
+        "AFC North": [
+          "BAL",
+          "CIN",
+          "PIT",
+          "CLE"
+        ],
+        "AFC South": [
+          "IND",
+          "HOU",
+          "JAX",
+          "TEN"
+        ],
+        "AFC West": [
+          "LV",
+          "DEN",
+          "LAC",
+          "KC"
+        ],
+        "NFC East": [
+          "NYG",
+          "DAL",
+          "WSH",
+          "PHI"
+        ],
+        "NFC North": [
+          "MIN",
+          "CHI",
+          "DET",
+          "GB"
+        ],
+        "NFC South": [
+          "NO",
+          "ATL",
+          "TB",
+          "CAR"
+        ],
+        "NFC West": [
+          "SF",
+          "ARI",
+          "SEA",
+          "LAR"
+        ]
+      },
+      "conferenceOrder": {
+        "AFC": [
+          "IND",
+          "HOU",
+          "BAL",
+          "LV",
+          "DEN",
+          "JAX",
+          "MIA",
+          "CIN",
+          "NE",
+          "NYJ",
+          "LAC",
+          "PIT",
+          "BUF",
+          "KC",
+          "TEN",
+          "CLE"
+        ],
+        "NFC": [
+          "NYG",
+          "MIN",
+          "SF",
+          "NO",
+          "DAL",
+          "CHI",
+          "DET",
+          "ARI",
+          "SEA",
+          "LAR",
+          "WSH",
+          "ATL",
+          "PHI",
+          "GB",
+          "TB",
+          "CAR"
+        ]
+      },
+      "seeds": {
+        "AFC": [
+          {
+            "seed": 1,
+            "teamKey": "IND",
+            "kind": "division_winner",
+            "isBye": true
+          },
+          {
+            "seed": 2,
+            "teamKey": "BAL",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 3,
+            "teamKey": "LV",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 4,
+            "teamKey": "MIA",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 5,
+            "teamKey": "HOU",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 6,
+            "teamKey": "DEN",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 7,
+            "teamKey": "JAX",
+            "kind": "wild_card",
+            "isBye": false
+          }
+        ],
+        "NFC": [
+          {
+            "seed": 1,
+            "teamKey": "NYG",
+            "kind": "division_winner",
+            "isBye": true
+          },
+          {
+            "seed": 2,
+            "teamKey": "MIN",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 3,
+            "teamKey": "SF",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 4,
+            "teamKey": "NO",
+            "kind": "division_winner",
+            "isBye": false
+          },
+          {
+            "seed": 5,
+            "teamKey": "DAL",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 6,
+            "teamKey": "CHI",
+            "kind": "wild_card",
+            "isBye": false
+          },
+          {
+            "seed": 7,
+            "teamKey": "DET",
+            "kind": "wild_card",
+            "isBye": false
+          }
+        ]
+      },
+      "highestWeeklyScore": {
+        "teamKey": "IND",
+        "week": 12,
+        "points": 241.68
+      },
+      "mostPointsLeader": {
+        "teamKey": "IND",
+        "pointsFor": 2573.64
+      },
+      "awards": [
+        {
+          "type": "champion",
+          "week": null,
+          "teamKey": "SF",
+          "amountCents": 200000,
+          "value": null
+        },
+        {
+          "type": "fourth",
+          "week": null,
+          "teamKey": "DEN",
+          "amountCents": 15000,
+          "value": null
+        },
+        {
+          "type": "most_points",
+          "week": null,
+          "teamKey": "DET",
+          "amountCents": 40000,
+          "value": "2865.82"
+        },
+        {
+          "type": "runner_up",
+          "week": null,
+          "teamKey": "JAX",
+          "amountCents": 100000,
+          "value": null
+        },
+        {
+          "type": "season_high",
+          "week": null,
+          "teamKey": "IND",
+          "amountCents": 5000,
+          "value": "241.68"
+        },
+        {
+          "type": "third",
+          "week": null,
+          "teamKey": "DET",
+          "amountCents": 30000,
+          "value": null
+        },
+        {
+          "type": "weekly_high",
+          "week": 1,
+          "teamKey": "CIN",
+          "amountCents": 5000,
+          "value": "139.88"
+        },
+        {
+          "type": "weekly_high",
+          "week": 2,
+          "teamKey": "CLE",
+          "amountCents": 5000,
+          "value": "167.84"
+        },
+        {
+          "type": "weekly_high",
+          "week": 3,
+          "teamKey": "HOU",
+          "amountCents": 5000,
+          "value": "171.98"
+        },
+        {
+          "type": "weekly_high",
+          "week": 4,
+          "teamKey": "NYG",
+          "amountCents": 5000,
+          "value": "193.72"
+        },
+        {
+          "type": "weekly_high",
+          "week": 5,
+          "teamKey": "PHI",
+          "amountCents": 5000,
+          "value": "189.22"
+        },
+        {
+          "type": "weekly_high",
+          "week": 6,
+          "teamKey": "CIN",
+          "amountCents": 5000,
+          "value": "201.84"
+        },
+        {
+          "type": "weekly_high",
+          "week": 7,
+          "teamKey": "IND",
+          "amountCents": 5000,
+          "value": "170.14"
+        },
+        {
+          "type": "weekly_high",
+          "week": 8,
+          "teamKey": "CLE",
+          "amountCents": 5000,
+          "value": "168.68"
+        },
+        {
+          "type": "weekly_high",
+          "week": 9,
+          "teamKey": "NYG",
+          "amountCents": 5000,
+          "value": "196.14"
+        },
+        {
+          "type": "weekly_high",
+          "week": 10,
+          "teamKey": "SEA",
+          "amountCents": 5000,
+          "value": "179.64"
+        },
+        {
+          "type": "weekly_high",
+          "week": 11,
+          "teamKey": "DET",
+          "amountCents": 5000,
+          "value": "183.18"
+        },
+        {
+          "type": "weekly_high",
+          "week": 12,
+          "teamKey": "IND",
+          "amountCents": 5000,
+          "value": "241.68"
+        },
+        {
+          "type": "weekly_high",
+          "week": 13,
+          "teamKey": "NYG",
+          "amountCents": 5000,
+          "value": "150.54"
+        },
+        {
+          "type": "weekly_high",
+          "week": 14,
+          "teamKey": "JAX",
+          "amountCents": 5000,
+          "value": "176.54"
+        },
+        {
+          "type": "weekly_high",
+          "week": 15,
+          "teamKey": "NYG",
+          "amountCents": 5000,
+          "value": "164.74"
+        },
+        {
+          "type": "weekly_high",
+          "week": 16,
+          "teamKey": "TB",
+          "amountCents": 5000,
+          "value": "160.38"
+        },
+        {
+          "type": "weekly_high",
+          "week": 17,
+          "teamKey": "MIA",
+          "amountCents": 5000,
+          "value": "176.92"
+        },
+        {
+          "type": "weekly_high",
+          "week": 18,
+          "teamKey": "CHI",
+          "amountCents": 5000,
+          "value": "167.52"
+        }
+      ]
+    }
+  ]
+}
