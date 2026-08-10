@@ -201,7 +201,7 @@ export default async function DashboardPage() {
               value={highScore ? formatPoints(highScore.points) : "—"}
               hint={
                 highScore
-                  ? `${highScore.ownerName} · Wk ${highScore.week}`
+                  ? `${highScore.owners.map((o) => o.ownerName).join(" & ")} · Wk ${highScore.week}`
                   : "Awaiting scores"
               }
               icon={Flame}

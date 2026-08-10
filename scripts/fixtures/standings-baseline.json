@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "seasons": [
     {
       "year": 2023,
@@ -540,7 +540,9 @@
         ]
       },
       "highestWeeklyScore": {
-        "teamKey": "CAR",
+        "teamKeys": [
+          "CAR"
+        ],
         "week": 3,
         "points": 231.28
       },
@@ -1258,7 +1260,9 @@
         ]
       },
       "highestWeeklyScore": {
-        "teamKey": "DET",
+        "teamKeys": [
+          "DET"
+        ],
         "week": 11,
         "points": 200.58
       },
@@ -1976,7 +1980,9 @@
         ]
       },
       "highestWeeklyScore": {
-        "teamKey": "IND",
+        "teamKeys": [
+          "IND"
+        ],
         "week": 12,
         "points": 241.68
       },

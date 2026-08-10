@@ -17,12 +17,17 @@
  * Numeric columns (`numeric(7,2)`) come back from the driver as strings; we convert with
  * `Number` exactly once, here.
  */
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, lte, sql } from 'drizzle-orm';
 
 import { db, matchups, nflGames, nflTeams, owners, ownerSeasons, scores, seasons } from '@/db';
 import { weekIsFinal } from '@/lib/schedule/final';
 import { assembleMatchupResults } from './assemble';
-import { deriveForfeits, type ScoreRow as DerivedScoreRow } from './forfeit-derive';
+import {
+  buildPlayingSet,
+  deriveForfeits,
+  isEffectiveBye,
+  type ScoreRow as DerivedScoreRow,
+} from './forfeit-derive';
 import { getSeasonRules, type SeasonRules } from '@/lib/rules/schema';
 import {
   computeConferenceSeeds,
@@ -467,57 +472,106 @@ export async function getStandingsView(seasonId: number): Promise<StandingsView>
   };
 }
 
-/** The single highest non-bye weekly DraftKings score in a season. */
+/** The highest non-bye weekly DraftKings score in a season, and everyone who posted it. */
 export interface HighestWeeklyScore {
-  ownerName: string;
-  teamKey: string;
+  /** All owners tied at this score — more than one when a week's high is shared. */
+  owners: { ownerName: string; teamKey: string }[];
   week: number;
   points: number;
 }
 
 /**
- * The highest non-bye, non-null weekly score in the season, with the owner who
+ * The highest regular-season, non-bye weekly score in the season, with EVERY owner who
  * posted it. Returns null when no scores exist.
+ *
+ * Three things this must get right, because it drives the dashboard's headline number and
+ * mirrors a real $50 prize:
+ *
+ *  - **Ties.** It previously did `ORDER BY dk_points DESC LIMIT 1`, so an exact tie handed
+ *    the honour to whichever row Postgres returned first — not stable between runs.
+ *  - **Week cap.** It scanned every week, so a playoff score (weeks 19-22, written non-bye
+ *    by the playoff importers) could win the season's "weekly high" while the actual paid
+ *    award is capped to the regular season.
+ *  - **Byes.** It filtered the raw `isBye` column. That column can be wrong for an owner who
+ *    has a matchup that week, so byes are reconciled against the schedule here too.
  */
 export async function getHighestWeeklyScore(
   seasonId: number,
 ): Promise<HighestWeeklyScore | null> {
-  // Honor the season's `byeWeek.eligibleForWeeklyHigh` rule: when off (the
-  // default), bye-week scores are excluded from the weekly-high prize.
   const [seasonRow] = await db
-    .select({ rules: seasons.rules })
+    .select({ rules: seasons.rules, regularSeasonWeeks: seasons.regularSeasonWeeks })
     .from(seasons)
     .where(eq(seasons.id, seasonId))
     .limit(1);
-  const byesEligible = getSeasonRules(seasonRow?.rules).byeWeek.eligibleForWeeklyHigh;
+  const rules = getSeasonRules(seasonRow?.rules);
+  const regularSeasonWeeks = seasonRow?.regularSeasonWeeks ?? rules.regularSeasonWeeks;
+  // Honor the season's `byeWeek.eligibleForWeeklyHigh` rule: when off (the default),
+  // bye-week scores are excluded from the weekly-high prize.
+  const byesEligible = rules.byeWeek.eligibleForWeeklyHigh;
 
-  // Never let a preseason exhibition blow-up win the weekly-high prize.
-  const notExhibition = eq(scores.isExhibition, false);
-  const where = byesEligible
-    ? and(eq(scores.seasonId, seasonId), notExhibition)
-    : and(eq(scores.seasonId, seasonId), eq(scores.isBye, false), notExhibition);
+  const [rows, matchupRows] = await Promise.all([
+    db
+      .select({
+        ownerSeasonId: scores.ownerSeasonId,
+        ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
+        teamKey: nflTeams.key,
+        week: scores.week,
+        points: scores.dkPoints,
+        isBye: scores.isBye,
+      })
+      .from(scores)
+      .innerJoin(ownerSeasons, eq(scores.ownerSeasonId, ownerSeasons.id))
+      .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id))
+      .innerJoin(nflTeams, eq(ownerSeasons.nflTeamId, nflTeams.id))
+      .where(
+        and(
+          eq(scores.seasonId, seasonId),
+          // Never let a preseason exhibition blow-up win the weekly-high prize.
+          eq(scores.isExhibition, false),
+          lte(scores.week, regularSeasonWeeks),
+        ),
+      ),
+    db
+      .select({
+        week: matchups.week,
+        homeOwnerSeasonId: matchups.homeOwnerSeasonId,
+        awayOwnerSeasonId: matchups.awayOwnerSeasonId,
+        isPlayoff: matchups.isPlayoff,
+      })
+      .from(matchups)
+      .where(and(eq(matchups.seasonId, seasonId), eq(matchups.isExhibition, false))),
+  ]);
 
-  const rows = await db
-    .select({
-      ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
-      teamKey: nflTeams.key,
-      week: scores.week,
-      points: scores.dkPoints,
-    })
-    .from(scores)
-    .innerJoin(ownerSeasons, eq(scores.ownerSeasonId, ownerSeasons.id))
-    .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id))
-    .innerJoin(nflTeams, eq(ownerSeasons.nflTeamId, nflTeams.id))
-    .where(where)
-    .orderBy(desc(scores.dkPoints))
-    .limit(1);
-  const r = rows[0];
-  if (!r || r.points === null) return null;
+  const playing = buildPlayingSet(matchupRows);
+
+  let best: number | null = null;
+  const candidates: { ownerName: string; teamKey: string; week: number; points: number }[] = [];
+  for (const r of rows) {
+    if (r.points === null) continue;
+    const bye = isEffectiveBye({
+      storedIsBye: r.isBye,
+      ownerSeasonId: r.ownerSeasonId,
+      week: r.week,
+      regularSeasonWeeks,
+      playing,
+    });
+    if (bye && !byesEligible) continue;
+    const points = Number(r.points);
+    if (best === null || points > best) best = points;
+    candidates.push({ ownerName: r.ownerName, teamKey: r.teamKey, week: r.week, points });
+  }
+  if (best === null) return null;
+
+  // `numeric(7,2)` parsed via Number is exact at two decimals, so `===` is a valid
+  // equality test for a genuine tie.
+  const winners = candidates
+    .filter((c) => c.points === best)
+    .sort((a, b) => a.teamKey.localeCompare(b.teamKey));
+
   return {
-    ownerName: r.ownerName,
-    teamKey: r.teamKey,
-    week: r.week,
-    points: Number(r.points),
+    owners: winners.map((w) => ({ ownerName: w.ownerName, teamKey: w.teamKey })),
+    week: winners[0].week,
+    points: best,
   };
 }
 

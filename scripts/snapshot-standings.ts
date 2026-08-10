@@ -89,7 +89,8 @@ export interface SeasonSnapshot {
   divisionOrder: Record<string, string[]>;
   conferenceOrder: Record<string, string[]>;
   seeds: Record<string, { seed: number; teamKey: string; kind: string; isBye: boolean }[]>;
-  highestWeeklyScore: { teamKey: string; week: number; points: number } | null;
+  /** `teamKeys` is a list because a weekly high can be shared by more than one owner. */
+  highestWeeklyScore: { teamKeys: string[]; week: number; points: number } | null;
   mostPointsLeader: { teamKey: string; pointsFor: number } | null;
   awards: { type: string; week: number | null; teamKey: string | null; amountCents: number | null; value: string | null }[];
 }
@@ -204,14 +205,14 @@ export async function buildSnapshot(years: readonly number[] = FROZEN_YEARS): Pr
       conferenceOrder,
       seeds,
       highestWeeklyScore: high
-        ? { teamKey: high.teamKey, week: high.week, points: r4(high.points) }
+        ? { teamKeys: high.owners.map((o) => o.teamKey), week: high.week, points: r4(high.points) }
         : null,
       mostPointsLeader,
       awards,
     });
   }
 
-  return { version: 1, seasons };
+  return { version: 2, seasons };
 }
 
 async function main() {
@@ -236,7 +237,7 @@ async function main() {
       );
     }
     console.log(
-      `  highest week: ${s.highestWeeklyScore ? `${s.highestWeeklyScore.teamKey} wk${s.highestWeeklyScore.week} ${s.highestWeeklyScore.points}` : '—'}` +
+      `  highest week: ${s.highestWeeklyScore ? `${s.highestWeeklyScore.teamKeys.join('+')} wk${s.highestWeeklyScore.week} ${s.highestWeeklyScore.points}` : '—'}` +
         ` · most pts: ${s.mostPointsLeader ? `${s.mostPointsLeader.teamKey} ${s.mostPointsLeader.pointsFor}` : '—'}` +
         ` · awards: ${s.awards.length}`,
     );

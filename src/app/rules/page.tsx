@@ -6,6 +6,12 @@
  * full payout table — update here automatically when Settings change. Narrative
  * sections (format/scoring, DraftKings entry name) describe league structure the
  * schema does not model and are intentionally static.
+ *
+ * The missed-lineup wording is a case where that claim was previously false: it hardcoded
+ * "weekly median" while the engine's default was the league average. Since the league scored
+ * 2023-2025 on the average and moved to the median for 2026, the rule genuinely differs by
+ * season and the copy MUST come from `rules.missedLineup`. The one intentional hardcode
+ * there is the $25/$50 fine ladder, which has no key in `seasonRulesSchema` at all.
  */
 import type { Metadata } from "next";
 import {
@@ -202,6 +208,43 @@ function ExampleBlock({
   );
 }
 
+/**
+ * How to describe what a missed lineup's opponent plays against, per
+ * `rules.missedLineup.opponentScores`.
+ *
+ * This page used to hardcode "weekly median" while the engine defaulted to the average, so
+ * the published rule and the scoring could disagree — and they genuinely differ by season:
+ * the league scored 2023-2025 on the average and switched to the median for 2026. Rendering
+ * from config is what keeps this honest as that rule changes again.
+ */
+const MISSED_OPPONENT_PROSE: Record<
+  SeasonRules['missedLineup']['opponentScores'],
+  React.ReactNode
+> = {
+  league_average: (
+    <>
+      the <strong className="font-semibold text-foreground">weekly average</strong> — the mean
+      score among all owners with an active matchup that week, excluding forfeits and bye weeks
+    </>
+  ),
+  league_median: (
+    <>
+      the <strong className="font-semibold text-foreground">weekly median</strong> — the median
+      score among all owners with an active matchup that week, excluding forfeits and bye weeks
+    </>
+  ),
+  zero: (
+    <>
+      a score of <strong className="font-semibold text-foreground">zero</strong>
+    </>
+  ),
+  actual: (
+    <>
+      your <strong className="font-semibold text-foreground">actual score</strong> for that week
+    </>
+  ),
+};
+
 /* -------------------------------------------------------------------------- */
 /* Page                                                                        */
 /* -------------------------------------------------------------------------- */
@@ -302,20 +345,24 @@ export default async function RulesPage() {
         >
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted">
-              Whether it&apos;s your first or second incident, your opponent scores against the{" "}
-              <strong className="font-semibold text-foreground">weekly median</strong> — the median score among all owners with an active matchup that week, excluding forfeits and bye weeks.
+              Whether it&apos;s your first or second incident, your opponent scores against{" "}
+              {MISSED_OPPONENT_PROSE[rules.missedLineup.opponentScores]}.
             </p>
             <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
               <p className="text-xs font-semibold text-foreground">1st incident</p>
               <ul className="flex flex-col gap-1.5 text-xs text-muted">
+                {/* The fine ladder is deliberate hardcoded copy: it has no key in
+                    `seasonRulesSchema` and no ledger, so it is not configurable today. */}
                 <li className="flex gap-2">
                   <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" />
                   <span>$25 fine</span>
                 </li>
-                <li className="flex gap-2">
-                  <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" />
-                  <span>Automatic loss for that week</span>
-                </li>
+                {rules.missedLineup.result === "auto_loss" && (
+                  <li className="flex gap-2">
+                    <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent" />
+                    <span>Automatic loss for that week</span>
+                  </li>
+                )}
               </ul>
             </div>
             <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">

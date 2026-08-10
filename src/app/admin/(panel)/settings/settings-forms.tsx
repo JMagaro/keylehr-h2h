@@ -81,7 +81,10 @@ export function SeasonMetaForm({ defaults }: { defaults: SeasonMetaDefaults }) {
         </CardDescription>
       </CardHeader>
       <CardBody>
-        <form action={formAction} className="flex flex-col gap-4">
+        {/* Keyed on the persisted values for the same reason as the rules form below: these
+            inputs are uncontrolled, so without a remount they can keep showing a stale value
+            after a successful save. */}
+        <form key={JSON.stringify(defaults)} action={formAction} className="flex flex-col gap-4">
           <input type="hidden" name="seasonId" value={defaults.seasonId} />
 
           <Field label="Name" htmlFor="name" required>
@@ -234,7 +237,23 @@ export function SeasonRulesForm({
         </div>
       </CardHeader>
       <CardBody>
-        <form action={formAction} className="flex flex-col gap-6">
+        {/*
+          `key` on the form is load-bearing, not cosmetic. Every input below is UNCONTROLLED
+          (`defaultValue` / `defaultChecked`), and React only applies those on MOUNT. After a
+          save, the server action revalidates and this component re-renders with the freshly
+          persisted `rules` — but without a remount the DOM keeps whatever it was showing, so
+          the form could display a value that is not what is stored. That is exactly how
+          "I picked League median, hit Save, and it flipped back to League average" happens
+          on a save that actually succeeded.
+
+          Keying on the persisted rules remounts the inputs whenever the stored values change,
+          so what you see is always what is in the database.
+        */}
+        <form
+          key={JSON.stringify(rules)}
+          action={formAction}
+          className="flex flex-col gap-6"
+        >
           <input type="hidden" name="seasonId" value={seasonId} />
 
           {/* Tiebreakers */}
