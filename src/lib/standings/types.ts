@@ -49,6 +49,8 @@ export interface OwnerEntry {
 export interface MatchupResult {
   week: number;
   isPlayoff: boolean;
+  /** True for a preseason exhibition — the engine never counts it (defense-in-depth). */
+  isExhibition?: boolean;
   isFinal: boolean;
   homeOwnerSeasonId: number;
   awayOwnerSeasonId: number;

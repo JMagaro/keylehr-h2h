@@ -32,6 +32,7 @@ import {
   scoreImportRuns,
   scores,
 } from '@/db';
+import { isExhibitionWeek } from '@/lib/schedule/preseason';
 
 /** Score provenance, mirroring the `score_source` enum in the DB schema. */
 export type ScoreSource = 'auto' | 'manual';
@@ -154,6 +155,9 @@ async function upsertScores(params: {
   playing: Set<number>;
 }): Promise<number> {
   const { seasonId, week, byOwnerSeason, source, contestId, importRunId, playing } = params;
+  // A preseason week (stored at the exhibition offset) → flag the scores as exhibition so
+  // every standings/stats query excludes them, exactly like the matchups.
+  const isExhibition = isExhibitionWeek(week);
   let byes = 0;
 
   for (const [ownerSeasonId, { points, entryKey }] of byOwnerSeason) {
@@ -169,6 +173,7 @@ async function upsertScores(params: {
         dkPoints: points.toFixed(2),
         source,
         isBye,
+        isExhibition,
         dkContestId: contestId ?? null,
         dkEntryKey: entryKey ?? null,
         importRunId,
@@ -179,6 +184,7 @@ async function upsertScores(params: {
           dkPoints: points.toFixed(2),
           source,
           isBye,
+          isExhibition,
           dkContestId: contestId ?? null,
           dkEntryKey: entryKey ?? null,
           importRunId,

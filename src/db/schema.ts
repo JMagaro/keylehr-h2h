@@ -230,6 +230,13 @@ export const nflGames = pgTable(
     /** ESPN event id for idempotent upserts. */
     espnEventId: varchar({ length: 32 }),
     status: varchar({ length: 32 }),
+    /**
+     * True for NFL PRESEASON games (ESPN seasontype=1). Preseason games are stored at a
+     * separate week namespace (`week = 100 + preseasonWeek`) so they never collide with the
+     * regular season (1–18) or playoffs (19–22), and every standings/stats query excludes
+     * them — a preseason "exhibition" game is tracked but never counts. See src/lib/schedule/preseason.ts.
+     */
+    isExhibition: boolean().notNull().default(false),
   },
   (t) => [
     uniqueIndex('nfl_games_season_week_home_uq').on(t.seasonId, t.week, t.homeTeamId),
@@ -259,6 +266,8 @@ export const matchups = pgTable(
     nflGameId: integer().references(() => nflGames.id),
     status: matchupStatus().notNull().default('scheduled'),
     isPlayoff: boolean().notNull().default(false),
+    /** True for a preseason EXHIBITION matchup — tracked but excluded from all standings/stats. */
+    isExhibition: boolean().notNull().default(false),
   },
   (t) => [
     index('matchups_season_week_idx').on(t.seasonId, t.week),
@@ -334,6 +343,8 @@ export const scores = pgTable(
      * owner's own `dkPoints` still record whatever they scored (often 0).
      */
     isForfeit: boolean().notNull().default(false),
+    /** True for a preseason EXHIBITION score — tracked but excluded from all standings/stats. */
+    isExhibition: boolean().notNull().default(false),
     dkContestId: varchar({ length: 64 }),
     dkEntryKey: varchar({ length: 64 }),
     note: text(),

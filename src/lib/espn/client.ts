@@ -42,6 +42,8 @@ const SCOREBOARD_URL =
 
 /** ESPN's `seasontype` code for the regular season. */
 const SEASON_TYPE_REGULAR = 2;
+/** ESPN's `seasontype` code for the preseason (used for exhibition games). */
+export const SEASON_TYPE_PRESEASON = 1;
 
 /** Default number of NFL regular-season weeks. */
 export const DEFAULT_REGULAR_SEASON_WEEKS = 18;
@@ -62,9 +64,13 @@ export class EspnFetchError extends Error {
  * Build the scoreboard URL for a given regular-season week.
  * @internal exported for testing.
  */
-export function buildScoreboardUrl(year: number, week: number): string {
+export function buildScoreboardUrl(
+  year: number,
+  week: number,
+  seasonType: number = SEASON_TYPE_REGULAR,
+): string {
   const params = new URLSearchParams({
-    seasontype: String(SEASON_TYPE_REGULAR),
+    seasontype: String(seasonType),
     week: String(week),
     dates: String(year),
   });
@@ -131,8 +137,9 @@ function normalizeEvent(event: EspnEvent, fallbackWeek: number): NormalizedGame 
 export async function fetchWeekGames(
   year: number,
   week: number,
+  seasonType: number = SEASON_TYPE_REGULAR,
 ): Promise<NormalizedGame[]> {
-  const url = buildScoreboardUrl(year, week);
+  const url = buildScoreboardUrl(year, week, seasonType);
 
   const response = await fetch(url, {
     // Revalidate hourly under Next's Data Cache; ignored by plain Node fetch.

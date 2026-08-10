@@ -133,7 +133,8 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
       isForfeit: scores.isForfeit,
     })
     .from(scores)
-    .where(eq(scores.seasonId, seasonId));
+    // Exhibition (preseason) scores are tracked but NEVER count toward standings.
+    .where(and(eq(scores.seasonId, seasonId), eq(scores.isExhibition, false)));
 
   /** key `${ownerSeasonId}:${week}` → points (null when bye / unscored). */
   const pointsByOwnerWeek = new Map<string, number | null>();
@@ -164,7 +165,8 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
       isPlayoff: matchups.isPlayoff,
     })
     .from(matchups)
-    .where(eq(matchups.seasonId, seasonId));
+    // Exhibition (preseason) matchups are tracked but NEVER count toward standings.
+    .where(and(eq(matchups.seasonId, seasonId), eq(matchups.isExhibition, false)));
 
   // 3a. Per-week scores (non-forfeit, non-bye, active matchups only) used to
   //     derive the league average ('league_average') and median ('league_median')
@@ -520,9 +522,11 @@ export async function getHighestWeeklyScore(
     .limit(1);
   const byesEligible = getSeasonRules(seasonRow?.rules).byeWeek.eligibleForWeeklyHigh;
 
+  // Never let a preseason exhibition blow-up win the weekly-high prize.
+  const notExhibition = eq(scores.isExhibition, false);
   const where = byesEligible
-    ? eq(scores.seasonId, seasonId)
-    : and(eq(scores.seasonId, seasonId), eq(scores.isBye, false));
+    ? and(eq(scores.seasonId, seasonId), notExhibition)
+    : and(eq(scores.seasonId, seasonId), eq(scores.isBye, false), notExhibition);
 
   const rows = await db
     .select({

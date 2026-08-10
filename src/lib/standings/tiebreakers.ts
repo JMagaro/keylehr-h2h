@@ -62,7 +62,7 @@ export function buildTiebreakerContext(
   };
 
   for (const m of results) {
-    if (!m.isFinal || m.isPlayoff) continue;
+    if (!m.isFinal || m.isPlayoff || m.isExhibition) continue;
     const a = m.homeOwnerSeasonId;
     const b = m.awayOwnerSeasonId;
     if (!rowMap.has(a) || !rowMap.has(b)) continue;

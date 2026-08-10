@@ -41,6 +41,23 @@ function rowFor(rows: ReturnType<typeof computeStandings>, id: number) {
   return rows.find((r) => r.ownerSeasonId === id)!;
 }
 
+describe('computeStandings — exhibition (preseason) games never count', () => {
+  it('ignores an exhibition matchup entirely (no W-L, no PF/PA)', () => {
+    const entries = [owner(1), owner(2)];
+    const results = [
+      game(1, 1, 2, 100, 90), // real game: 1 beats 2
+      game(101, 1, 2, 200, 10, { isExhibition: true }), // preseason blowout — must NOT count
+    ];
+    const r1 = rowFor(computeStandings(entries, results), 1);
+    const r2 = rowFor(computeStandings(entries, results), 2);
+    expect([r1.wins, r1.losses]).toEqual([1, 0]);
+    expect([r2.wins, r2.losses]).toEqual([0, 1]);
+    // PF/PA reflect only the real game, not the 200-point exhibition.
+    expect(r1.pointsFor).toBe(100);
+    expect(r1.pointsAgainst).toBe(90);
+  });
+});
+
 describe('computeStandings — bye points toward Points For (byeWeek rule)', () => {
   it('adds supplied bye points to Points For only, leaving the record untouched', () => {
     const entries = [owner(1), owner(2)];

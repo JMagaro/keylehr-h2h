@@ -6,7 +6,7 @@
  * for the per-matchup results), so a team's numbers always agree with the rest of
  * the site. No new scoring logic lives here — only per-owner shaping for charts.
  */
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import { db, owners, ownerSeasons, nflTeams, scores } from '@/db';
 import {
@@ -118,7 +118,7 @@ export async function getTeamDashboard(
         isForfeit: scores.isForfeit,
       })
       .from(scores)
-      .where(eq(scores.seasonId, seasonId)),
+      .where(and(eq(scores.seasonId, seasonId), eq(scores.isExhibition, false))),
   ]);
 
   // Which (owner, week) pairs were forfeits (missed lineups) — the raw fact,

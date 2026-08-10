@@ -62,6 +62,7 @@ export async function generateMatchups(seasonId: number): Promise<GenerateSummar
       week: nflGames.week,
       homeTeamId: nflGames.homeTeamId,
       awayTeamId: nflGames.awayTeamId,
+      isExhibition: nflGames.isExhibition,
     })
     .from(nflGames)
     .where(eq(nflGames.seasonId, seasonId));
@@ -91,6 +92,7 @@ export async function generateMatchups(seasonId: number): Promise<GenerateSummar
       homeOwnerSeasonId,
       awayOwnerSeasonId,
       nflGameId: game.id,
+      isExhibition: game.isExhibition,
     });
 
     let playing = playingByWeek.get(game.week);
@@ -123,6 +125,7 @@ export async function generateMatchups(seasonId: number): Promise<GenerateSummar
         set: {
           awayOwnerSeasonId: sql`excluded.away_owner_season_id`,
           nflGameId: sql`excluded.nfl_game_id`,
+          isExhibition: sql`excluded.is_exhibition`,
         },
       });
   }

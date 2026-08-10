@@ -182,7 +182,11 @@ export async function getSeasonHistory(): Promise<SeasonHistory[]> {
         db
           .select({ ownerSeasonId: scores.ownerSeasonId, week: scores.week, dkPoints: scores.dkPoints })
           .from(scores)
-          .where(and(eq(scores.seasonId, season.id), lte(scores.week, regularSeasonWeeks))),
+          .where(and(
+            eq(scores.seasonId, season.id),
+            lte(scores.week, regularSeasonWeeks),
+            eq(scores.isExhibition, false),
+          )),
       ]);
 
       const standingByOwnerSeason = new Map(standings.map((s) => [s.ownerSeasonId, s]));
@@ -349,7 +353,11 @@ export async function getSeasonHistoryById(seasonId: number): Promise<SeasonHist
   const scoreRows = await db
     .select({ ownerSeasonId: scores.ownerSeasonId, week: scores.week, dkPoints: scores.dkPoints })
     .from(scores)
-    .where(and(eq(scores.seasonId, seasonId), lte(scores.week, regularSeasonWeeks)));
+    .where(and(
+      eq(scores.seasonId, seasonId),
+      lte(scores.week, regularSeasonWeeks),
+      eq(scores.isExhibition, false),
+    ));
 
   let highestWeek: SeasonHistory['highestWeek'] = null;
   for (const s of scoreRows) {
@@ -524,7 +532,8 @@ export async function getAllTimeRivalries(): Promise<AllTimeRivalries> {
       dkPoints: scores.dkPoints,
       isBye: scores.isBye,
     })
-    .from(scores);
+    .from(scores)
+    .where(eq(scores.isExhibition, false));
   const pointsByKey = new Map<string, number | null>();
   for (const s of scoreRows) {
     const pts = s.isBye || s.dkPoints === null ? null : Number(s.dkPoints);
@@ -543,7 +552,8 @@ export async function getAllTimeRivalries(): Promise<AllTimeRivalries> {
       awayOwnerSeasonId: matchups.awayOwnerSeasonId,
       isPlayoff: matchups.isPlayoff,
     })
-    .from(matchups);
+    .from(matchups)
+    .where(eq(matchups.isExhibition, false));
 
   const rivalryByPair = new Map<string, Rivalry>();
   for (const m of matchupRows) {
@@ -772,7 +782,7 @@ export async function getAllTimeLeaders(): Promise<AllTimeLeaders> {
       .from(scores)
       .innerJoin(ownerSeasons, eq(scores.ownerSeasonId, ownerSeasons.id))
       .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id))
-      .where(inArray(scores.seasonId, seasonsWithData));
+      .where(and(inArray(scores.seasonId, seasonsWithData), eq(scores.isExhibition, false)));
     for (const s of scoreRows) {
       if (s.isBye || s.dkPoints === null) continue;
       const agg = byOwner.get(s.ownerId);
@@ -1093,7 +1103,7 @@ export async function getWeeklyHighScores(): Promise<WeeklyHighStat[]> {
     db
       .select({ seasonId: scores.seasonId, ownerSeasonId: scores.ownerSeasonId, week: scores.week, dkPoints: scores.dkPoints, isBye: scores.isBye })
       .from(scores)
-      .where(inArray(scores.seasonId, allSeasonIds)),
+      .where(and(inArray(scores.seasonId, allSeasonIds), eq(scores.isExhibition, false))),
     db
       .select({ ownerSeasonId: ownerSeasons.id, seasonId: ownerSeasons.seasonId, ownerId: owners.id,
         ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
@@ -1182,11 +1192,11 @@ export async function getGameExtremes(): Promise<GameExtremes> {
       .select({ seasonId: matchups.seasonId, week: matchups.week,
         homeOwnerSeasonId: matchups.homeOwnerSeasonId, awayOwnerSeasonId: matchups.awayOwnerSeasonId })
       .from(matchups)
-      .where(eq(matchups.isPlayoff, false)),
+      .where(and(eq(matchups.isPlayoff, false), eq(matchups.isExhibition, false))),
     db
       .select({ ownerSeasonId: scores.ownerSeasonId, week: scores.week, dkPoints: scores.dkPoints, isBye: scores.isBye })
       .from(scores)
-      .where(inArray(scores.seasonId, seasonsWithData)),
+      .where(and(inArray(scores.seasonId, seasonsWithData), eq(scores.isExhibition, false))),
     db
       .select({ ownerSeasonId: ownerSeasons.id, ownerId: owners.id,
         ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
@@ -1280,7 +1290,7 @@ export async function getStreakLeaders(): Promise<StreakLeaders> {
         awayOwnerSeasonId: matchups.awayOwnerSeasonId,
       })
       .from(matchups)
-      .where(eq(matchups.isPlayoff, false)),
+      .where(and(eq(matchups.isPlayoff, false), eq(matchups.isExhibition, false))),
     db
       .select({
         ownerSeasonId: scores.ownerSeasonId,
@@ -1289,7 +1299,7 @@ export async function getStreakLeaders(): Promise<StreakLeaders> {
         isBye: scores.isBye,
       })
       .from(scores)
-      .where(inArray(scores.seasonId, seasonsWithData)),
+      .where(and(inArray(scores.seasonId, seasonsWithData), eq(scores.isExhibition, false))),
     db
       .select({
         ownerSeasonId: ownerSeasons.id,
@@ -1406,7 +1416,11 @@ export async function getMissedSubmissions(): Promise<MissedSubmission[]> {
     db
       .select({ ownerSeasonId: scores.ownerSeasonId, dkPoints: scores.dkPoints })
       .from(scores)
-      .where(and(inArray(scores.seasonId, seasonsWithData), eq(scores.isBye, false))),
+      .where(and(
+        inArray(scores.seasonId, seasonsWithData),
+        eq(scores.isBye, false),
+        eq(scores.isExhibition, false),
+      )),
     db
       .select({
         ownerSeasonId: ownerSeasons.id,
@@ -1511,7 +1525,11 @@ export async function getScheduleLuck(): Promise<ScheduleLuck[]> {
             isBye: scores.isBye,
           })
           .from(scores)
-          .where(and(eq(scores.seasonId, seasonId), lte(scores.week, regularSeasonWeeks))),
+          .where(and(
+            eq(scores.seasonId, seasonId),
+            lte(scores.week, regularSeasonWeeks),
+            eq(scores.isExhibition, false),
+          )),
       ]);
       return { seasonId, identities, standings, scoreRows };
     }),

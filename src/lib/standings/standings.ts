@@ -67,7 +67,7 @@ export function resolveMatchup(m: MatchupResult): Resolved | null {
 }
 
 function resolveOutcome(m: MatchupResult): Resolved | null {
-  if (!m.isFinal || m.isPlayoff) return null;
+  if (!m.isFinal || m.isPlayoff || m.isExhibition) return null;
 
   const homePoints = m.homePoints ?? 0;
   const awayPoints = m.awayPoints ?? 0;
