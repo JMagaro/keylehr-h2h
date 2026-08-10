@@ -30,9 +30,11 @@ import {
 } from './forfeit-derive';
 import { getSeasonRules, type SeasonRules } from '@/lib/rules/schema';
 import {
+  buildTiebreakerContext,
   computeConferenceSeeds,
   computeDivisionStandings,
   computeStandings,
+  rankStandings,
   type Conference,
   type Division,
   type MatchupResult,
@@ -253,13 +255,11 @@ export interface SeasonStandingRow extends StandingRow {
   division: Division;
 }
 
-/**
- * Compute the season's regular-season standings rows (one per owner), enriched with the
- * owner's identity. Unordered — use the seeding/tiebreaker helpers to rank.
- */
-export async function getSeasonStandings(seasonId: number): Promise<SeasonStandingRow[]> {
-  const { entries, results, rankingOptions } = await getSeasonStandingsData(seasonId);
-  const rows = computeStandings(entries, results, rankingOptions.byePointsFor);
+/** Attach owner identity to bare engine rows. */
+function enrichStandingRows(
+  rows: StandingRow[],
+  entries: OwnerEntry[],
+): SeasonStandingRow[] {
   const entryById = new Map(entries.map((e) => [e.ownerSeasonId, e]));
   return rows.map((r) => {
     const e = entryById.get(r.ownerSeasonId)!;
@@ -272,6 +272,54 @@ export async function getSeasonStandings(seasonId: number): Promise<SeasonStandi
       division: e.division,
     };
   });
+}
+
+/**
+ * Compute the season's regular-season standings rows (one per owner), enriched with the
+ * owner's identity. Unordered — use {@link getRankedSeasonStandings} or the seeding helpers
+ * to rank.
+ */
+export async function getSeasonStandings(seasonId: number): Promise<SeasonStandingRow[]> {
+  const { entries, results, rankingOptions } = await getSeasonStandingsData(seasonId);
+  return enrichStandingRows(
+    computeStandings(entries, results, rankingOptions.byePointsFor),
+    entries,
+  );
+}
+
+/** Ranked standings plus the two facts callers otherwise re-derive incorrectly. */
+export interface RankedSeasonStandings {
+  /** Best first, by the league's full tiebreaker chain. */
+  rows: SeasonStandingRow[];
+  /** Distinct regular-season weeks with at least one finalized matchup. */
+  weeksPlayed: number;
+  /** Owner-weeks that were missed lineups (`${ownerSeasonId}:${week}`). */
+  forfeitByOwnerWeek: ReadonlySet<string>;
+}
+
+/**
+ * The season's standings rows ORDERED by the league's full tiebreaker chain (win% →
+ * head-to-head dominance → Points For), best first.
+ *
+ * Exists because callers kept re-sorting `getSeasonStandings` with an ad-hoc
+ * winPct → PF → PA comparator, which silently drops the head-to-head step. That is how
+ * `/history` could crown one owner "Regular-season #1" while the playoff bracket on the same
+ * page — which does use the real chain — seeded a different owner first.
+ */
+export async function getRankedSeasonStandings(
+  seasonId: number,
+): Promise<RankedSeasonStandings> {
+  const { entries, results, rankingOptions, forfeitByOwnerWeek } =
+    await getSeasonStandingsData(seasonId);
+  const rows = computeStandings(entries, results, rankingOptions.byePointsFor);
+  const ctx = buildTiebreakerContext(rows, results);
+  return {
+    rows: enrichStandingRows(rankStandings(rows, ctx, rankingOptions.tiebreakers), entries),
+    // Distinct weeks that actually produced a finalized game — NOT `max(gamesPlayed)`, which
+    // is one lower for any season past the bye weeks (every owner sits out exactly one).
+    weeksPlayed: new Set(results.filter((r) => !r.isPlayoff && r.isFinal).map((r) => r.week)).size,
+    forfeitByOwnerWeek,
+  };
 }
 
 /** Compute the season's full 7-seed playoff field for both conferences. */

@@ -41,8 +41,10 @@ import {
 } from '@/db';
 
 import {
+  getRankedSeasonStandings,
   getSeasonOptions,
   getSeasonStandings,
+  getSeasonStandingsData,
   type SeasonStandingRow,
 } from '@/lib/standings/query';
 import { getSeasonRules } from '@/lib/rules/schema';
@@ -140,15 +142,17 @@ function holderFrom(id: OwnerIdentityRow): SeasonRecordHolder {
   };
 }
 
-/** Rank standings rows: winPct → PF → PA, returning the leader (or null). */
+/**
+ * The season leader.
+ *
+ * `rows` MUST already be ordered by {@link getRankedSeasonStandings}, i.e. by the league's
+ * real chain (win% → head-to-head dominance → Points For). This used to re-sort with a local
+ * winPct → PF → PA comparator, which silently skips the head-to-head step — so the season
+ * card could name one owner "Regular-season #1" while the playoff bracket on the same page,
+ * which does use the real chain, seeded someone else first.
+ */
 function topByStandings(rows: SeasonStandingRow[]): SeasonStandingRow | null {
-  if (rows.length === 0) return null;
-  const sorted = [...rows].sort((a, b) => {
-    if (b.winPct !== a.winPct) return b.winPct - a.winPct;
-    if (b.pointsFor !== a.pointsFor) return b.pointsFor - a.pointsFor;
-    return a.pointsAgainst - b.pointsAgainst;
-  });
-  return sorted[0] ?? null;
+  return rows[0] ?? null;
 }
 
 /**
@@ -185,11 +189,16 @@ export async function getSeasonHistory(): Promise<SeasonHistory[]> {
     validSeasons.map(async (season) => {
       const regularSeasonWeeks = regularWeeksBySeason.get(season.id) ?? 18;
 
-      const [identities, standings, scoreRows] = await Promise.all([
+      const [identities, ranked, scoreRows] = await Promise.all([
         loadOwnerIdentities(season.id),
-        getSeasonStandings(season.id),
+        getRankedSeasonStandings(season.id),
         db
-          .select({ ownerSeasonId: scores.ownerSeasonId, week: scores.week, dkPoints: scores.dkPoints })
+          .select({
+            ownerSeasonId: scores.ownerSeasonId,
+            week: scores.week,
+            dkPoints: scores.dkPoints,
+            isBye: scores.isBye,
+          })
           .from(scores)
           .where(and(
             eq(scores.seasonId, season.id),
@@ -198,9 +207,11 @@ export async function getSeasonHistory(): Promise<SeasonHistory[]> {
           )),
       ]);
 
+      const standings = ranked.rows;
       const standingByOwnerSeason = new Map(standings.map((s) => [s.ownerSeasonId, s]));
-      const gamesByOwner = standings.map((s) => s.gamesPlayed);
-      const weeks = gamesByOwner.length ? Math.max(...gamesByOwner) : 0;
+      // Distinct finalized weeks, not max(gamesPlayed) — the latter is one short for any
+      // season past the byes, since every owner sits out exactly one week.
+      const weeks = ranked.weeksPlayed;
 
       const championOwnerId = championBySeason.get(season.id);
       let topFinisher: SeasonHistory['topFinisher'] = null;
@@ -238,7 +249,7 @@ export async function getSeasonHistory(): Promise<SeasonHistory[]> {
       // Regular-season only (week <= regularSeasonWeeks).
       let highestWeek: SeasonHistory['highestWeek'] = null;
       for (const s of scoreRows) {
-        if (s.dkPoints === null) continue;
+        if (s.isBye || s.dkPoints === null) continue;
         const pts = Number(s.dkPoints);
         const id = identities.get(s.ownerSeasonId);
         if (!id) continue;
@@ -311,8 +322,8 @@ export async function getSeasonHistoryById(seasonId: number): Promise<SeasonHist
   const identities = await loadOwnerIdentities(seasonId);
   if (identities.size === 0) return null;
 
-  const [standings, championRow, seasonRulesRow] = await Promise.all([
-    getSeasonStandings(seasonId),
+  const [ranked, championRow, seasonRulesRow] = await Promise.all([
+    getRankedSeasonStandings(seasonId),
     db
       .select({ ownerId: seasonAwards.ownerId })
       .from(seasonAwards)
@@ -322,8 +333,9 @@ export async function getSeasonHistoryById(seasonId: number): Promise<SeasonHist
   ]);
 
   const regularSeasonWeeks = getSeasonRules(seasonRulesRow[0]?.rules).regularSeasonWeeks;
+  const standings = ranked.rows;
   const standingByOwnerSeason = new Map(standings.map((s) => [s.ownerSeasonId, s]));
-  const weeks = standings.length ? Math.max(...standings.map((s) => s.gamesPlayed)) : 0;
+  const weeks = ranked.weeksPlayed;
   const championOwnerId = championRow[0]?.ownerId ?? undefined;
 
   let topFinisher: SeasonHistory['topFinisher'] = null;
@@ -360,7 +372,12 @@ export async function getSeasonHistoryById(seasonId: number): Promise<SeasonHist
 
   // Regular-season only (week <= regularSeasonWeeks).
   const scoreRows = await db
-    .select({ ownerSeasonId: scores.ownerSeasonId, week: scores.week, dkPoints: scores.dkPoints })
+    .select({
+      ownerSeasonId: scores.ownerSeasonId,
+      week: scores.week,
+      dkPoints: scores.dkPoints,
+      isBye: scores.isBye,
+    })
     .from(scores)
     .where(and(
       eq(scores.seasonId, seasonId),
@@ -370,7 +387,7 @@ export async function getSeasonHistoryById(seasonId: number): Promise<SeasonHist
 
   let highestWeek: SeasonHistory['highestWeek'] = null;
   for (const s of scoreRows) {
-    if (s.dkPoints === null) continue;
+    if (s.isBye || s.dkPoints === null) continue;
     const pts = Number(s.dkPoints);
     const id = identities.get(s.ownerSeasonId);
     if (!id) continue;
@@ -1413,23 +1430,26 @@ export interface MissedSubmission {
 }
 
 /**
- * Counts weeks where each owner posted a 0-point score (missed lineup), across
- * all regular seasons. Byes and unscored weeks are excluded.
+ * Counts each owner's missed lineups across all seasons.
+ *
+ * Uses the SAME missed-lineup set the standings engine applies (schedule-derived, unioned
+ * with any manually flagged `isForfeit`) rather than counting every 0.00 score. Counting
+ * zeros over-reported: it swept in playoff-week zeros, owner-weeks with no matchup at all,
+ * and placeholder zeros written by the historical importers for weeks that were never
+ * played — so this table disagreed with the forfeit count on /my-team and with the
+ * auto-losses on /standings.
  */
 export async function getMissedSubmissions(): Promise<MissedSubmission[]> {
   const seasonOptions = await getSeasonOptions();
   const seasonsWithData = seasonOptions.map((s) => s.id);
   if (seasonsWithData.length === 0) return [];
 
-  const [scoreRows, osRows] = await Promise.all([
-    db
-      .select({ ownerSeasonId: scores.ownerSeasonId, dkPoints: scores.dkPoints })
-      .from(scores)
-      .where(and(
-        inArray(scores.seasonId, seasonsWithData),
-        eq(scores.isBye, false),
-        eq(scores.isExhibition, false),
-      )),
+  const [forfeitSets, osRows] = await Promise.all([
+    Promise.all(
+      seasonsWithData.map((id) =>
+        getSeasonStandingsData(id).then((d) => d.forfeitByOwnerWeek),
+      ),
+    ),
     db
       .select({
         ownerSeasonId: ownerSeasons.id,
@@ -1454,11 +1474,13 @@ export async function getMissedSubmissions(): Promise<MissedSubmission[]> {
   }
 
   const countByOwner = new Map<number, number>();
-  for (const s of scoreRows) {
-    if (s.dkPoints === null || Number(s.dkPoints) !== 0) continue;
-    const ownerId = osIdToOwnerId.get(s.ownerSeasonId);
-    if (ownerId === undefined) continue;
-    countByOwner.set(ownerId, (countByOwner.get(ownerId) ?? 0) + 1);
+  for (const forfeits of forfeitSets) {
+    for (const key of forfeits) {
+      const ownerSeasonId = Number(key.split(':')[0]);
+      const ownerId = osIdToOwnerId.get(ownerSeasonId);
+      if (ownerId === undefined) continue;
+      countByOwner.set(ownerId, (countByOwner.get(ownerId) ?? 0) + 1);
+    }
   }
 
   return [...countByOwner.entries()]
