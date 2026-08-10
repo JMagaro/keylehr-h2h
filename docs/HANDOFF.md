@@ -3,8 +3,8 @@
 A running "where things stand" doc so a fresh Claude/context window (or contributor) can pick up
 without re-deriving everything. Update the **Next up** and **Recent work** sections as you go.
 
-_Last updated: 2026-06-17 (tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary
-+ model performance tracker)._
+_Last updated: 2026-08-10 (preseason exhibition games; prior: tiebreaker fix + 2023/2024 playoffs +
+per-season owner names + DK salary + model performance tracker)._
 
 ---
 
@@ -15,13 +15,42 @@ _Last updated: 2026-06-17 (tiebreaker fix + 2023/2024 playoffs + per-season owne
   config file) · Drizzle + Neon Postgres (**HTTP driver** — every query is a network round-trip) ·
   NextAuth (commissioner login) · a Chrome extension for DraftKings sync.
 - **Verification:** `npm run verify` runs the whole gate (see below). It is **green** as of this
-  handoff (typecheck · lint · **~68 unit tests** · production build · ESPN health · engine invariants ·
+  handoff (typecheck · lint · **~69 unit tests** · production build · ESPN health · engine invariants ·
   2025 ground-truth replay).
 - **Seasons in DB:** 2023, 2024, 2025 fully imported (regular season **and** playoffs, validated
   against the sheets) + 2026 (upcoming; schedule synced, no owners yet). The rebuild is feature-complete
   vs the original Google-Sheets workflow.
 - **The DFS model:** owners are assigned an NFL team (drives the H2H *schedule* only); each week a score
   is the owner's **NFL-wide DraftKings lineup total**. Players were not tracked at all until Phase B.
+
+## ✅ DONE — preseason exhibition games (tracked, but never count)
+
+The league can now run a for-fun **preseason exhibition** game — real owner-vs-owner matchups + DK
+scores that show in the app but **never** count toward standings, playoff seeding, payouts, or
+all-time records.
+
+- **Data model (migration 0008):** an `isExhibition` boolean (NOT NULL, default `false`) on
+  `nfl_games`, `matchups`, **and** `scores`. Preseason rows live at a **separate week namespace** —
+  `week = 100 + preseasonWeek` (101/102/103) — so they can't collide with the regular season (1–18)
+  or playoffs (19–22) in any `(…, week)` unique index. Pure helpers live in
+  `src/lib/schedule/preseason.ts`: `PRESEASON_WEEK_BASE = 100`, `toExhibitionWeek` /
+  `fromExhibitionWeek` / `isExhibitionWeek` / `exhibitionWeekLabel`.
+- **Pipeline:** the ESPN client (`src/lib/espn/client.ts`) is now parameterized by `seasonType`
+  (regular = 2, preseason = 1 → exported `SEASON_TYPE_PRESEASON`). `src/lib/schedule/sync.ts` gained
+  `syncPreseasonWeek(seasonId, year, preseasonWeek)`, which pulls one preseason week as exhibition
+  games; `generateMatchups` carries the flag from the game onto the matchup; and the scores ingest
+  (`src/lib/scores/ingest.ts`) auto-flags scores written at an exhibition week.
+- **Isolation (the whole point):** every real-stats query excludes `isExhibition` —
+  `getSeasonStandingsData` (both the matchups and scores loads), `getHighestWeeklyScore`, My Team
+  (`src/lib/team/query.ts`), and the 4 all-time queries in `src/lib/history.ts`. Plus
+  defense-in-depth in the pure engine: `MatchupResult.isExhibition` + `resolveOutcome` /
+  `buildTiebreakerContext` skip exhibition rows, pinned by a `standings.test.ts` case proving a
+  200-point exhibition game is ignored.
+- **Surfaces:** a public **`/preseason`** page (`src/app/preseason/page.tsx`, read model
+  `src/lib/preseason/query.ts`) showing the exhibition matchups/scores/winners, labeled
+  "exhibition — doesn't count"; and an admin **`/admin/preseason`**
+  (`src/app/admin/(panel)/preseason/`) to pick the preseason week, sync + generate matchups, and
+  paste scores. Nav gained **Preseason** (public + admin). `npm run verify` 7/7.
 
 ## ✅ DONE — tiebreaker engine fixed to the league's real rule + 2023/2024 playoffs imported
 
@@ -175,7 +204,7 @@ Sleeper PPR as a free proxy).
   logic lives in `tiebreakers.ts` (`rankCohort`/`pickTop`); `tiebreaker_functions.R` is the original.
 - **DB migrations:** edit `src/db/schema.ts`, then `npm run db:generate` (writes SQL to `drizzle/`) and
   `npm run db:migrate` (applies to `DATABASE_URL`). Latest: 0006 `model_snapshots`, 0007
-  `owner_seasons.displayName`.
+  `owner_seasons.displayName`, 0008 `isExhibition` on `nfl_games`/`matchups`/`scores`.
 - **Owner names are per-season** via `coalesce(owner_seasons.displayName, owners.name)`; only all-time
   per-person views + the global owner-management pages use the bare `owners.name`. See the DONE section.
 - **Local `.next/* 2.*` files** are an iCloud/Finder duplication artifact on this machine; they make
@@ -185,6 +214,11 @@ Sleeper PPR as a free proxy).
 
 ## Recent work (newest first)
 
+- **Preseason exhibition games** (migration 0008 `isExhibition` on `nfl_games`/`matchups`/`scores`;
+  `src/lib/schedule/preseason.ts`; `syncPreseasonWeek`; `/preseason` + Admin → Preseason): tracked
+  owner-vs-owner preseason matchups + DK scores at a separate week namespace (`week = 100 +
+  preseasonWeek`) that **never** affect standings/seeding/playoffs/payouts/all-time. Every real-stats
+  query and the pure engine exclude `isExhibition`; unit-tested. See the DONE section.
 - **Per-season owner display names** (`owner_seasons.displayName`, migration 0007): season-scoped views
   coalesce it over the global `owners.name` so co-owner changes don't bleed across seasons (2024 champ
   now "Chris deMartino", not "…and Zack Herman"). See the DONE section.
@@ -258,6 +292,10 @@ season + playoffs) is in and validated.
 - DB adapter feeding the engine: `src/lib/standings/query.ts` (`getSeasonStandingsData` is the hub —
   returns `rankingOptions` + `playoffConfig`)
 - Per-team dashboard data: `src/lib/team/query.ts`
+- Preseason (exhibition) games: `src/lib/schedule/preseason.ts` (week-namespace helpers, pure),
+  `src/lib/schedule/sync.ts` `syncPreseasonWeek`, `src/lib/preseason/query.ts` (public read model);
+  routes `/preseason` (`src/app/preseason/`) + Admin → Preseason (`src/app/admin/(panel)/preseason/`).
+  Rows carry `isExhibition` (migration 0008) and are excluded from every stats query.
 - Player signals + lineup builder: `src/lib/players/{sleeper,espn-news,recommend,query}.ts`
   (`recommend.ts` is the pure engine; `query.ts` is the DB/schedule orchestration hub)
 - DraftKings salaries + cap optimizer: `src/lib/draftkings/{draftables,match}.ts`, `src/lib/players/optimize.ts`
@@ -269,7 +307,7 @@ season + playoffs) is in and validated.
   canonical 2025-and-earlier config; the admin preset button applies it)
 - DraftKings *scoring* ingest (leaderboard): `src/lib/scores/`, `src/app/api/ingest/draftkings/` · Chrome
   ext: `extension/` — distinct from DK *salaries* (`src/lib/draftkings/`, server-side, keyless)
-- Admin (commissioner): `src/app/admin/(panel)/` — Owners · Assignments · Schedule · Sync · Playoffs ·
-  **Slates** · **Models** · Settings · Users (all auth-gated)
+- Admin (commissioner): `src/app/admin/(panel)/` — Owners · Assignments · Schedule · **Preseason** ·
+  Sync · Playoffs · **Slates** · **Models** · Settings · Users (all auth-gated)
 - Season importers (idempotent): `scripts/import-season{,3}.ts` (regular season; `import-season3.ts` is
   the 2025 verify anchor — do NOT modify), `scripts/import-playoffs{,-2025}.ts` (brackets)

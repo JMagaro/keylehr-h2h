@@ -145,12 +145,23 @@ The real NFL schedule for a season, auto-pulled from ESPN. Drives matchups.
 | `kickoff`     | timestamptz   | Nullable (ESPN may emit TBD dates).                         |
 | `espnEventId` | varchar(32)   | ESPN event id, used for idempotent upserts.                 |
 | `status`      | varchar(32)   | Nullable, e.g. `STATUS_SCHEDULED`/`STATUS_FINAL`.           |
+| `isExhibition`| boolean       | NOT NULL, default `false`. `true` for a **preseason exhibition** game (see note below). |
 
 **Constraints/indexes:**
 
 - `nfl_games_season_week_home_uq` — UNIQUE `(seasonId, week, homeTeamId)`. **Upsert key** for the
   schedule sync.
 - `nfl_games_season_week_idx` — INDEX `(seasonId, week)` for week lookups.
+
+> **Preseason exhibition namespace.** Preseason games are pulled as exhibition rows (`isExhibition =
+> true`) and stored at an **offset week** — `week = 100 + preseasonWeek` (so 101/102/103) — so they
+> can never collide with the regular season (weeks 1–18) or playoffs (19–22) in any `(…, week)`
+> unique index. The `week` ↔ preseason-week mapping and detection live in
+> [`src/lib/schedule/preseason.ts`](../src/lib/schedule/preseason.ts) (`PRESEASON_WEEK_BASE = 100`,
+> `toExhibitionWeek` / `fromExhibitionWeek` / `isExhibitionWeek` / `exhibitionWeekLabel`). **Every
+> standings/stats query excludes `isExhibition` rows**, so a preseason game is fully tracked
+> (schedule, matchups, scores, a winner) yet never counts toward standings, seeding, playoffs,
+> payouts, or all-time records. The same flag carries onto the derived `matchups` and `scores` rows.
 
 ## `matchups`
 
@@ -168,6 +179,7 @@ the underlying NFL game.
 | `nflGameId`         | integer FK       | Nullable → `nfl_games.id` (link to source NFL game).   |
 | `status`            | `matchup_status` | NOT NULL, default `scheduled`.                         |
 | `isPlayoff`         | boolean          | NOT NULL, default `false`.                             |
+| `isExhibition`      | boolean          | NOT NULL, default `false`. Carried from the source `nfl_games` row; `true` for preseason exhibition matchups (stored at week `100 + preseasonWeek`, **excluded from all stats** — see `nfl_games`). |
 
 **Constraints/indexes:**
 
@@ -225,6 +237,7 @@ An owner's weekly DraftKings fantasy points. One row per `(ownerSeason, week)`.
 | `dkPoints`      | numeric(7,2)    | DK fantasy points (e.g. `241.68`). **Null until scored.**            |
 | `source`        | `score_source`  | NOT NULL, default `manual` (`auto` vs `manual`).                     |
 | `isBye`         | boolean         | NOT NULL, default `false`. True when the team is on bye (doesn't count). |
+| `isExhibition`  | boolean         | NOT NULL, default `false`. Auto-flagged for scores written at a preseason exhibition week (`100 + preseasonWeek`); **excluded from all stats** — see `nfl_games`. |
 | `dkContestId`   | varchar(64)     | Nullable.                                                            |
 | `dkEntryKey`    | varchar(64)     | Nullable. DK entry key for the matched leaderboard row.             |
 | `note`          | text            | Nullable.                                                           |

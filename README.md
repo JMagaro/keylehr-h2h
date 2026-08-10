@@ -129,9 +129,10 @@ DailyFantasy/
 │  │  ├─ schema.ts              # The data model (single source of truth)
 │  │  └─ seed/                  # Seed data: 32 NFL teams + current season
 │  └─ lib/
-│     ├─ espn/                  # ESPN scoreboard client + types
-│     ├─ schedule/              # syncSeasonSchedule → upserts nfl_games
+│     ├─ espn/                  # ESPN scoreboard client + types (regular + preseason seasonType)
+│     ├─ schedule/              # syncSeasonSchedule / syncPreseasonWeek → upserts nfl_games; preseason.ts week-namespace helpers
 │     ├─ matchups/              # generateMatchups → derives matchups from nfl_games
+│     ├─ preseason/             # Public read model for the /preseason exhibition page
 │     ├─ standings/             # Pure standings/seeding/tiebreaker engine + types
 │     ├─ playoffs/              # Bracket service (generate/advance/read)
 │     ├─ rules/                 # Per-season rules schema + defaults (seasons.rules)
@@ -148,12 +149,13 @@ DailyFantasy/
 | Phase  | Scope                                                                  | Status                                                                                          |
 | ------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | **P0** | Scaffold + deploy (Next 16, Tailwind v4, Vercel)                      | **Done.** Deployed on Vercel, auto-deploy from `main`; KeyLehr branding + landing dashboard.    |
-| **P1** | Data model + admin panel + schedule auto-pull + matchup generation    | **Done.** Schema, seed, ESPN sync (batched upserts), matchup generation, and the commissioner admin panel (assignments, owners, users, settings, schedule, playoffs, sync, data-status) with NextAuth login. |
-| **P2** | Public pages                                                          | **Done.** Dashboard, Standings, Playoffs (picture + odds chart + bracket), History, **Rules (rules-driven)**, and the **per-team My Team dashboard**. Mobile-friendly. |
+| **P1** | Data model + admin panel + schedule auto-pull + matchup generation    | **Done.** Schema, seed, ESPN sync (batched upserts), matchup generation, and the commissioner admin panel (assignments, owners, users, settings, schedule, **preseason**, playoffs, sync, data-status) with NextAuth login. |
+| **P2** | Public pages                                                          | **Done.** Dashboard, Standings, Playoffs (picture + odds chart + bracket), History, **Rules (rules-driven)**, the **per-team My Team dashboard**, and the **Preseason** exhibition page. Mobile-friendly. |
 | **P3** | DraftKings scoring pipeline + manual fallback                        | **Done.** Ingest API + the **Chrome extension** (live sync) feed `scores`; standings/seeding honor the season's configured rules. |
 | **P4** | Playoffs / history                                                    | **Done.** Config-driven seeding + bracket, history/all-time pages, playoff-odds Monte-Carlo.    |
 | **P5** | Migrate prior season(s) from the Google Sheet                         | **Done for 2023–2025** (regular season **and** playoff brackets) — `import-season3.ts` (2025, the verify anchor) + the generic `import-season.ts` / `import-playoffs.ts`. Each validates against the published sheets. |
 | **P6** | My Team Phase B — lineup builder + player news                        | **Done.** Free Sleeper/ESPN signals, 3 risk models, **DraftKings salary + $50k cap optimization**, a player-news strip, and a **model-performance tracker** (Admin → Models) that the models will train into ML v1.0 from. |
+| **P7** | Preseason exhibition games                                            | **Done.** Optional for-fun preseason game — owner-vs-owner matchups + DK scores at a separate week namespace (`week = 100 + preseasonWeek`), surfaced on the public **`/preseason`** page and driven from **Admin → Preseason**. Tracked in the app but **never** counted toward standings, seeding, playoffs, payouts, or all-time records. |
 | **Next** | —                                                                   | Rebuild is feature-complete vs the Sheets workflow; no task queued. See [`docs/HANDOFF.md`](docs/HANDOFF.md). |
 
 ## Documentation
