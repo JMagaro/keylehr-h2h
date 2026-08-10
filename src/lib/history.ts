@@ -15,6 +15,15 @@
  * Numeric `numeric(7,2)` columns come back from the driver as strings; we convert
  * with `Number` exactly once, here.
  *
+ * !! EXHIBITION FILTER — REQUIRED ON EVERY NEW QUERY !!
+ * Preseason exhibition games live in `scores`/`matchups` alongside real ones (see
+ * `src/lib/schedule/preseason.ts`) and must never reach an all-time record. There is
+ * no schema-level guard, so EVERY read of `scores` or `matchups` in this module adds
+ * `eq(scores.isExhibition, false)` / `eq(matchups.isExhibition, false)`. If you add a
+ * leaderboard here and forget it, preseason blowouts silently become league records.
+ * To audit: list every `scores`/`matchups` select in this file and check each one's
+ * `where` carries the flag.
+ *
  * This module imports `@/db` and must only be used from server-side code.
  */
 import { and, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';

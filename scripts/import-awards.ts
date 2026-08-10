@@ -124,10 +124,13 @@ async function main() {
     }
 
     // --- Scores for this season (real games only) ---
+    // Preseason exhibition scores must never reach a payout: the weekly/season
+    // highs are already week-capped below, but "most points" sums every row, so
+    // the flag has to be excluded here at the source.
     const scoreRows = await db
       .select({ ownerSeasonId: scores.ownerSeasonId, week: scores.week, dkPoints: scores.dkPoints, isBye: scores.isBye })
       .from(scores)
-      .where(eq(scores.seasonId, seasonId));
+      .where(and(eq(scores.seasonId, seasonId), eq(scores.isExhibition, false)));
 
     type Entry = { ownerSeasonId: number; points: number };
     const byWeek = new Map<number, Entry[]>();

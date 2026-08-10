@@ -89,7 +89,15 @@ One row per league season (mirrors an NFL season/year).
 | `regularSeasonWeeks` | integer        | NOT NULL, default `18`.                                 |
 | `currentWeek`        | integer        | NOT NULL, default `1`. Drives "live" views.             |
 | `entryFeeCents`      | integer        | NOT NULL, default `15500` ($155), stored in **cents**.  |
+| `rules`              | jsonb          | Nullable. Per-season, editable rules (tiebreaker order, playoff structure, bye & missed-lineup handling, payouts). See note below. |
 | `createdAt`          | timestamptz    | NOT NULL, default `now()`.                              |
+
+> **`seasons.rules` is validated, not free-form.** The schema and every default live in
+> [`src/lib/rules/schema.ts`](../src/lib/rules/schema.ts) (`seasonRulesSchema`,
+> `DEFAULT_SEASON_RULES` = the canonical 2025-and-earlier config) — treat that file as the source of
+> truth rather than duplicating the key list here. Null or missing keys fall back to the defaults, so
+> a season with `rules = NULL` behaves exactly like `DEFAULT_SEASON_RULES`. The values are threaded
+> into the pure engine by `getSeasonStandingsData()`; Admin → Settings edits them.
 
 **Children (`onDelete: cascade` from season):** `owner_seasons`, `nfl_games`, `matchups`,
 `weekly_contests`, `scores`, `score_import_runs`, `season_awards`, `playoff_matchups`.
@@ -162,6 +170,11 @@ The real NFL schedule for a season, auto-pulled from ESPN. Drives matchups.
 > standings/stats query excludes `isExhibition` rows**, so a preseason game is fully tracked
 > (schedule, matchups, scores, a winner) yet never counts toward standings, seeding, playoffs,
 > payouts, or all-time records. The same flag carries onto the derived `matchups` and `scores` rows.
+>
+> **If you add a query that reads `scores` or `matchups` for standings or all-time stats, you must
+> filter it** — `eq(scores.isExhibition, false)` / `eq(matchups.isExhibition, false)` — or preseason
+> games leak into the records. The exclusion is per-query, not enforced by the schema, so it is easy
+> to miss on a new leaderboard (`src/lib/history.ts` is the usual place).
 
 ## `matchups`
 

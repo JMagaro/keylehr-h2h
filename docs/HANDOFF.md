@@ -3,19 +3,22 @@
 A running "where things stand" doc so a fresh Claude/context window (or contributor) can pick up
 without re-deriving everything. Update the **Next up** and **Recent work** sections as you go.
 
-_Last updated: 2026-08-10 (preseason exhibition games; prior: tiebreaker fix + 2023/2024 playoffs +
+_Last updated: 2026-08-10 (preseason exhibition games, rebased onto origin's History / Rules /
+Cohen's Corner work — **local, not yet pushed**; prior: tiebreaker fix + 2023/2024 playoffs +
 per-season owner names + DK salary + model performance tracker)._
 
 ---
 
 ## Snapshot
 
-- **Live app:** Vercel (`keylehr-h2h.vercel.app`), auto-deploys from `main`. Latest work is pushed.
+- **Live app:** Vercel (`keylehr-h2h.vercel.app`), auto-deploys from `main`. **The two preseason
+  exhibition commits (`77991fb` code, `07647b4` docs) are rebased onto `origin/main` but NOT pushed
+  yet**, so they are not deployed. Everything before them is live.
 - **Stack:** Next.js 16.2.9 (App Router, Turbopack) · React 19 · Tailwind v4 (CSS `@theme`, no
   config file) · Drizzle + Neon Postgres (**HTTP driver** — every query is a network round-trip) ·
   NextAuth (commissioner login) · a Chrome extension for DraftKings sync.
 - **Verification:** `npm run verify` runs the whole gate (see below). It is **green** as of this
-  handoff (typecheck · lint · **~69 unit tests** · production build · ESPN health · engine invariants ·
+  handoff (typecheck · lint · **72 unit tests** · production build · ESPN health · engine invariants ·
   2025 ground-truth replay).
 - **Seasons in DB:** 2023, 2024, 2025 fully imported (regular season **and** playoffs, validated
   against the sheets) + 2026 (upcoming; schedule synced, no owners yet). The rebuild is feature-complete
@@ -42,15 +45,30 @@ all-time records.
   (`src/lib/scores/ingest.ts`) auto-flags scores written at an exhibition week.
 - **Isolation (the whole point):** every real-stats query excludes `isExhibition` —
   `getSeasonStandingsData` (both the matchups and scores loads), `getHighestWeeklyScore`, My Team
-  (`src/lib/team/query.ts`), and the 4 all-time queries in `src/lib/history.ts`. Plus
-  defense-in-depth in the pure engine: `MatchupResult.isExhibition` + `resolveOutcome` /
-  `buildTiebreakerContext` skip exhibition rows, pinned by a `standings.test.ts` case proving a
-  200-point exhibition game is ignored.
+  (`src/lib/team/query.ts`), and **every query in `src/lib/history.ts` that reads `scores` or
+  `matchups`** (season history + per-season detail, rivalries, all-time leaders, weekly highs, game
+  extremes, streaks, missed submissions, schedule luck). Plus defense-in-depth in the pure engine:
+  `MatchupResult.isExhibition` + `resolveOutcome` / `buildTiebreakerContext` skip exhibition rows,
+  pinned by a `standings.test.ts` case proving a 200-point exhibition game is ignored.
+- **Maintenance rule — read this before adding an all-time/history query.** Any query that reads
+  `scores` or `matchups` for cross-season stats **must** add `eq(scores.isExhibition, false)` /
+  `eq(matchups.isExhibition, false)`, or preseason games silently leak into all-time records. This
+  is not hypothetical: rebasing this work onto origin's History overhaul brought in four new
+  functions that would have leaked — `getGameExtremes` (biggest blowout / closest game),
+  `getStreakLeaders` (win & loss streaks), `getMissedSubmissions` (missed-lineup counts), and
+  `getScheduleLuck` — and each had the filter added. To audit, list every `scores`/`matchups` select
+  in the file and confirm each one's `where` carries the flag; the module header comment in
+  `history.ts` repeats this rule where someone adding a query will actually see it.
+  ```
+  grep -n 'from(scores)\|from(matchups)' src/lib/history.ts   # every hit needs an isExhibition filter
+  ```
 - **Surfaces:** a public **`/preseason`** page (`src/app/preseason/page.tsx`, read model
   `src/lib/preseason/query.ts`) showing the exhibition matchups/scores/winners, labeled
   "exhibition — doesn't count"; and an admin **`/admin/preseason`**
   (`src/app/admin/(panel)/preseason/`) to pick the preseason week, sync + generate matchups, and
-  paste scores. Nav gained **Preseason** (public + admin). `npm run verify` 7/7.
+  paste scores. Nav gained **Preseason** (public + admin) — after origin's nav refresh the public
+  order in `src/components/nav-links.ts` is Dashboard · My Team · Standings · Playoffs ·
+  **Preseason** · Lineup Builder · Cohen's Corner · History · Rules. `npm run verify` 7/7.
 
 ## ✅ DONE — tiebreaker engine fixed to the league's real rule + 2023/2024 playoffs imported
 
@@ -147,7 +165,8 @@ UI: `PlayerNewsStrip` (spotlight / fade risks / ESPN news + builder CTA) is on `
 driven + server-rendered). Shared presentational `PlayerCard`. Nav gained **Lineup Builder** (and the
 home hero + Explore hub link to it); the nav now uses longest-prefix active matching so
 `/my-team/builder` doesn't also light up `/my-team`, and the desktop bar switches to the hamburger
-below `lg` (7 items). Verified: `npm run verify` 7/7 (54 unit tests).
+below `lg` (7 items at the time; **9 today** — Preseason and Cohen's Corner were added since).
+Verified at the time: `npm run verify` 7/7 (54 unit tests).
 
 **DK salary + $50k cap is now DONE** (`src/lib/draftkings/{draftables,match}.ts`, `optimize.ts`): the
 builder's suggested lineup is a cap-valid DK Classic roster. Salaries come from DK's free, keyless
@@ -219,6 +238,23 @@ Sleeper PPR as a free proxy).
   owner-vs-owner preseason matchups + DK scores at a separate week namespace (`week = 100 +
   preseasonWeek`) that **never** affect standings/seeding/playoffs/payouts/all-time. Every real-stats
   query and the pure engine exclude `isExhibition`; unit-tested. See the DONE section.
+  **Now rebased onto origin's History / Rules / Cohen's Corner work** — the merge point was
+  `src/lib/history.ts`, whose new all-time analytics all had to pick up the exhibition filter (see
+  the maintenance rule in the DONE section). `npm run verify` is 7/7 post-rebase. **Local only —
+  not pushed, not deployed.**
+- **History / Rules / Cohen's Corner (upstream, `origin/main`)** — landed while the preseason branch
+  was out; **none of it is written up in these docs yet** (see "Known minor follow-ups"):
+  - `/history` overhaul — per-season detail pages (`/history/[year]`), a head-to-head page
+    (`/history/head-to-head`) with per-opponent drill-down, owner trends, and an all-time
+    "Records & stats" section (game extremes, streaks, weekly highs, schedule luck, net earnings)
+    with tie-aware ranks. Backed by the new analytics in `src/lib/history.ts` and a
+    `season_awards` backfill (`npm run import:awards`).
+  - Rules overhaul (`/rules`) — tiebreakers, missed-lineup penalties, DK scoring card, governance
+    copy — plus a new `missedLineup.opponentScores` option **`league_median`** wired through the
+    engine (`src/lib/rules/schema.ts` → `src/lib/standings/query.ts`).
+  - `/cohens-corner` placeholder page (+ nav + Explore card), a branded 404
+    (`src/app/not-found.tsx`) and route error boundary (`src/app/error.tsx`), a dashboard pre-season
+    module for un-started seasons, and a nav/brand refresh.
 - **Per-season owner display names** (`owner_seasons.displayName`, migration 0007): season-scoped views
   coalesce it over the global `owners.name` so co-owner changes don't bleed across seasons (2024 champ
   now "Chris deMartino", not "…and Zack Herman"). See the DONE section.
@@ -270,6 +306,11 @@ Sleeper PPR as a free proxy).
 
 ## Known minor follow-ups (not blocking)
 
+- **The upstream History / Rules / Cohen's Corner work is under-documented.** Those 37 commits
+  touched no docs at all: `README.md` (page + npm-script lists), `docs/DATA_MODEL.md`
+  (`seasons.rules`, and how `season_awards` is now populated), and `docs/ARCHITECTURE.md` (the
+  History analytics module is not described anywhere) still predate them. Only the parts that
+  intersect the preseason feature have been corrected. Worth a dedicated docs pass.
 - Dashboard **"Top of the standings"** mini-table (`getTopStandings`) still uses a simple
   win%→PF→PA sort, not the full configured tiebreaker chain. Fine for a glance; wire if desired.
 - `regularSeasonWeeks` is now edited only on the admin **Season** card (the column the engine
@@ -277,9 +318,11 @@ Sleeper PPR as a free proxy).
 
 ## Start here (fresh session)
 
-The rebuild is **feature-complete** vs the old Google-Sheets workflow — there is **no specific task
-queued**. Read this doc + the linked memories, run `npm run verify` (must be 7/7) before any push, and
-pick up from whatever the user asks. The most likely future asks: training the lineup models into ML
+The rebuild is **feature-complete** vs the old Google-Sheets workflow. One thing is genuinely
+outstanding: **the two preseason-exhibition commits on `main` (`77991fb`, `07647b4`) are rebased onto
+`origin/main` but not pushed**, so they aren't deployed — confirm with `git log origin/main..main`.
+Otherwise there is no specific task queued. Read this doc + the linked memories, run `npm run verify`
+(must be 7/7) before any push, and pick up from whatever the user asks. The most likely future asks: training the lineup models into ML
 `v1.0` once the 2026 season produces graded weeks (the tracker collects the data), the My Team
 "team-builder wizard Phase B+" follow-ups noted above, or 2026 in-season operations (the scheduled
 `keylehr-verify` routine + DK score syncing). Importers are idempotent; data for 2023–2025 (regular
@@ -292,6 +335,10 @@ season + playoffs) is in and validated.
 - DB adapter feeding the engine: `src/lib/standings/query.ts` (`getSeasonStandingsData` is the hub —
   returns `rankingOptions` + `playoffConfig`)
 - Per-team dashboard data: `src/lib/team/query.ts`
+- History & all-time analytics (server-only): `src/lib/history.ts` — powers `/history`,
+  `/history/[year]`, `/history/head-to-head`. Aggregates by PERSON (`owners.id`), not per-season
+  owner. **Every query here that touches `scores`/`matchups` must filter `isExhibition` —
+  see the maintenance rule in the preseason DONE section.**
 - Preseason (exhibition) games: `src/lib/schedule/preseason.ts` (week-namespace helpers, pure),
   `src/lib/schedule/sync.ts` `syncPreseasonWeek`, `src/lib/preseason/query.ts` (public read model);
   routes `/preseason` (`src/app/preseason/`) + Admin → Preseason (`src/app/admin/(panel)/preseason/`).

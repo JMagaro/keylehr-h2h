@@ -103,13 +103,18 @@ nfl_games        (the real NFL schedule for the season)
 matchups         (owner-vs-owner head-to-head schedule)
 ```
 
+> Preseason **exhibition** games use the same two stages via `syncPreseasonWeek` (one week at a
+> time, `seasontype=1`, rows flagged `isExhibition`). See below and `docs/DATA_MODEL.md`.
+
 ### `src/lib/espn/`
 
 - **`client.ts`** — a thin, typed wrapper over ESPN's public site scoreboard endpoint
-  (`/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=N&dates=YYYY`). It fetches
-  only the **regular-season schedule** (home/away team ids, kickoff, status) and deliberately
-  ignores ESPN scores, since scoring comes from DraftKings. Exposes `fetchWeekGames` and
-  `fetchSeasonSchedule`, plus `buildScoreboardUrl` (exported for testing) and an `EspnFetchError`.
+  (`/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=N&dates=YYYY`). It fetches the
+  **schedule only** (home/away team ids, kickoff, status) and deliberately ignores ESPN scores,
+  since scoring comes from DraftKings. Exposes `fetchWeekGames` and `fetchSeasonSchedule`, plus
+  `buildScoreboardUrl` (exported for testing) and an `EspnFetchError`. All three take an optional
+  `seasonType` that defaults to the regular season (`2`); pass the exported
+  `SEASON_TYPE_PRESEASON` (`1`) to pull preseason weeks — see `syncPreseasonWeek` below.
   Defensive parsing skips unusable events instead of crashing. Uses `fetch(..., { next: { revalidate: 3600 } })`
   so the schedule is re-validated at most hourly (the `next` option is harmlessly ignored under
   plain Node/`tsx`).
@@ -128,6 +133,12 @@ it updates the volatile fields (`away_team_id`, `kickoff`, `espn_event_id`, `sta
 whose teams can't be mapped are skipped and reported in `unmappedEspnTeamIds` (which should be
 empty if the team seed data is current).
 
+`syncPreseasonWeek(seasonId, year, preseasonWeek)` is the exhibition counterpart: it pulls **one**
+NFL preseason week (`seasontype=1`) and writes it to `nfl_games` with `isExhibition: true`, stored
+at the offset week `100 + preseasonWeek` (`src/lib/schedule/preseason.ts`) so it can never collide
+with the regular season (1–18) or playoffs (19–22) on the same unique index. Same conflict key and
+idempotency as the regular sync. Driven from **Admin → Preseason**, not from `schedule:pull`.
+
 ### `src/lib/matchups/generate.ts`
 
 `generateMatchups(seasonId)` maps each season's `owner_seasons` to NFL teams, then converts each
@@ -135,8 +146,9 @@ empty if the team seed data is current).
 the NFL home/away orientation. Idempotency key: `matchups_season_week_home_uq` on
 `(season_id, week, home_owner_season_id)`. It returns a summary of `matchupsUpserted`, `byes`
 (assigned owners with no game that week), and `gamesSkippedUnassigned` (games where a team isn't
-yet claimed — expected until all 32 teams are assigned). It generates **regular-season** matchups
-only; playoff brackets are handled separately.
+yet claimed — expected until all 32 teams are assigned). It processes every `nfl_games` row for the
+season, **carrying `isExhibition` from the game onto the matchup**, so it covers preseason
+exhibition weeks as well as the regular season. Playoff brackets are handled separately.
 
 ### Orchestration
 

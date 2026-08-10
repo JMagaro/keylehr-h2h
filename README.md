@@ -100,6 +100,7 @@ npm run dev             # http://localhost:3000
 | `npm run verify:ground-truth` | `tsx scripts/import-season3.ts` | Replay the 2025 season vs the league's published standings.        |
 | `npm run import:season`  | `tsx scripts/import-season.ts` | Backfill a season's regular season from its Google Sheet (`--year --sheet --name`). |
 | `npm run import:playoffs`| `tsx scripts/import-playoffs.ts`| Backfill a season's playoff bracket from its sheet (`--season --sheet`).             |
+| `npm run import:awards`  | `tsx scripts/import-awards.ts` | Recompute `season_awards` (champion, runner-up, weekly/season high, most points) + payouts. Add `-- --dry-run` to preview. |
 | `npm run models:snapshot`| `tsx scripts/models.ts --action=snapshot` | Snapshot the 3 lineup models for a week (`--season --week`).               |
 | `npm run models:grade`   | `tsx scripts/models.ts --action=grade` | Grade a week's model snapshots vs actual player results.                      |
 
@@ -115,6 +116,7 @@ DailyFantasy/
 │  ├─ 0000_*.sql
 │  └─ meta/
 ├─ docs/                        # Project documentation (this folder)
+│  ├─ HANDOFF.md                # Current state + gotchas — start here
 │  ├─ ARCHITECTURE.md
 │  ├─ DATA_MODEL.md
 │  ├─ DRAFTKINGS.md
@@ -138,6 +140,7 @@ DailyFantasy/
 │     ├─ rules/                 # Per-season rules schema + defaults (seasons.rules)
 │     ├─ players/               # Lineup builder: Sleeper/ESPN signals, recommend, optimize, models, performance
 │     ├─ draftkings/            # DK draftables (salaries) client + Sleeper matcher
+│     ├─ history.ts             # All-time analytics for /history (excludes exhibition rows)
 │     └─ utils.ts               # cn(), formatPoints(), formatMoney(), winPct()
 ├─ drizzle.config.ts
 ├─ .env.example
@@ -150,7 +153,7 @@ DailyFantasy/
 | ------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | **P0** | Scaffold + deploy (Next 16, Tailwind v4, Vercel)                      | **Done.** Deployed on Vercel, auto-deploy from `main`; KeyLehr branding + landing dashboard.    |
 | **P1** | Data model + admin panel + schedule auto-pull + matchup generation    | **Done.** Schema, seed, ESPN sync (batched upserts), matchup generation, and the commissioner admin panel (assignments, owners, users, settings, schedule, **preseason**, playoffs, sync, data-status) with NextAuth login. |
-| **P2** | Public pages                                                          | **Done.** Dashboard, Standings, Playoffs (picture + odds chart + bracket), History, **Rules (rules-driven)**, the **per-team My Team dashboard**, and the **Preseason** exhibition page. Mobile-friendly. |
+| **P2** | Public pages                                                          | **Done.** Dashboard, Standings, Playoffs (picture + odds chart + bracket), History (all-time records, per-season pages, head-to-head), **Rules (rules-driven)**, Cohen's Corner, the **per-team My Team dashboard**, and the **Preseason** exhibition page. Mobile-friendly. |
 | **P3** | DraftKings scoring pipeline + manual fallback                        | **Done.** Ingest API + the **Chrome extension** (live sync) feed `scores`; standings/seeding honor the season's configured rules. |
 | **P4** | Playoffs / history                                                    | **Done.** Config-driven seeding + bracket, history/all-time pages, playoff-odds Monte-Carlo.    |
 | **P5** | Migrate prior season(s) from the Google Sheet                         | **Done for 2023–2025** (regular season **and** playoff brackets) — `import-season3.ts` (2025, the verify anchor) + the generic `import-season.ts` / `import-playoffs.ts`. Each validates against the published sheets. |
