@@ -21,8 +21,12 @@ per-season owner names + DK salary + model performance tracker)._
   handoff (typecheck · lint · **72 unit tests** · production build · ESPN health · engine invariants ·
   2025 ground-truth replay).
 - **Seasons in DB:** 2023, 2024, 2025 fully imported (regular season **and** playoffs, validated
-  against the sheets) + 2026 (upcoming; schedule synced, no owners yet). The rebuild is feature-complete
-  vs the original Google-Sheets workflow.
+  against the sheets) + 2026 (upcoming; schedule synced, **all 32 owners assigned**, and 16 preseason
+  **exhibition** matchups generated at week 102 — no exhibition scores ingested yet). The rebuild is
+  feature-complete vs the original Google-Sheets workflow.
+  Verified against the prod DB on 2026-08-10: 2023/2024/2025 carry **zero** exhibition rows, which is
+  why adding the `isExhibition` exclusions can't move any historical number (the 2025 ground-truth
+  replay is unchanged by them).
 - **The DFS model:** owners are assigned an NFL team (drives the H2H *schedule* only); each week a score
   is the owner's **NFL-wide DraftKings lineup total**. Players were not tracked at all until Phase B.
 
