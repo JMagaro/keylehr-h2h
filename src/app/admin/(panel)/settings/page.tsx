@@ -118,7 +118,11 @@ export default async function SettingsPage() {
                 Format
               </h3>
               <dl className="divide-y divide-border">
-                <SummaryRow label="Regular-season weeks" value={rules.regularSeasonWeeks} />
+                {/* The canonical column the scoring engine reads — NOT
+                    `rules.regularSeasonWeeks`, which is a mirror this page's own Season card
+                    does not write, so the two drift and this summary would contradict the
+                    editor directly above it. */}
+                <SummaryRow label="Regular-season weeks" value={season.regularSeasonWeeks} />
                 <SummaryRow
                   label="Tiebreakers"
                   value={rules.tiebreakers.map((t) => TIEBREAKER_LABELS[t]).join(' → ')}

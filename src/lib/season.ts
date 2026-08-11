@@ -16,7 +16,12 @@ export async function getCurrentSeason(): Promise<Season | null> {
     .from(seasons)
     .orderBy(
       sql`case ${seasons.status} when 'active' then 0 when 'upcoming' then 1 else 2 end`,
-      seasons.year,
+      // Within a bucket the direction differs: for upcoming seasons we want the SOONEST, but
+      // for completed ones the MOST RECENT. A plain ascending `year` gave the soonest for
+      // both — i.e. the oldest completed season, contradicting the contract above. Latent
+      // while any season is active or upcoming; it would surface the first time every
+      // season is completed.
+      sql`case when ${seasons.status} = 'completed' then -${seasons.year} else ${seasons.year} end`,
     )
     .limit(1);
   return rows[0] ?? null;

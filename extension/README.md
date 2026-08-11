@@ -145,9 +145,10 @@ auto-fills (see below) — no manual Contest ID needed.
 
 ### Preseason (exhibition) syncs
 
-**First**, sync the schedule in **Admin → Preseason** so the exhibition matchups exist —
-otherwise every owner is written as a bye (byes come from the `matchups` table). The paste form
-on that page remains as a fallback.
+**First**, sync the schedule in **Admin → Preseason** so the exhibition matchups exist — otherwise
+the scores land with nothing to score them against and `/preseason` shows no games. (Byes are not
+a hazard here: exhibition weeks never produce one.) The paste form on that page remains as a
+fallback.
 
 Then tick **Preseason** in the popup. The Week input now means *preseason week* and accepts
 **1–3**; the extension POSTs it offset into the exhibition namespace (`100 + week` →

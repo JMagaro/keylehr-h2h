@@ -17,9 +17,9 @@ Components, Server Actions, Route Handlers, and `tsx` CLI scripts).
    (public + admin)       │                                               │
                           │  App Router                                   │
                           │   ├─ Server Components (read DB directly)      │
-                          │   ├─ Server Actions     (admin mutations)     │ Planned (P1/P2)
+                          │   ├─ Server Actions     (admin mutations)     │
                           │   ├─ Route Handlers     (/api/...)            │
-                          │   └─ middleware.ts      (/admin auth gate)    │ Planned (P1)
+                          │   └─ middleware.ts      (/admin auth gate)    │
                           │              │                                │
                           │              ▼                                │
                           │   src/db (Drizzle client, Node runtime)       │
@@ -32,26 +32,38 @@ Components, Server Actions, Route Handlers, and `tsx` CLI scripts).
       External systems
       ────────────────
       ESPN scoreboard API  ──▶ src/lib/espn ──▶ src/lib/schedule ──▶ nfl_games
-      DraftKings API       ──▶ src/lib/dk (Planned P3) ───────────▶ scores
-      Vercel Cron          ──▶ /api/cron/pull (Planned P3)
+      DraftKings leaderboard ──▶ extension/ ──▶ POST /api/ingest/draftkings
+                                            ──▶ src/lib/scores/ingest ──▶ scores
+      DraftKings draftables  ──▶ src/lib/draftkings (salaries, server-side, keyless)
+      Sleeper + ESPN news    ──▶ src/lib/players   (lineup builder signals)
 ```
+
+All four App Router surfaces ship today. See [§2](#2-request-flow) for the counts.
 
 ## 2. Request flow
 
-- **Public pages (Planned, Phase 2):** rendered as async Server Components that query Postgres
-  through the Drizzle client and render server-side. Because `cacheComponents` is off, live
-  pages opt into dynamic rendering (`export const dynamic = 'force-dynamic'` or
-  `export const revalidate = N`) so they reflect the latest scores.
-- **Admin pages (Planned, Phase 1):** gated behind Auth.js. CRUD operations run as **Server
-  Actions** that mutate the database and call `revalidatePath()`.
-- **Route handlers (`src/app/api/.../route.ts`):** used for the cron-triggered DraftKings pull
-  (Planned, Phase 3) and any JSON endpoints. GET handlers are **not** cached by default in
+- **Public pages:** rendered as async Server Components that query Postgres through the Drizzle
+  client and render server-side. Because `cacheComponents` is off, live pages opt into dynamic
+  rendering (`export const dynamic = 'force-dynamic'` or `export const revalidate = N`) so they
+  reflect the latest scores. Shipped: the dashboard, Standings, Playoffs, Preseason, My Team
+  (plus the lineup Builder), History (index, per-season, head-to-head), Rules, and Cohen's Corner.
+- **Admin pages (`src/app/admin/(panel)/`):** gated behind Auth.js. CRUD runs as **Server
+  Actions** that mutate the database and call `revalidatePath()`. Shipped: the dashboard, Owners
+  (list + detail), Assignments, Schedule, Preseason, Sync, Playoffs, Slates, Models, Settings and
+  Users, plus the `/admin/login` route.
+- **Route handlers (`src/app/api/.../route.ts`):** `POST /api/ingest/draftkings` (the extension's
+  score ingest, bearer `INGEST_TOKEN`), `GET /api/seasons` (the extension's season picker /
+  connection probe), and the Auth.js catch-all. GET handlers are **not** cached by default in
   Next 16.
+- **`middleware.ts`:** gates `/admin/*` (except `/admin/login`) — see [§6](#6-auth--admin-model-implemented).
 - **CLI scripts (`scripts/`, `src/db/seed/`):** run via `tsx` outside the request lifecycle
-  for seeding and the schedule/matchup pull. They load env through `dotenv/config`.
+  for seeding, the schedule/matchup pull, the season/playoff/award importers, the odds
+  simulation, and the verification gate. They load env through `@/load-env` (`dotenv`).
 
-Today, only the scaffolded landing page (`src/app/page.tsx`) is served; the public/admin
-surfaces above are forthcoming.
+Request-scoped caching: `standings/query.ts` exports `*Cached` variants (React `cache()`) for
+the pages that fan out over the same season repeatedly — `/history` in particular. **App code may
+use these; scripts must not**, because `scripts/import-season3.ts` mutates the database and reads
+standings back to validate them.
 
 ## 3. The database layer
 
@@ -180,17 +192,35 @@ persists results. This keeps the engine fast and trivially unit-testable.
   `null`), otherwise derived from points (higher finite points wins; equal is a tie). Results are
   processed in deterministic chronological order so streaks are stable.
 
+- **`forfeit-derive.ts`** — pure derivation of byes and missed lineups from the schedule.
+  `scores.isBye` / `scores.isForfeit` are persisted *hints*, not the source of truth; see
+  [`SCORING.md` §3](SCORING.md#3-the-derivation-principle).
+- **`assemble.ts`** — `assembleMatchupResults()`: raw `scores` + `matchups` rows →
+  `MatchupResult[]`, applying the season's `missedLineup` rule and computing each week's league
+  average/median. This step decides what a forfeit's opponent plays against, and therefore decides
+  wins, Points Against and ultimately seeds.
 - **Playoff seeding & bracket** (`seeding.ts`, `tiebreakers.ts`, `playoffs.ts`) — **implemented and
-  unit-tested** (30 tests). Encodes: 7 seeds per conference (4 division winners + 3 wild cards), a
-  bye for the #1 seed, NFL-style reseeding each round (lowest remaining seed faces #1), the
-  head-to-head → Points For → Points Against tiebreaker ordering (2-way and multi-way), and a
+  unit-tested**. Encodes: 7 seeds per conference (4 division winners + 3 wild cards), a bye for
+  the #1 seed, NFL-style reseeding each round (lowest remaining seed faces #1), the league's
+  recursive `resolve_ties` (win% cohorts → head-to-head dominance → Points For), and a
   postseason-matchup tie broken by higher **regular-season Points For**. The engine is pure: the
   caller supplies seeds/results and persists the output.
+
+`src/lib/schedule/final.ts` sits alongside as the single definition of "is this game/week
+finished?", shared by the scoring engine and the admin sync dashboard so they cannot drift apart.
+
+`src/lib/standings/query.ts` is the **only** DB adapter: `getSeasonStandingsData()` is the hub
+that loads the rows, derives byes/forfeits, assembles the results, and returns
+`rankingOptions` + `playoffConfig` + `forfeitByOwnerWeek` for every consumer.
+
+> **Read [`SCORING.md`](SCORING.md)** before changing anything in this path — it documents the
+> full chain (ingest → bye derivation → forfeit derivation → assembly → standings → tiebreakers
+> → seeding), the three week namespaces, and the settled-week safety property.
 
 > **Configurable per season:** structural rules (playoff size, byes, tiebreakers, bye-week &
 > missed-lineup behavior, payouts) are read from each season's `rules` JSONB, validated by
 > `seasonRulesSchema` (`src/lib/rules/schema.ts`) with `DEFAULT_SEASON_RULES`. The admin Settings
-> page edits them; see `docs/DATA_MODEL.md`.
+> page edits them; every key is documented in [`RULES.md`](RULES.md).
 
 ## 6. Auth / admin model (Implemented)
 
@@ -200,14 +230,16 @@ persists results. This keeps the engine fast and trivially unit-testable.
 - The admin email is `ADMIN_EMAIL` and the password is stored as a **bcrypt hash** in
   `ADMIN_PASSWORD_HASH` (never the plaintext; generate with `npm run admin:hash -- "<password>"`).
 - **`middleware.ts`** gates `/admin/*` (except `/admin/login`) via the `authorized` callback,
-  redirecting unauthenticated requests to the login page.
-- The admin CRUD pages and Settings (rules) editor are the remaining Phase 1 UI work.
-- Admin CRUD (owners, seasons, owner-team assignments, manual score entry) will run as Server
-  Actions.
+  redirecting unauthenticated requests to the login page. Every admin Server Action additionally
+  calls `requireAdmin()` (`src/lib/auth-helpers.ts`) as defense in depth.
+- **Additional admins** can be added without a redeploy via the `users` table
+  (`npm run admin:create`, or Admin → Users). The env bootstrap admin
+  (`ADMIN_EMAIL` / `ADMIN_PASSWORD_HASH`) is **not** stored there and always works as a fallback,
+  so the commissioner can sign in before any rows exist.
 - **Per-owner logins are a deliberate later follow-up**, not part of v1.
 
-The `npm run admin:hash` script declared in `package.json` (to generate `ADMIN_PASSWORD_HASH`)
-is part of this phase and **not yet present** in the repo.
+`npm run admin:hash` (`scripts/hash-password.ts`) generates the bcrypt hash for
+`ADMIN_PASSWORD_HASH`; see [`DEPLOYMENT.md` §5](DEPLOYMENT.md#5-admin-password-hash).
 
 ## 7. DraftKings scoring pipeline (Implemented — via the browser extension)
 
@@ -262,5 +294,8 @@ caveats, and mitigations.
 | `score_import_runs` | Audit log of each leaderboard pull (auto or manual).                  |
 | `season_awards`     | Payouts/records (champion, weekly high, most points, ...).            |
 | `playoff_matchups`  | The league playoff bracket.                                           |
+| `playoff_odds_snapshots` | Monte-Carlo playoff odds per owner-week, for the trend chart.     |
+| `model_snapshots`   | Lineup-model recommendations + their graded results.                  |
+| `users`             | Admin logins for the commissioner panel (separate from `owners`).     |
 
 Full column-level detail is in [`DATA_MODEL.md`](DATA_MODEL.md).

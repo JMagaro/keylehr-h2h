@@ -312,7 +312,7 @@ export const scoreImportRuns = pgTable('score_import_runs', {
   entriesTotal: integer().notNull().default(0),
   entriesMatched: integer().notNull().default(0),
   entriesUnmatched: integer().notNull().default(0),
-  /** 'cron' | 'admin:<email>' | 'manual-paste' */
+  /** Free-form provenance. Today: 'extension' | 'admin:preseason' | 'backfill'. */
   triggeredBy: varchar({ length: 64 }),
   error: text(),
   /** Raw leaderboard payload retained for debugging/replay. */
@@ -335,12 +335,23 @@ export const scores = pgTable(
     /** DraftKings fantasy points, 2 decimal places (e.g. 241.68). Null until scored. */
     dkPoints: numeric({ precision: 7, scale: 2 }),
     source: scoreSource().notNull().default('manual'),
-    /** True when the owner's NFL team is on bye — score does not count toward stats. */
+    /**
+     * True when the owner's NFL team is on bye — score does not count toward stats.
+     *
+     * A persisted DERIVATION, not the source of truth: it is written from `nfl_games` at
+     * ingest and RECONCILED at read time (a row flagged bye for an owner who has a matchup
+     * that week is ignored). See `standings/forfeit-derive.ts` and `docs/SCORING.md`.
+     */
     isBye: boolean().notNull().default(false),
     /**
      * True when the owner failed to set a lineup (league rule: automatic loss, and the
-     * opponent instead plays the league-average score for that week). The forfeiting
-     * owner's own `dkPoints` still record whatever they scored (often 0).
+     * opponent instead plays the season's `missedLineup.opponentScores` benchmark for that
+     * week — league average through 2025, league median from 2026). The forfeiting owner's
+     * own `dkPoints` still record whatever they scored (often 0).
+     *
+     * NO ingest path writes this. Missed lineups are DERIVED at read time from the schedule
+     * and UNIONed with this column, so a value set here is the commissioner's manual
+     * override and is always honored. See `standings/forfeit-derive.ts` and `docs/SCORING.md`.
      */
     isForfeit: boolean().notNull().default(false),
     /** True for a preseason EXHIBITION score — tracked but excluded from all standings/stats. */

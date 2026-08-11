@@ -39,6 +39,9 @@ Relationships at a glance:
 - An **owner_season** is the join of `owner` + `season` + `nfl_team`, and has many `scores`.
 - Every league row that belongs to a specific owner-in-a-season references `owner_seasons`, not
   `owners` directly (so all-time identity and per-season alignment stay distinct).
+- Not drawn above (they hang off `seasons` the same way): `playoff_odds_snapshots` and
+  `model_snapshots`. **`users` stands alone** — it is the admin-login table and has no
+  relationship to `owners`.
 
 ## Enums
 
@@ -71,7 +74,25 @@ The 32 NFL teams. Static reference data, seeded once via `npm run db:seed`
 | `division`   | `division`     | NOT NULL.                                                      |
 | `espnId`     | varchar(16)    | ESPN team id (string) — robust join key to the ESPN schedule.  |
 
-**Used by:** `owner_seasons.nflTeamId`, `nfl_games.homeTeamId`/`awayTeamId`.
+Branding metadata (all nullable), added by migration `0004` and backfilled from
+`src/db/seed/team-meta.ts` via `npm run team:meta`:
+
+| Column            | Type        | Notes                                                     |
+| ----------------- | ----------- | --------------------------------------------------------- |
+| `primaryColor`    | varchar(9)  | Hex, e.g. `#00338D`. Rendered as the team accent color.   |
+| `secondaryColor`  | varchar(9)  | Hex.                                                       |
+| `tertiaryColor`   | varchar(9)  | Hex (source may be empty).                                 |
+| `quaternaryColor` | varchar(9)  | Hex (source may be empty).                                 |
+| `draftkingsLabel` | varchar(64) | DraftKings display label, e.g. `MIA Dolphins`.            |
+| `nflTeamId`       | varchar(8)  | NFL.com team id, e.g. `0610`.                              |
+| `logoEspn`        | text        | ESPN crest URL — **the primary logo shown on-site.**       |
+| `logoWordmark`    | text        | nflverse wordmark logo URL.                                |
+| `logoSquared`     | text        | nflverse squared logo URL.                                 |
+| `logoWikipedia`   | text        | Wikipedia logo URL.                                        |
+
+**Used by:** `owner_seasons.nflTeamId`, `nfl_games.homeTeamId`/`awayTeamId`. `logoEspn` +
+`primaryColor` are carried through `getSeasonStandingsData()` as display-only `brandingById` —
+they are never inputs to the standings engine.
 
 > Seed gotcha: ESPN abbreviations differ from some conventions (e.g. Washington = `WSH`, not
 > `WAS`). The seed file documents these.
@@ -96,11 +117,38 @@ One row per league season (mirrors an NFL season/year).
 > [`src/lib/rules/schema.ts`](../src/lib/rules/schema.ts) (`seasonRulesSchema`,
 > `DEFAULT_SEASON_RULES` = the canonical 2025-and-earlier config) — treat that file as the source of
 > truth rather than duplicating the key list here. Null or missing keys fall back to the defaults, so
-> a season with `rules = NULL` behaves exactly like `DEFAULT_SEASON_RULES`. The values are threaded
-> into the pure engine by `getSeasonStandingsData()`; Admin → Settings edits them.
+> a season with `rules = NULL` behaves exactly like `DEFAULT_SEASON_RULES` — which is the case for
+> 2023–2025. The values are threaded into the pure engine by `getSeasonStandingsData()`;
+> Admin → Settings edits them. Every key, its default, its readers and its editor are documented
+> in [`RULES.md`](RULES.md).
+
+> **`regularSeasonWeeks` and `entryFeeCents` exist in BOTH a column and the `rules` JSONB.** The
+> **columns are canonical**; the JSONB copies are ignored mirrors that the Settings page
+> deliberately preserves rather than editing, so the two drift. Read
+> `seasonRow.regularSeasonWeeks ?? rules.regularSeasonWeeks`. See
+> [`RULES.md` §6](RULES.md#6-the-two-ignored-mirrors).
 
 **Children (`onDelete: cascade` from season):** `owner_seasons`, `nfl_games`, `matchups`,
-`weekly_contests`, `scores`, `score_import_runs`, `season_awards`, `playoff_matchups`.
+`weekly_contests`, `scores`, `score_import_runs`, `season_awards`, `playoff_matchups`,
+`playoff_odds_snapshots`, `model_snapshots`.
+
+## `users`
+
+Admin accounts that can log in to the commissioner panel. **Intentionally separate from
+`owners`** — most league members never need an admin login.
+
+| Column         | Type          | Notes                                                       |
+| -------------- | ------------- | ----------------------------------------------------------- |
+| `id`           | identity PK   |                                                             |
+| `email`        | varchar(256)  | **NOT NULL, UNIQUE.**                                       |
+| `name`         | varchar(128)  | Nullable.                                                   |
+| `passwordHash` | varchar(256)  | NOT NULL. **Raw bcrypt hash** (starts with `$2…`). Never exposed to the client. |
+| `role`         | varchar(32)   | NOT NULL, default `admin`.                                  |
+| `createdAt`    | timestamptz   | NOT NULL, default `now()`.                                  |
+
+> The env bootstrap admin (`ADMIN_EMAIL` / `ADMIN_PASSWORD_HASH`) is **not** stored here. It
+> always works as a fallback, so the commissioner can sign in before any rows exist. Manage rows
+> with `npm run admin:create` or Admin → Users.
 
 ## `owners`
 
@@ -202,7 +250,10 @@ the underlying NFL game.
 
 ## `weekly_contests`
 
-The shared DraftKings contest used to score a given week. (DraftKings pipeline — Planned, Phase 3.)
+The shared DraftKings contest / slate for a given week. Written by **Admin → Slates**
+(`dkDraftGroupId`, which pins the salary slate the lineup builder uses) and by **Admin →
+Playoffs** (`dkContestId` per playoff week). Read by `src/lib/players/query.ts` when resolving
+DraftKings salaries.
 
 | Column          | Type             | Notes                                                |
 | --------------- | ---------------- | ---------------------------------------------------- |
@@ -250,7 +301,8 @@ An owner's weekly DraftKings fantasy points. One row per `(ownerSeason, week)`.
 | `week`          | integer         | NOT NULL.                                                            |
 | `dkPoints`      | numeric(7,2)    | DK fantasy points (e.g. `241.68`). **Null until scored.**            |
 | `source`        | `score_source`  | NOT NULL, default `manual` (`auto` vs `manual`).                     |
-| `isBye`         | boolean         | NOT NULL, default `false`. True when the team is on bye (doesn't count). |
+| `isBye`         | boolean         | NOT NULL, default `false`. True when the owner's NFL team had no game that week. A bye score never counts toward W-L-T or Points Against. **A persisted hint, not the source of truth** — see the note below. |
+| `isForfeit`     | boolean         | NOT NULL, default `false`. True when the owner missed their lineup. The forfeiting owner's own `dkPoints` still records whatever they scored (usually 0); what their opponent plays against is the season's `missedLineup.opponentScores` rule. **Written only by the historical importers and by a commissioner acting manually** — never by any ingest path. |
 | `isExhibition`  | boolean         | NOT NULL, default `false`. Auto-flagged for scores written at a preseason exhibition week (`100 + preseasonWeek`); **excluded from all stats** — see `nfl_games`. |
 | `dkContestId`   | varchar(64)     | Nullable.                                                            |
 | `dkEntryKey`    | varchar(64)     | Nullable. DK entry key for the matched leaderboard row.             |
@@ -266,6 +318,15 @@ An owner's weekly DraftKings fantasy points. One row per `(ownerSeason, week)`.
 
 > `dkPoints` is `numeric`, surfaced by Drizzle as a **string**. Use `formatPoints()` in
 > `src/lib/utils.ts` to render it.
+
+> **`isBye` and `isForfeit` are persisted DERIVATIONS, not the source of truth.** Both describe
+> facts that live in other tables (`nfl_games`, `matchups`) and are written once at ingest with
+> no recompute trigger, so they drift. The read path re-derives both — byes from the NFL
+> schedule, missed lineups from the schedule plus a settled-week gate — and composes forfeits as
+> **derived ∪ stored**, so a manually set `isForfeit = true` is always honored as the
+> commissioner's override. Never write a query that trusts either column on its own; use the
+> `forfeitByOwnerWeek` set from `getSeasonStandingsData()` and `isEffectiveBye()`. The full rule
+> is in [`SCORING.md`](SCORING.md).
 
 ## `season_awards`
 
@@ -286,7 +347,9 @@ Payouts and records for a season (champion, weekly high score, most points, ...)
 ## `playoff_matchups`
 
 The league playoff bracket. Seeding mirrors the NFL (4 division winners + 3 wild cards per
-conference). (Seeding/bracket logic — Planned, Phase 4.)
+conference) and is config-driven from `rules.playoffs`. Written by
+`src/lib/playoffs/service.ts` (`generatePlayoffBracket` / `advancePlayoffs` / `setGameWinner`,
+driven from Admin → Playoffs) and by the historical bracket importers.
 
 | Column                  | Type           | Notes                                                       |
 | ----------------------- | -------------- | ----------------------------------------------------------- |
@@ -302,6 +365,30 @@ conference). (Seeding/bracket logic — Planned, Phase 4.)
 | `highPoints`            | numeric(7,2)   | Nullable.                                                   |
 | `lowPoints`             | numeric(7,2)   | Nullable.                                                   |
 | `winnerOwnerSeasonId`   | integer FK     | Nullable → `owner_seasons.id`.                              |
+
+> Rounds are scored at fixed weeks — `wild_card` 19, `divisional` 20, `conference` 21,
+> `championship` 22 (`PLAYOFF_ROUND_WEEKS`). Those weeks live in `scores` like any other, but they
+> have **no `matchups` rows**, which is why "no matchup that week" never means "bye" past the
+> regular season. `upsertRoundGames` matches on `(round, conference, highSeed, lowSeed)` and
+> prunes superseded rows, so it is authoritative for the round it writes — otherwise an admin
+> winner override left the old pairing behind as a phantom game.
+
+## `playoff_odds_snapshots`
+
+Monte-Carlo playoff probability per owner, snapshotted weekly, for the `/playoffs` trend chart.
+Produced by `npm run odds:compute` (`src/lib/odds/`).
+
+| Column          | Type          | Notes                                                    |
+| --------------- | ------------- | -------------------------------------------------------- |
+| `id`            | identity PK   |                                                          |
+| `seasonId`      | integer FK    | NOT NULL → `seasons.id`, `onDelete: cascade`.            |
+| `week`          | integer       | NOT NULL. The week the snapshot reflects.                |
+| `ownerSeasonId` | integer FK    | NOT NULL → `owner_seasons.id`, `onDelete: cascade`.      |
+| `oddsPct`       | numeric(5,2)  | NOT NULL. Playoff probability as a percent, `0.00`–`100.00`. |
+| `computedAt`    | timestamptz   | NOT NULL, default `now()`.                               |
+
+**Constraints/indexes:** `playoff_odds_snapshots_season_week_owner_uq` UNIQUE
+`(seasonId, week, ownerSeasonId)`; `playoff_odds_snapshots_season_idx` on `seasonId`.
 
 ## `model_snapshots`
 
@@ -332,6 +419,26 @@ games are played — how it actually scored. Produced by `snapshotWeek` / graded
 
 **Constraints/indexes:** `model_snapshots_season_week_risk_uq` UNIQUE `(seasonId, week, risk)`;
 `model_snapshots_season_idx` on `seasonId`.
+
+## Migration history
+
+Migrations are generated by drizzle-kit from `src/db/schema.ts` and committed under `drizzle/`.
+A fresh checkout applies them all with `npm run db:migrate`.
+
+| File | What it does |
+| ---- | ------------ |
+| `0000_unknown_forgotten_one.sql` | Initial schema: all 9 enums plus `nfl_teams`, `seasons`, `owners`, `owner_seasons`, `nfl_games`, `matchups`, `weekly_contests`, `score_import_runs`, `scores`, `season_awards`, `playoff_matchups`. |
+| `0001_nifty_dreaming_celestial.sql` | `scores.is_forfeit` boolean, NOT NULL default `false`. |
+| `0002_rich_nekra.sql` | `seasons.rules` jsonb (nullable) — per-season league rules. |
+| `0003_fuzzy_tomas.sql` | `users` table — admin logins for the commissioner panel. |
+| `0004_ambiguous_nicolaos.sql` | The 10 `nfl_teams` branding columns (4 colors, `draftkings_label`, `nfl_team_id`, 4 logo URLs). |
+| `0005_early_venom.sql` | `playoff_odds_snapshots` table + its unique/season indexes. |
+| `0006_daffy_scourge.sql` | `model_snapshots` table + its unique/season indexes. |
+| `0007_concerned_iron_patriot.sql` | `owner_seasons.display_name` — the owner's name as that season's sheet listed it. |
+| `0008_shocking_lila_cheney.sql` | `is_exhibition` boolean on `matchups`, `nfl_games` **and** `scores` — the preseason namespace. |
+
+To add one: edit `src/db/schema.ts`, run `npm run db:generate` (writes the SQL), review it, then
+`npm run db:migrate`. Commit the generated file.
 
 ## Drizzle relations & inferred types
 

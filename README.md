@@ -32,7 +32,7 @@ For the deeper design, see the docs linked below.
 | Validation     | Zod                                                          |
 | External data  | ESPN unofficial scoreboard API (NFL schedule)               |
 | Scoring source | DraftKings unofficial leaderboard API, read by the Chrome extension in `extension/` |
-| Hosting / cron | Vercel + Vercel Cron                                         |
+| Hosting        | Vercel (auto-deploy from `main`). **No cron:** the weekly score sync is a manual, in-browser step — there is no `vercel.json` and no cron route. See [`docs/RUNBOOK.md`](docs/RUNBOOK.md). |
 | Tests          | Vitest                                                       |
 
 > Database access runs on the **Node.js runtime** only. The Neon serverless driver and the
@@ -94,13 +94,17 @@ npm run dev             # http://localhost:3000
 | `npm run admin:hash`     | `tsx scripts/hash-password.ts`| Hash an admin password for `ADMIN_PASSWORD_HASH`.                       |
 | `npm run admin:create`   | `tsx scripts/create-admin.ts` | Create/update a commissioner login in the `users` table.                |
 | `npm run schedule:pull`  | `tsx scripts/pull-schedule.ts`| Pull the NFL schedule from ESPN and generate owner matchups.            |
+| `npm run team:meta`      | `tsx scripts/update-team-meta.ts` | Backfill the `nfl_teams` branding columns (colors + logo URLs).     |
 | `npm run odds:compute`   | `tsx scripts/compute-odds.ts` | Monte-Carlo playoff-odds snapshots for the `/playoffs` trend chart.     |
-| `npm run verify`         | `tsx scripts/verify.ts`       | **Full verification gate** — typecheck · lint · tests · production build · ESPN health · engine invariants · 2025 ground-truth replay. Exits non-zero on any failure. |
+| `npm run verify`         | `tsx scripts/verify.ts`       | **Full verification gate (9 checks)** — typecheck · lint · tests · production build · ESPN health · engine invariants · frozen-season snapshot · engine no-op proofs · 2025 ground-truth replay. Exits non-zero on any failure. |
 | `npm run verify:quick`   | `tsx scripts/verify.ts --quick`| Same, minus the slow build + ground-truth replay (no DB writes).       |
 | `npm run verify:ground-truth` | `tsx scripts/import-season3.ts` | Replay the 2025 season vs the league's published standings.        |
+| `npm run snapshot:standings` | `tsx scripts/snapshot-standings.ts` | **Read-only.** Print what the engine currently derives for the frozen seasons (records, ranked order, seeds, awards). |
+| `npm run verify:baseline`| `tsx scripts/snapshot-standings.ts --write` | **Re-baseline** `scripts/fixtures/standings-baseline.json`. Needs sign-off — 2023–2025 are frozen. See [`docs/RUNBOOK.md`](docs/RUNBOOK.md#6-the-snapshot-gate). |
 | `npm run import:season`  | `tsx scripts/import-season.ts` | Backfill a season's regular season from its Google Sheet (`--year --sheet --name`). |
 | `npm run import:playoffs`| `tsx scripts/import-playoffs.ts`| Backfill a season's playoff bracket from its sheet (`--season --sheet`).             |
-| `npm run import:awards`  | `tsx scripts/import-awards.ts` | Recompute `season_awards` (champion, runner-up, weekly/season high, most points) + payouts. Add `-- --dry-run` to preview. |
+| `npm run playoffs:import-2025` | `tsx scripts/import-playoffs-2025.ts` | The 2025-specific bracket importer (hardcoded validation); kept alongside the generic one. |
+| `npm run import:awards`  | `tsx scripts/import-awards.ts` | Recompute `season_awards` (champion, runner-up, weekly/season high, most points) + payouts. `-- --dry-run` previews; `--season=`, `--third=`, `--force`. |
 | `npm run models:snapshot`| `tsx scripts/models.ts --action=snapshot` | Snapshot the 3 lineup models for a week (`--season --week`).               |
 | `npm run models:grade`   | `tsx scripts/models.ts --action=grade` | Grade a week's model snapshots vs actual player results.                      |
 
@@ -117,6 +121,9 @@ DailyFantasy/
 │  └─ meta/
 ├─ docs/                        # Project documentation (this folder)
 │  ├─ HANDOFF.md                # Current state + gotchas — start here
+│  ├─ SCORING.md                # Ingest → byes → forfeits → standings → seeds
+│  ├─ RULES.md                  # Every per-season rule key
+│  ├─ RUNBOOK.md                # The commissioner's weekly loop
 │  ├─ ARCHITECTURE.md
 │  ├─ DATA_MODEL.md
 │  ├─ DRAFTKINGS.md
@@ -136,7 +143,9 @@ DailyFantasy/
 │     ├─ schedule/              # syncSeasonSchedule / syncPreseasonWeek → upserts nfl_games; preseason.ts week-namespace helpers
 │     ├─ matchups/              # generateMatchups → derives matchups from nfl_games
 │     ├─ preseason/             # Public read model for the /preseason exhibition page
-│     ├─ standings/             # Pure standings/seeding/tiebreaker engine + types
+│     ├─ scores/                # DK leaderboard ingest + the admin sync-status query
+│     ├─ standings/             # Pure standings/seeding/tiebreaker engine + the DB adapter (query.ts)
+│     ├─ awards/                # Pure payout computation + the persistence service
 │     ├─ playoffs/              # Bracket service (generate/advance/read)
 │     ├─ rules/                 # Per-season rules schema + defaults (seasons.rules)
 │     ├─ players/               # Lineup builder: Sleeper/ESPN signals, recommend, optimize, models, performance
@@ -154,21 +163,27 @@ DailyFantasy/
 | ------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | **P0** | Scaffold + deploy (Next 16, Tailwind v4, Vercel)                      | **Done.** Deployed on Vercel, auto-deploy from `main`; KeyLehr branding + landing dashboard.    |
 | **P1** | Data model + admin panel + schedule auto-pull + matchup generation    | **Done.** Schema, seed, ESPN sync (batched upserts), matchup generation, and the commissioner admin panel (assignments, owners, users, settings, schedule, **preseason**, playoffs, sync, data-status) with NextAuth login. |
-| **P2** | Public pages                                                          | **Done.** Dashboard, Standings, Playoffs (picture + odds chart + bracket), History (all-time records, per-season pages, head-to-head), **Rules (rules-driven)**, Cohen's Corner, the **per-team My Team dashboard**, and the **Preseason** exhibition page. Mobile-friendly. |
+| **P2** | Public pages                                                          | **Done.** Dashboard, Standings, Playoffs (picture + odds chart + bracket), History (all-time records, per-season pages, head-to-head), **Rules (rules-driven)**, the **per-team My Team dashboard**, and the **Preseason** exhibition page. Mobile-friendly. `/cohens-corner` ships as a routed **placeholder** ("coming soon") — content pending. |
 | **P3** | DraftKings scoring pipeline + manual fallback                        | **Done.** Ingest API + the **Chrome extension** (live sync) feed `scores`; standings/seeding honor the season's configured rules. |
 | **P4** | Playoffs / history                                                    | **Done.** Config-driven seeding + bracket, history/all-time pages, playoff-odds Monte-Carlo.    |
 | **P5** | Migrate prior season(s) from the Google Sheet                         | **Done for 2023–2025** (regular season **and** playoff brackets) — `import-season3.ts` (2025, the verify anchor) + the generic `import-season.ts` / `import-playoffs.ts`. Each validates against the published sheets. |
 | **P6** | My Team Phase B — lineup builder + player news                        | **Done.** Free Sleeper/ESPN signals, 3 risk models, **DraftKings salary + $50k cap optimization**, a player-news strip, and a **model-performance tracker** (Admin → Models) that the models will train into ML v1.0 from. |
 | **P7** | Preseason exhibition games                                            | **Done.** Optional for-fun preseason game — owner-vs-owner matchups + DK scores at a separate week namespace (`week = 100 + preseasonWeek`), surfaced on the public **`/preseason`** page and driven from **Admin → Preseason**. Scored by the DK Sync extension's **Preseason** toggle (paste form as fallback); the ingest API accepts `1–25` or `101–103`. Tracked in the app but **never** counted toward standings, seeding, playoffs, payouts, or all-time records. |
+| **P8** | Live-scoring remediation + freeze gate                                 | **Done.** Byes derived from the NFL schedule, missed lineups derived at read time behind a settled-week gate, win%-only tiebreaker cohorts, deterministic tie-splitting payouts, and `/history` routed through the engine — all behind a snapshot gate that proves 2023–2025 never move. See [`docs/SCORING.md`](docs/SCORING.md). |
 | **Next** | —                                                                   | Rebuild is feature-complete vs the Sheets workflow; no task queued. See [`docs/HANDOFF.md`](docs/HANDOFF.md). |
 
 ## Documentation
 
 - [`docs/HANDOFF.md`](docs/HANDOFF.md) — **current state, what's next, and gotchas — start here.**
+- [`docs/SCORING.md`](docs/SCORING.md) — **the scoring chain**: ingest → bye/forfeit derivation →
+  standings → tiebreakers → seeding, the three week namespaces, and the settled-week rule.
+  Required reading before touching `src/lib/scores/` or `src/lib/standings/`.
+- [`docs/RULES.md`](docs/RULES.md) — every per-season rule key: meaning, default, reader, editor.
+- [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — the commissioner's pre-season setup and weekly loop.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture and data flow.
 - [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — every table, constraint, and relationship.
 - [`docs/DRAFTKINGS.md`](docs/DRAFTKINGS.md) — the DraftKings scoring pipeline + the ingest endpoint contract.
 - [`extension/README.md`](extension/README.md) — the DraftKings Sync Chrome extension (install, weekly + preseason syncs).
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deploying to Vercel + Neon, env vars, cron.
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deploying to Vercel + Neon, env vars, migrations.
 - [`docs/NEXTJS16_NOTES.md`](docs/NEXTJS16_NOTES.md) — Next.js 16 conventions and gotchas.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev workflow, conventions, and migrations.

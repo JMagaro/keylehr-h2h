@@ -136,9 +136,11 @@ export const DEFAULT_TIEBREAKERS: readonly TiebreakerKey[] = ['h2h', 'pf', 'pa']
  */
 export interface RankingOptions {
   /**
-   * Tiebreaker order applied WITHIN a cohort of equal overall record. Defaults to
-   * {@link DEFAULT_TIEBREAKERS}. The overall-record sort (win% then wins) always
-   * runs first, and `ownerSeasonId` is always the final deterministic fallback.
+   * Tiebreaker order applied WITHIN a cohort of owners tied on WIN PERCENTAGE.
+   * Defaults to {@link DEFAULT_TIEBREAKERS}. The win% sort always runs first
+   * (raw win count is deliberately not part of the cohort key — see
+   * `tiebreakers.ts`), and `ownerSeasonId` is always the final deterministic
+   * fallback.
    */
   tiebreakers?: readonly TiebreakerKey[];
   /**

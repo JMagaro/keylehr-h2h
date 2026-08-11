@@ -8,11 +8,14 @@
  *
  * Assembly:
  *  - `OwnerEntry[]` comes from `owner_seasons` joined to `owners` and `nfl_teams`.
- *  - `MatchupResult[]` comes from `matchups` joined to each side's `scores` for that week.
- *    A matchup is `isFinal` only when BOTH owners have a non-bye, non-null score for the
- *    week (otherwise the game has not been played / scored and must not count). Bye scores
- *    are excluded by construction: an owner on bye has no matchup row that week, and the
- *    `isBye` flag on a score is treated as "no score" for the opponent's matchup.
+ *  - `MatchupResult[]` is built by the pure `assembleMatchupResults` (`./assemble`) from the
+ *    season's `scores` + `matchups` rows. A matchup is `isFinal` only when BOTH owners have a
+ *    non-bye, non-null score for the week — with one deliberate exception: a DERIVED forfeit
+ *    that left no `scores` row is scored 0 so the game counts and the opponent gets the win
+ *    the league rule owes them.
+ *  - Byes and missed lineups are NOT trusted from `scores.isBye` / `scores.isForfeit`. Both are
+ *    re-derived here from the schedule (`./forfeit-derive`), with forfeits gated on the week
+ *    being settled and composed as `derived ∪ stored`. See `docs/SCORING.md`.
  *
  * Numeric columns (`numeric(7,2)`) come back from the driver as strings; we convert with
  * `Number` exactly once, here.
@@ -22,10 +25,10 @@ import { cache } from 'react';
 import { and, desc, eq, lte, sql } from 'drizzle-orm';
 
 import { db, matchups, nflGames, nflTeams, owners, ownerSeasons, scores, seasons } from '@/db';
-import { weekIsFinal } from '@/lib/schedule/final';
 import { assembleMatchupResults } from './assemble';
 import {
   buildPlayingSet,
+  computeSettledWeeks,
   deriveForfeits,
   isEffectiveBye,
   type ScoreRow as DerivedScoreRow,
@@ -192,20 +195,19 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
       .where(and(eq(nflGames.seasonId, seasonId), eq(nflGames.isExhibition, false))),
   ]);
 
-  // 3a. A week is SETTLED once every one of its NFL games is final. Only settled weeks
-  //     derive missed lineups: mid-Sunday every owner legitimately sits on 0.00 points,
-  //     and deriving then would resolve the week as 32 forfeits with cascading auto-losses.
+  // 3a. Only SETTLED weeks derive missed lineups — every NFL game final AND the week's
+  //     scores actually synced. See computeSettledWeeks for why both halves are needed.
   const gamesByWeek = new Map<number, { status: string | null; kickoff: Date | null }[]>();
   for (const g of gameRows) {
     const cur = gamesByWeek.get(g.week) ?? [];
     cur.push({ status: g.status, kickoff: g.kickoff });
     gamesByWeek.set(g.week, cur);
   }
-  const now = new Date();
-  const settledWeeks = new Set<number>();
-  for (const [week, games] of gamesByWeek) {
-    if (weekIsFinal(games, now)) settledWeeks.add(week);
-  }
+  const settledWeeks = computeSettledWeeks({
+    gamesByWeek,
+    scores: parsedScores,
+    now: new Date(),
+  });
 
   // 3b. Missed lineups: derived from the schedule, unioned with any stored `isForfeit`
   //     (the commissioner's manual override). The live DraftKings ingest never writes that

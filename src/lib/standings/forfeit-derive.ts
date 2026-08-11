@@ -22,6 +22,7 @@
  *
  * Pure / no DB. Callers map their rows into the small shapes below.
  */
+import { weekIsFinal, type GameTiming } from '@/lib/schedule/final';
 
 /** The score fields these derivations read. */
 export interface ScoreRow {
@@ -108,6 +109,42 @@ export function deriveByes(params: {
     if (bye) byes.add(ownerWeekKey(s.ownerSeasonId, s.week));
   }
   return byes;
+}
+
+/**
+ * The weeks whose results can be trusted for derivation.
+ *
+ * BOTH conditions are required, and each guards a different failure:
+ *
+ *  1. **Every NFL game that week is final.** Mid-Sunday every owner legitimately sits on
+ *     0.00 points; deriving then would resolve the week as a league-wide missed lineup.
+ *  2. **At least one owner has posted a real score.** This is what says "the DraftKings sync
+ *     for this week has landed". Without it there is a window every single week — from the
+ *     last game going final until the commissioner syncs — where the games are over and the
+ *     `scores` table is still empty, so every owner looks like they failed to submit. That
+ *     produces a double loss in all 16 games and is visible on /standings until someone
+ *     syncs.
+ *
+ * A week that is finished but unsynced simply resolves as unplayed, which is the truth.
+ */
+export function computeSettledWeeks(params: {
+  /** Per-week NFL game timings, from `nfl_games`. */
+  gamesByWeek: ReadonlyMap<number, readonly GameTiming[]>;
+  scores: readonly ScoreRow[];
+  now: Date;
+}): Set<number> {
+  const { gamesByWeek, scores, now } = params;
+
+  const weeksWithScores = new Set<number>();
+  for (const s of scores) {
+    if (!s.isBye && s.dkPoints !== null) weeksWithScores.add(s.week);
+  }
+
+  const settled = new Set<number>();
+  for (const [week, games] of gamesByWeek) {
+    if (weekIsFinal(games, now) && weeksWithScores.has(week)) settled.add(week);
+  }
+  return settled;
 }
 
 export interface DeriveForfeitsParams {

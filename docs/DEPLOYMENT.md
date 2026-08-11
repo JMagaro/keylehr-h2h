@@ -1,7 +1,8 @@
 # Deployment
 
 How to deploy KeyLehr H2H to **Vercel** with a **Neon** Postgres database, configure environment
-variables, run migrations against production, and schedule the weekly score pull.
+variables, and run migrations against production. Weekly score syncing is a manual, in-browser
+step run by the commissioner — see [`RUNBOOK.md`](RUNBOOK.md), not this document.
 
 ## 1. Create the Neon database
 
@@ -31,17 +32,15 @@ dev). They mirror [`.env.example`](../.env.example).
 | `ADMIN_PASSWORD_HASH` | Yes (P1 auth)   | **Bcrypt hash** of the admin password (never the plaintext). See [§5](#5-admin-password-hash).         |
 | `INGEST_TOKEN`        | **Yes, to score** | Bearer token the DK Sync Chrome extension sends to `POST /api/ingest/draftkings` (and `/api/seasons`). **Without it every sync 401s** — the server rejects all ingest when it's unset. Same value in the extension's Settings screen. See [`extension/README.md`](../extension/README.md). |
 | `DK_SESSION_COOKIE`   | P3 only         | Authenticated DraftKings session for the leaderboard read. Leave blank until Phase 3. See [`DRAFTKINGS.md`](DRAFTKINGS.md). |
-| `CRON_SECRET`         | P3 only         | Secret guarding the Vercel Cron score-pull endpoint. Generate with `openssl rand -base64 32`.          |
-| `NEXTAUTH_URL`        | Yes             | Base URL of the deployed app (used for absolute links / Auth.js). `http://localhost:3000` locally; your production URL on Vercel. |
+| `CRON_SECRET`         | Unused          | Was to guard a Vercel Cron score-pull endpoint. **That route was never built and won't be** — see [§6](#6-vercel-cron-for-the-weekly-pull--not-built). Safe to leave unset. |
+| `AUTH_URL`            | Local dev       | Base URL of the app for Auth.js v5. Set it locally (`http://localhost:3000`); **auto-detected on Vercel**, so it is optional in production. |
 
 > **Secrets:** `.env*` files are git-ignored. Never commit `DATABASE_URL`, `AUTH_SECRET`,
-> `ADMIN_PASSWORD_HASH`, `INGEST_TOKEN`, `DK_SESSION_COOKIE`, or `CRON_SECRET`.
+> `ADMIN_PASSWORD_HASH`, `INGEST_TOKEN`, or `DK_SESSION_COOKIE`.
 
-> **Note on `NEXTAUTH_URL`:** the variable shipped in `.env.example` is `NEXTAUTH_URL` (the
-> NextAuth v4 name). This project uses `next-auth` v5 (beta), which generally prefers `AUTH_URL`
-> and can auto-detect the URL on Vercel. Confirm the exact variable when the auth work lands in
-> Phase 1; if v5 expects `AUTH_URL`, set that too (or rename). This is flagged so it can be
-> reconciled.
+> **It is `AUTH_URL`, not `NEXTAUTH_URL`.** This project uses `next-auth` v5, whose variable is
+> `AUTH_URL`; `.env.example` ships that name and no code reads `NEXTAUTH_URL`. If you have an
+> old deployment carrying `NEXTAUTH_URL`, it is doing nothing — rename it.
 
 ## 3. Deploy to Vercel
 
@@ -67,8 +66,8 @@ npm run db:seed        # 32 NFL teams + the current season
 ```
 
 - `npm run db:generate` only needs to be run when `src/db/schema.ts` changes; it writes a new
-  migration file you then commit. The current schema's migration (`drizzle/0000_*.sql`) is already
-  committed.
+  migration file you then commit. Every migration to date (`drizzle/0000_*.sql` … `0008_*.sql`)
+  is already committed — see [`DATA_MODEL.md`](DATA_MODEL.md#migration-history).
 - `npm run db:push` syncs the schema directly without a migration file — fine for a personal dev
   database, **not recommended for production**. Prefer `db:migrate` in production so changes are
   versioned.
@@ -90,11 +89,29 @@ The script (`scripts/hash-password.ts`) hashes with bcrypt (cost 12) and refuses
 shorter than 8 characters. Paste the printed `ADMIN_PASSWORD_HASH=...` line into `.env.local`
 (local) and the Vercel env vars (production). Set `ADMIN_EMAIL` to the commissioner's email.
 
-## 6. Configure Vercel Cron for the weekly pull — Planned (Phase 3)
+> The printed value is the bcrypt hash **base64-encoded**. That is deliberate: a raw bcrypt hash
+> starts with `$2…`, and dotenv-expand mangles `$`-prefixed values in local `.env` files. The
+> base64 form has no `$` and works everywhere. `src/auth.ts` also accepts a raw `$2…` hash, which
+> is fine if you paste one straight into Vercel's env UI.
 
-The automated DraftKings pull (see [`DRAFTKINGS.md`](DRAFTKINGS.md)) runs on a schedule via Vercel
-Cron, hitting a route handler guarded by `CRON_SECRET`. Add a `vercel.json` at the repo root with
-a cron entry pointing at the (Planned) pull endpoint:
+Additional admins can be added **without a redeploy** through the `users` table —
+`npm run admin:create`, or Admin → Users. The env admin above always works as a fallback.
+
+## 6. Vercel Cron for the weekly pull — not built
+
+> **This was designed and then rejected.** There is no `vercel.json`, no `/api/cron/pull` route,
+> and no `src/lib/dk` module in the repo, and none are planned. The weekly scoring contest is
+> **private**, so a server cannot read its leaderboard without the commissioner's authenticated
+> DraftKings session — which is why scoring runs through the **Chrome extension** in the
+> commissioner's own browser instead (see [`../extension/README.md`](../extension/README.md) and
+> [`DRAFTKINGS.md`](DRAFTKINGS.md)). `CRON_SECRET` and `DK_SESSION_COOKIE` are leftovers from this
+> design and are read by nothing.
+>
+> The sketch below is kept only because it remains the shape any future unattended pull would
+> take. **Do not follow it as setup instructions.**
+
+The pull would run on a schedule via Vercel Cron, hitting a route handler guarded by
+`CRON_SECRET`, configured by a `vercel.json` at the repo root:
 
 ```json
 {
@@ -113,7 +130,7 @@ a cron entry pointing at the (Planned) pull endpoint:
   against `CRON_SECRET` before doing any work:
 
   ```ts
-  // app/api/cron/pull/route.ts  (Planned, Phase 3)
+  // app/api/cron/pull/route.ts  (does not exist — illustrative only)
   export async function GET(request: Request) {
     const auth = request.headers.get('authorization');
     if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -128,13 +145,16 @@ a cron entry pointing at the (Planned) pull endpoint:
   > env var is set, so the same check works for scheduled runs and rejects everyone else. The route
   > must use the **Node.js runtime** (it touches the database).
 
-There is **no `vercel.json` in the repo yet** — add it when the pull endpoint is built in Phase 3.
-
 ## 7. Post-deploy checklist
 
 - [ ] `DATABASE_URL` set (pooled Neon URL) and reachable.
 - [ ] `npm run db:migrate` applied against production.
 - [ ] `npm run db:seed` run (32 teams + current season present).
-- [ ] Auth env vars set (`AUTH_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, URL var) — Phase 1.
+- [ ] Auth env vars set (`AUTH_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`; `AUTH_URL` locally).
+- [ ] Commissioner can sign in at `/admin/login`.
+- [ ] **`INGEST_TOKEN` set** — without it every extension sync 401s and no week can be scored.
+      Use the same value in the extension's Settings screen, and confirm with its **Test
+      connection** button.
 - [ ] `npm run schedule:pull -- --year=<year>` run once the season's owners are assigned.
-- [ ] (Phase 3) `DK_SESSION_COOKIE` + `CRON_SECRET` set and `vercel.json` cron configured.
+- [ ] `npm run verify` green before the push that triggered this deploy — see
+      [`RUNBOOK.md` §4](RUNBOOK.md#4-verification).

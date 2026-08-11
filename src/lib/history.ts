@@ -6,11 +6,15 @@
  * per-season `ownerSeason`. The same person owning different NFL teams across
  * seasons rolls up to a single owner identity here.
  *
- * Standings ordering reuses the pure engine via `getSeasonStandings` (winPct →
- * Points For → Points Against), so the "top finisher" matches the rest of the app.
- * We have no playoff results persisted, so the season top finisher is labelled
- * "Regular-season #1"; if `seasonAwards` carries a `champion` row for a season we
- * surface that owner as the Champion instead (the table may be empty — tolerated).
+ * Standings ordering reuses the pure engine via `getRankedSeasonStandings`, which
+ * applies the season's FULL configured tiebreaker chain (win% cohorts →
+ * head-to-head dominance → Points For), so the "top finisher" matches the seeding
+ * and the rest of the app. Do not re-sort with a local winPct → PF → PA
+ * comparator: that silently drops the head-to-head step, which is exactly how this
+ * page used to crown one owner while the bracket beside it seeded another.
+ * The season top finisher is labelled "Regular-season #1"; if `seasonAwards`
+ * carries a `champion` row for a season we surface that owner as the Champion
+ * instead (the table may be empty — tolerated).
  *
  * Numeric `numeric(7,2)` columns come back from the driver as strings; we convert
  * with `Number` exactly once, here.

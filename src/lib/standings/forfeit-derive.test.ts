@@ -7,18 +7,25 @@
  *              `isBye = true` on an owner who DOES have a regular-season matchup is
  *              self-contradictory and is ignored. Playoff/exhibition weeks never bye.
  *
- *   FORFEIT  — on a SETTLED regular-season week (every NFL game final), an owner who had a
- *              matchup and either posted a non-bye 0.00 or posted nothing at all missed
- *              their lineup. On an unsettled week nothing is derived. A stored
- *              `isForfeit = true` is always honored as a manual override.
+ *   SETTLED  — a week is settled when every NFL game is final AND at least one owner has
+ *              posted a real score (i.e. the DraftKings sync has landed). Both halves
+ *              matter; each guards a different window in which every owner is legitimately
+ *              on zero.
  *
- * The single most important case here is "unsettled week + 0.00 → NOT a forfeit": mid-Sunday
- * every owner sits on 0 points, and deriving forfeits then would resolve the week as 32
- * missed lineups with cascading auto-losses.
+ *   FORFEIT  — on a SETTLED regular-season week, an owner who had a matchup and either
+ *              posted a non-bye 0.00 or posted nothing at all missed their lineup. On an
+ *              unsettled week nothing is derived. A stored `isForfeit = true` is always
+ *              honored as a manual override.
+ *
+ * The most important cases here are the two that must NOT derive a forfeit: mid-Sunday, when
+ * every owner sits on 0 points; and the gap after the last game goes final but before the
+ * sync runs, when the scores table is still empty. Either one would otherwise resolve the
+ * week as a league-wide missed lineup and hand all 16 games a double loss.
  */
 import { describe, it, expect } from 'vitest';
 import {
   buildPlayingSet,
+  computeSettledWeeks,
   deriveByes,
   deriveForfeits,
   isEffectiveBye,
@@ -180,5 +187,62 @@ describe('deriveForfeits', () => {
     });
     expect(forfeits.has(ownerWeekKey(1, 5))).toBe(true);
     expect(forfeits.has(ownerWeekKey(1, 6))).toBe(false);
+  });
+});
+
+describe('computeSettledWeeks', () => {
+  const NOW = new Date('2026-09-14T06:00:00Z');
+  const finalGame = { status: 'STATUS_FINAL', kickoff: new Date('2026-09-13T17:00:00Z') };
+  const liveGame = { status: 'STATUS_IN_PROGRESS', kickoff: new Date('2026-09-13T17:00:00Z') };
+
+  it('settles a week whose games are all final AND whose scores have synced', () => {
+    const settled = computeSettledWeeks({
+      gamesByWeek: new Map([[1, [finalGame, finalGame]]]),
+      scores: [score(1, 1, 132.5)],
+      now: NOW,
+    });
+    expect([...settled]).toEqual([1]);
+  });
+
+  it('does NOT settle a week that is still being played', () => {
+    const settled = computeSettledWeeks({
+      gamesByWeek: new Map([[1, [finalGame, liveGame]]]),
+      scores: [score(1, 1, 132.5)],
+      now: NOW,
+    });
+    expect(settled.size).toBe(0);
+  });
+
+  it('does NOT settle a finished week whose scores have not been synced yet', () => {
+    // The window between the last game going final and the commissioner running the DK
+    // sync. Every owner has a matchup and no score row, so settling here would derive a
+    // league-wide missed lineup and hand all 16 games a double loss.
+    const settled = computeSettledWeeks({
+      gamesByWeek: new Map([[1, [finalGame, finalGame]]]),
+      scores: [],
+      now: NOW,
+    });
+    expect(settled.size).toBe(0);
+  });
+
+  it('does not count bye-only rows as evidence that the sync landed', () => {
+    const settled = computeSettledWeeks({
+      gamesByWeek: new Map([[1, [finalGame]]]),
+      scores: [score(9, 1, 88, { isBye: true })],
+      now: NOW,
+    });
+    expect(settled.size).toBe(0);
+  });
+
+  it('settles each week independently', () => {
+    const settled = computeSettledWeeks({
+      gamesByWeek: new Map([
+        [1, [finalGame]],
+        [2, [liveGame]],
+      ]),
+      scores: [score(1, 1, 120), score(1, 2, 0)],
+      now: NOW,
+    });
+    expect([...settled]).toEqual([1]);
   });
 });
