@@ -17,6 +17,8 @@
  * Numeric columns (`numeric(7,2)`) come back from the driver as strings; we convert with
  * `Number` exactly once, here.
  */
+import { cache } from 'react';
+
 import { and, desc, eq, lte, sql } from 'drizzle-orm';
 
 import { db, matchups, nflGames, nflTeams, owners, ownerSeasons, scores, seasons } from '@/db';
@@ -329,6 +331,30 @@ export async function getSeasonSeeds(
   const { entries, results, playoffConfig, rankingOptions } = await getSeasonStandingsData(seasonId);
   return computeConferenceSeeds(entries, results, playoffConfig, rankingOptions);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Request-scoped caches (React Server Components only)                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Request-scoped memos for pages that fan out over the same season repeatedly.
+ *
+ * `/history` renders eleven aggregates; several of them independently load every season's
+ * standings, and almost all of them call `getSeasonOptions`. On the Neon HTTP driver each of
+ * those is a separate network round-trip, on a `force-dynamic` page, so the same handful of
+ * queries ran dozens of times per render.
+ *
+ * IMPORTANT: these wrap the plain functions rather than replacing them, and the uncached
+ * exports stay the default. `scripts/import-season3.ts` — the ground-truth replay — mutates
+ * the database and then reads standings back to validate them; a memo that outlived the
+ * write would hand it stale rows and silently break the regression anchor. React's `cache`
+ * is scoped to a single request, which server components have and scripts do not, so the
+ * split is deliberate: **app code may use these, scripts must not.**
+ */
+export const getSeasonStandingsDataCached = cache(getSeasonStandingsData);
+export const getSeasonOptionsCached = cache(getSeasonOptions);
+export const getRankedSeasonStandingsCached = cache(getRankedSeasonStandings);
+export const getSeasonStandingsCached = cache(getSeasonStandings);
 
 /* -------------------------------------------------------------------------- */
 /* Display views for the public pages                                          */

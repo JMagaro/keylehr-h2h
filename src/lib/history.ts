@@ -41,10 +41,13 @@ import {
 } from '@/db';
 
 import {
-  getRankedSeasonStandings,
-  getSeasonOptions,
-  getSeasonStandings,
-  getSeasonStandingsData,
+  // Request-scoped variants: /history fans out over the same seasons from ~11 aggregates,
+  // and on the Neon HTTP driver each repeat is another network round-trip. Safe here
+  // because this module is only ever imported by server components, never by scripts.
+  getRankedSeasonStandingsCached as getRankedSeasonStandings,
+  getSeasonOptionsCached as getSeasonOptions,
+  getSeasonStandingsDataCached as getSeasonStandingsData,
+  getSeasonStandingsCached as getSeasonStandings,
   type SeasonStandingRow,
 } from '@/lib/standings/query';
 import { getSeasonRules } from '@/lib/rules/schema';
