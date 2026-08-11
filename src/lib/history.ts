@@ -167,7 +167,9 @@ export async function getSeasonHistory(): Promise<SeasonHistory[]> {
       .select({ seasonId: seasonAwards.seasonId, ownerId: seasonAwards.ownerId })
       .from(seasonAwards)
       .where(eq(seasonAwards.type, 'champion')),
-    db.select({ id: seasons.id, rules: seasons.rules }).from(seasons),
+    db
+      .select({ id: seasons.id, rules: seasons.rules, regularSeasonWeeks: seasons.regularSeasonWeeks, entryFeeCents: seasons.entryFeeCents })
+      .from(seasons),
   ]);
 
   const seasonsWithData = new Set(ownerSeasonRows.map((r) => r.seasonId));
@@ -180,7 +182,9 @@ export async function getSeasonHistory(): Promise<SeasonHistory[]> {
   }
 
   const regularWeeksBySeason = new Map(
-    seasonRulesRows.map((r) => [r.id, getSeasonRules(r.rules).regularSeasonWeeks]),
+    // The canonical column — `rules.regularSeasonWeeks` is a mirror the Settings page
+    // deliberately leaves untouched, so the two drift.
+    seasonRulesRows.map((r) => [r.id, r.regularSeasonWeeks ?? getSeasonRules(r.rules).regularSeasonWeeks]),
   );
 
   const validSeasons = options.filter((s) => seasonsWithData.has(s.id));
@@ -329,10 +333,15 @@ export async function getSeasonHistoryById(seasonId: number): Promise<SeasonHist
       .from(seasonAwards)
       .where(and(eq(seasonAwards.seasonId, seasonId), eq(seasonAwards.type, 'champion')))
       .limit(1),
-    db.select({ rules: seasons.rules }).from(seasons).where(eq(seasons.id, seasonId)).limit(1),
+    db
+      .select({ rules: seasons.rules, regularSeasonWeeks: seasons.regularSeasonWeeks })
+      .from(seasons)
+      .where(eq(seasons.id, seasonId))
+      .limit(1),
   ]);
 
-  const regularSeasonWeeks = getSeasonRules(seasonRulesRow[0]?.rules).regularSeasonWeeks;
+  const regularSeasonWeeks =
+    seasonRulesRow[0]?.regularSeasonWeeks ?? getSeasonRules(seasonRulesRow[0]?.rules).regularSeasonWeeks;
   const standings = ranked.rows;
   const standingByOwnerSeason = new Map(standings.map((s) => [s.ownerSeasonId, s]));
   const weeks = ranked.weeksPlayed;
@@ -795,6 +804,18 @@ export async function getAllTimeLeaders(): Promise<AllTimeLeaders> {
   }
 
   // Best single-week score per owner, in one scores pass across all data seasons.
+  //
+  // Week-capped per season: playoff scores live in this same table at weeks 19-22 and are
+  // written non-bye by the playoff importers, so without the cap a championship-week score
+  // could be reported as an owner's best REGULAR-season week — under a heading that says
+  // "regular season", and contradicting the season card on the same page. The sibling
+  // getWeeklyHighScores already caps; this one was missed.
+  const seasonWeekRows = await db
+    .select({ id: seasons.id, rules: seasons.rules, regularSeasonWeeks: seasons.regularSeasonWeeks })
+    .from(seasons);
+  const regularWeeksBySeasonId = new Map(
+    seasonWeekRows.map((r) => [r.id, r.regularSeasonWeeks ?? getSeasonRules(r.rules).regularSeasonWeeks]),
+  );
   if (seasonsWithData.length > 0) {
     const scoreRows = await db
       .select({
@@ -811,6 +832,7 @@ export async function getAllTimeLeaders(): Promise<AllTimeLeaders> {
       .where(and(inArray(scores.seasonId, seasonsWithData), eq(scores.isExhibition, false)));
     for (const s of scoreRows) {
       if (s.isBye || s.dkPoints === null) continue;
+      if (s.week > (regularWeeksBySeasonId.get(s.seasonId) ?? 18)) continue;
       const agg = byOwner.get(s.ownerId);
       if (!agg) continue;
       const pts = Number(s.dkPoints);
@@ -1137,11 +1159,14 @@ export async function getWeeklyHighScores(): Promise<WeeklyHighStat[]> {
       .from(ownerSeasons)
       .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id))
       .innerJoin(nflTeams, eq(ownerSeasons.nflTeamId, nflTeams.id)),
-    db.select({ id: seasons.id, rules: seasons.rules }).from(seasons),
+    db
+      .select({ id: seasons.id, rules: seasons.rules, regularSeasonWeeks: seasons.regularSeasonWeeks, entryFeeCents: seasons.entryFeeCents })
+      .from(seasons),
   ]);
 
   const regularWeeksBySeason = new Map(
-    seasonRules.map((r) => [r.id, getSeasonRules(r.rules).regularSeasonWeeks]),
+    // Canonical column; see the note in getSeasonHistory.
+    seasonRules.map((r) => [r.id, r.regularSeasonWeeks ?? getSeasonRules(r.rules).regularSeasonWeeks]),
   );
 
   type Identity = { ownerId: number; ownerName: string; teamKey: string | null; teamName: string | null; logoEspn: string | null; seasonId: number };
@@ -1527,11 +1552,13 @@ export async function getScheduleLuck(): Promise<ScheduleLuck[]> {
   if (seasonsWithData.length === 0) return [];
 
   const seasonRulesRows = await db
-    .select({ id: seasons.id, rules: seasons.rules })
+    .select({ id: seasons.id, rules: seasons.rules, regularSeasonWeeks: seasons.regularSeasonWeeks })
     .from(seasons)
     .where(inArray(seasons.id, seasonsWithData));
   const regularWeeksBySeason = new Map(
-    seasonRulesRows.map((r) => [r.id, getSeasonRules(r.rules).regularSeasonWeeks]),
+    // The canonical column — `rules.regularSeasonWeeks` is a mirror the Settings page
+    // deliberately leaves untouched, so the two drift.
+    seasonRulesRows.map((r) => [r.id, r.regularSeasonWeeks ?? getSeasonRules(r.rules).regularSeasonWeeks]),
   );
   const yearBySeasonId = new Map(options.map((s) => [s.id, s.year]));
 
@@ -1651,7 +1678,9 @@ export interface NetEarningsLeader {
  */
 export async function getNetEarnings(): Promise<NetEarningsLeader[]> {
   const [seasonRows, ownerSeasonRows, earningsRows] = await Promise.all([
-    db.select({ id: seasons.id, rules: seasons.rules }).from(seasons),
+    db
+      .select({ id: seasons.id, rules: seasons.rules, regularSeasonWeeks: seasons.regularSeasonWeeks, entryFeeCents: seasons.entryFeeCents })
+      .from(seasons),
     db
       .select({
         ownerId: owners.id,
@@ -1671,7 +1700,8 @@ export async function getNetEarnings(): Promise<NetEarningsLeader[]> {
   ]);
 
   const entryFeeBySeason = new Map(
-    seasonRows.map((s) => [s.id, getSeasonRules(s.rules).payouts.entryFeeCents]),
+    // Canonical column; `rules.payouts.entryFeeCents` is a mirror the Settings page preserves.
+    seasonRows.map((s) => [s.id, s.entryFeeCents ?? getSeasonRules(s.rules).payouts.entryFeeCents]),
   );
 
   const earnedByOwner = new Map(earningsRows.map((r) => [r.ownerId, r.earnedCents]));
