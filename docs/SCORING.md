@@ -37,7 +37,7 @@ StandingRow[]     (W-L-T, PF, PA, win%, streak)
 ranked order
       │  src/lib/standings/seeding.ts     computeConferenceSeeds  ← §11
       ▼
-playoff seeds → src/lib/playoffs/service.ts (bracket) → src/lib/awards/ (payouts)
+playoff seeds → src/lib/playoffs/service.ts (bracket) → src/lib/awards/ (payouts)  ← §12
 ```
 
 Everything from `getSeasonStandingsData` onward is **pure** — no DB imports — which is why it is
@@ -51,7 +51,7 @@ disjoint meanings. Getting this wrong is how playoff scores leak into regular-se
 | Namespace | Weeks | Where the schedule lives | Flags |
 | --------- | ----- | ------------------------ | ----- |
 | **Regular season** | `1 .. seasons.regularSeasonWeeks` (18 today) | `matchups` | `isPlayoff = false`, `isExhibition = false` |
-| **Playoffs** | `19`–`22` (`PLAYOFF_ROUND_WEEKS` in `src/lib/playoffs/service.ts`) | `playoff_matchups` — **not** `matchups` | scores written with `isBye = false` |
+| **Playoffs** | `19`–`22` (`PLAYOFF_ROUND_WEEKS` in `src/lib/playoffs/service.ts`); week 22 carries **two** games — see [§12](#12-the-bracket-and-the-game-that-decides-3rd) | `playoff_matchups` — **not** `matchups` | scores written with `isBye = false` |
 | **Preseason exhibition** | `101`–`103` = `PRESEASON_WEEK_BASE (100) + preseasonWeek` | `matchups` with `isExhibition = true` | `isExhibition = true` everywhere |
 
 Consequences that trip people up:
@@ -98,7 +98,7 @@ path ever drops one.
 This also makes the read path self-healing. A late score, a re-sync, matchups generated after
 ingest — all of them just change what the next render computes. And it is what makes the
 change provably a no-op on the frozen seasons: `npm run verify` asserts that the derived
-forfeit set equals the stored `isForfeit` set for 2023–2025 (see [§12](#12-what-verify-proves)).
+forfeit set equals the stored `isForfeit` set for 2023–2025 (see [§13](#13-what-verify-proves)).
 
 ## 4. Ingest (write time)
 
@@ -164,13 +164,22 @@ season's `byeWeek.countsTowardPointsFor` rule is on (it is off for the league) �
 This is the single most important safety property in the scoring path.
 
 > A week is **settled** when it has at least one `nfl_games` row and **every one of them is
-> final**. Forfeit derivation runs for settled weeks only.
+> final**, **and** at least one owner has posted a real (non-bye) score for it. Forfeit
+> derivation runs for settled weeks only.
 
-Without the gate, "0 points ⇒ missed lineup" is catastrophic live. If the extension syncs at
-11am on Sunday, all 32 owners legitimately sit on 0.00 — and the week would resolve as 32
-forfeits, each triggering an auto-loss and charging its opponent the league benchmark, with the
-double-loss rule cascading through the standings. With the gate, an in-progress week simply
-resolves as unplayed.
+`computeSettledWeeks` (`src/lib/standings/forfeit-derive.ts`) applies **both** halves, and each
+one guards a different window in which every owner is legitimately on zero:
+
+1. **Every game final.** If the extension syncs at 11am on Sunday, all 32 owners sit on 0.00 —
+   and the week would resolve as 32 forfeits, each triggering an auto-loss and charging its
+   opponent the league benchmark, with the double-loss rule cascading through the standings.
+2. **At least one real score on record**, i.e. the DraftKings sync for that week has landed.
+   Otherwise there is a window *every single week*, from the last game going final until the
+   commissioner syncs, where the games are over and `scores` is still empty — so all 32 owners
+   look like they failed to submit, which is a double loss in all 16 games.
+
+Drop either half and the result is a league-wide false forfeit. With both, a week that is
+in progress or finished-but-unsynced simply resolves as unplayed, which is the truth.
 
 `src/lib/schedule/final.ts` gives "is it over?" **one** definition, shared by the scoring engine
 and the admin sync dashboard so they cannot drift apart:
@@ -181,17 +190,17 @@ and the admin sync dashboard so they cannot drift apart:
 - `gameIsFinal(game, now)` — falls back to "kicked off at least `FINAL_FALLBACK_MS` (6 hours)
   ago" only when the status is unknown.
 - `weekIsFinal(games, now)` — at least one game, and all of them final. **A week with no games
-  is NOT final**, or an unsynced week would read as settled and start deriving forfeits for
-  owners who never had a game to miss.
+  is NOT final**, or a week whose NFL schedule has not been pulled yet would read as final and
+  start deriving forfeits for owners who never had a game to miss.
 
 `now` is always passed in — the module keeps no clock of its own, so tests are deterministic.
 
-> **Operational note.** The gate answers "are the games over?" — it does not additionally
-> require that any score has been synced. So in the window between the last game of a week
-> going final and the commissioner running the sync, every owner has a matchup, a settled week,
-> and no `scores` row, which derives as a league-wide missed lineup. It self-heals the moment
-> the week is synced, but **sync promptly after Monday night** and do not read `/standings` or
-> run `import:awards` in that window. See [`RUNBOOK.md`](RUNBOOK.md).
+> **Operational note.** The second half of the gate needs only **one** score, so a *partially*
+> synced week is settled. Every owner who is missing a row at that point derives as a missed
+> lineup until the rest of the week lands. That is the correct reading — the alternative is
+> letting a genuinely absent owner escape — but it means a half-finished sync makes
+> `/standings` temporarily wrong. Finish the week's sync in one go and confirm `/admin/sync`
+> reads `32/32`. See [`RUNBOOK.md`](RUNBOOK.md).
 
 ## 7. Forfeits (missed lineups)
 
@@ -317,7 +326,40 @@ config-driven from `rules.playoffs`:
 before that every owner is 0-0 and the chain falls through to `ownerSeasonId` order, which would
 render an arbitrary "seeding" that misleads.
 
-## 12. What `verify` proves
+## 12. The bracket, and the game that decides 3rd
+
+Seeds go to `src/lib/playoffs/service.ts`, which writes `playoff_matchups` and scores each round
+from that week's `scores` exactly like a regular-season week. Two mappings govern it:
+
+| Constant | Contents | What it is |
+| -------- | -------- | ---------- |
+| `PLAYOFF_ROUND_WEEKS` | `wild_card` 19 · `divisional` 20 · `conference` 21 · `championship` 22 · **`third_place` 22** | Which week each round is scored from. |
+| `PLAYOFF_ROUND_ORDER` | `wild_card` → `divisional` → `conference` → `championship` | The **advancement chain** only. |
+
+**3rd and 4th are decided on the field.** The two beaten conference finalists play a consolation
+game in championship week; its winner takes 3rd and its loser 4th. `advanceBracket('conference', …)`
+therefore returns **two** games — the championship, paired from the round's winners, and the
+`third_place` game, paired from its losers (`resolveLoser` in `src/lib/standings/playoffs.ts`).
+Both are cross-conference, so both carry `conference = null`.
+
+Because it shares week 22, the consolation game is scored from the **same DraftKings contest** as
+the championship: Admin → Playoffs still configures one contest per playoff week (19–22), and
+syncing week 22 resolves both games at once.
+
+> **`third_place` is a leaf, not a step in the chain — keep it out of `PLAYOFF_ROUND_ORDER`.**
+> `advancePlayoffs` walks that list and breaks at the first round that has no rows or is not
+> fully scored. A consolation game sitting in the chain would therefore stop the walk **before**
+> the championship whenever it is missing or unplayed, and nothing advances out of it anyway.
+> It is resolved explicitly in the same pass as the championship instead: `resolveRoundGames`
+> was extracted so both week-22 games are settled by the same code.
+
+`loadBracketOutcome` (`src/lib/awards/service.ts`) then reads the resolved consolation row —
+winner → `third`, loser → `fourth` — so the $300/$150 placements are recorded live alongside the
+champion and runner-up. `import:awards --third=<ownerSeasonId>` survives **only** as a fallback
+for seasons imported before the game was modelled: 2023–2025 have no consolation row, and they
+are frozen. See [`RUNBOOK.md` §3](RUNBOOK.md#3-recomputing-awards).
+
+## 13. What `verify` proves
 
 `npm run verify` (see [`RUNBOOK.md`](RUNBOOK.md)) carries two TRUTH checks that exist specifically
 to keep this path honest:
@@ -337,7 +379,7 @@ to keep this path honest:
 Frozen seasons must not move. Re-baselining is a deliberate, sign-off-required act — see
 [`RUNBOOK.md` §6](RUNBOOK.md#6-the-snapshot-gate).
 
-## 13. If you add a query that reads `scores` or `matchups`
+## 14. If you add a query that reads `scores` or `matchups`
 
 Four rules, all of which have been broken at least once:
 

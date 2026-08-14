@@ -62,7 +62,10 @@ inert (an exact Points-For tie does not happen with real decimal scores). See
 - `higher_seed` — the better seed advances.
 
 The bracket reseeds each round (best remaining seed plays worst remaining seed), mirroring the
-NFL. That is structural, not a rule key.
+NFL. That is structural, not a rule key — and so is the **consolation game**: the two beaten
+conference finalists play in championship week (both games are scored from the week-22 contest),
+its winner takes 3rd and its loser 4th. See
+[`SCORING.md` §12](SCORING.md#12-the-bracket-and-the-game-that-decides-3rd).
 
 ## 4. Bye weeks (`byeWeek.*`)
 
@@ -150,10 +153,10 @@ that pattern — `seasonRow.regularSeasonWeeks ?? rules.regularSeasonWeeks`.
 would have left `/rules`, `/standings` and the odds engine honoring it while `/history` kept
 scoring week 18 into "highest week", "most weekly highs" and every owner's expected wins.
 
-> **Known trap:** the read-only "Effective rules" summary at the bottom of Admin → Settings shows
-> `rules.regularSeasonWeeks` (the mirror) while the Season card above it edits the column. If the
-> two ever diverge, that panel will show the stale number. The entry-fee row on the same panel
-> correctly reads the column.
+> The read-only "Effective rules" summary at the bottom of Admin → Settings reads the **columns**
+> (`season.regularSeasonWeeks`, `season.entryFeeCents`), matching the Season card above it. It
+> used to render the `rules.regularSeasonWeeks` mirror and would have contradicted its own
+> editor; the source now carries a comment saying why. Keep it that way.
 
 ## 7. Payouts (`payouts.*`)
 
@@ -169,8 +172,8 @@ All amounts are **whole USD cents** (non-negative integers). Render with `format
 | `payouts.mostRegularSeasonPointsCents` | `40000` ($400) | Prize for the most regular-season Points For. | `computeSeasonAwards` → `most_points`, sourced from `computeStandings`' `pointsFor` so it matches `/standings` | Admin → Settings Rules card |
 | `payouts.championCents` | `200000` ($2,000) | Playoff champion. | `computeSeasonAwards` → `champion` | Admin → Settings Rules card |
 | `payouts.runnerUpCents` | `100000` ($1,000) | Loser of the championship game. | `computeSeasonAwards` → `runner_up` | Admin → Settings Rules card |
-| `payouts.thirdCents` | `30000` ($300) | Third place. | `computeSeasonAwards` → `third` | Admin → Settings Rules card |
-| `payouts.fourthCents` | `15000` ($150) | Fourth place. | `computeSeasonAwards` → `fourth` | Admin → Settings Rules card |
+| `payouts.thirdCents` | `30000` ($300) | Third place — the **winner** of the consolation game. | `computeSeasonAwards` → `third` | Admin → Settings Rules card |
+| `payouts.fourthCents` | `15000` ($150) | Fourth place — its **loser**. | `computeSeasonAwards` → `fourth` | Admin → Settings Rules card |
 
 `/rules` computes the published prize pool as
 `champion + runnerUp + third + fourth + mostRegularSeasonPoints + seasonHigh + (weeklyHigh × weeklyHighWeeks)`.
@@ -180,9 +183,11 @@ Payout behavior worth knowing:
 - **Exact ties split the pot evenly**, one `season_awards` row per tied owner, with the cent
   remainder distributed lowest-`ownerSeasonId`-first so the rows sum to exactly the prize
   (`splitCents` in `src/lib/awards/compute.ts`).
-- **Third and fourth are not derivable** — the bracket has no consolation game. They are emitted
-  only when `import:awards --third=<ownerSeasonId>` names which conference-round loser placed
-  third.
+- **Third and fourth are earned, not inferred** — the bracket models the consolation game the two
+  beaten conference finalists play in championship week, and `loadBracketOutcome` reads its
+  winner as `third` and its loser as `fourth`. `import:awards --third=<ownerSeasonId>` is now only
+  a **fallback for seasons imported before that game was modelled** (2023–2025, which are frozen);
+  without either, neither placement is emitted rather than guessed at.
 - Missed lineups, bye weeks (unless `byeWeek.eligibleForWeeklyHigh`), preseason exhibition
   scores, playoff weeks, and zero-point owners are all excluded from the high-score prizes.
 - **2023–2025 are refused** by `recomputeSeasonAwards` without an explicit force flag.

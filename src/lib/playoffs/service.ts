@@ -86,6 +86,17 @@ export const PLAYOFF_ROUND_ORDER: PlayoffRound[] = [
   'championship',
 ];
 
+/**
+ * The rounds to DISPLAY, in order. The advancement chain above and this are different
+ * concerns and must not be conflated: `third_place` is not a step that unlocks anything, but
+ * it is absolutely a game people want to see. Filtering the bracket view by
+ * `PLAYOFF_ROUND_ORDER` silently dropped it.
+ */
+export const PLAYOFF_ROUND_DISPLAY_ORDER: PlayoffRound[] = [
+  ...PLAYOFF_ROUND_ORDER,
+  'third_place',
+];
+
 const CONFERENCES: Conference[] = ['AFC', 'NFC'];
 
 /* -------------------------------------------------------------------------- */
@@ -703,7 +714,7 @@ export async function getPlayoffBracket(seasonId: number): Promise<PlayoffBracke
     byRound.set(r.round, list);
   }
 
-  const rounds = PLAYOFF_ROUND_ORDER.filter((rnd) => byRound.has(rnd)).map((rnd) => ({
+  const rounds = PLAYOFF_ROUND_DISPLAY_ORDER.filter((rnd) => byRound.has(rnd)).map((rnd) => ({
     round: rnd,
     week: PLAYOFF_ROUND_WEEKS[rnd],
     games: byRound.get(rnd)!,

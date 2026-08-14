@@ -40,7 +40,8 @@ counts toward Points For and repairs itself on the next sync (see
    kickoff) or if an assignment changed. Idempotent.
 
 2. **Wait for the week to finish.** Scoring only treats a week as *settled* once **every** NFL
-   game that week is final; until then no missed lineup is derived
+   game that week is final **and** at least one real score has been ingested for it; until then
+   no missed lineup is derived
    ([`SCORING.md` §6](SCORING.md#6-settled-weeks-the-safety-property)).
 
 3. **Sync scores with the DK Sync extension**, ideally right after Monday night's game:
@@ -50,10 +51,12 @@ counts toward Points For and repairs itself on the next sync (see
      **Sync Week N**.
    - The **Paste manually** expander is the guaranteed fallback if the leaderboard read fails.
 
-   > **Do not leave a finished week unsynced.** Once the last game goes final, every owner has a
-   > matchup, a settled week, and no `scores` row — which derives as a league-wide missed lineup
-   > until the sync lands. It self-heals immediately on sync, but `/standings` and any
-   > `import:awards` run in that window are wrong.
+   > **Sync a week in one go.** A finished-but-unsynced week is safe — it is not *settled* until
+   > at least one real score exists, so it simply reads as unplayed. A **half-synced** week is
+   > not: it is settled, and every owner still missing a row derives as a missed lineup until the
+   > rest lands. It self-heals on the next successful sync, but `/standings` and any
+   > `import:awards` run in that window are wrong
+   > ([`SCORING.md` §6](SCORING.md#6-settled-weeks-the-safety-property)).
 
 4. **Check `/admin/sync`.** Every week gets a derived health:
 
@@ -98,8 +101,16 @@ an exhibition week.
 
 Playoff rounds are scored at weeks 19–22 (`PLAYOFF_ROUND_WEEKS`). Generate and advance the
 bracket from **Admin → Playoffs**; sync each round's contest with the extension using the plain
-week number (19, 20, 21, 22 — no Preseason toggle). When the championship resolves,
-`advancePlayoffs` recomputes the season's award ledger automatically.
+week number (19, 20, 21, 22 — no Preseason toggle).
+
+**Championship week resolves two games.** When the conference round is advanced, the bracket
+generates the championship from that round's winners *and* the **consolation game** between its
+two losers — the game that decides 3rd and 4th. Both are played in week 22 and are scored from
+the **same** DraftKings contest, so there is still only one contest id per playoff week on
+Admin → Playoffs and one sync to run. When the championship resolves, `advancePlayoffs` settles
+the consolation game in the same pass and recomputes the season's award ledger automatically, so
+champion, runner-up, 3rd and 4th all land live. See
+[`SCORING.md` §12](SCORING.md#12-the-bracket-and-the-game-that-decides-3rd).
 
 ## 3. Recomputing awards
 
@@ -108,7 +119,7 @@ week number (19, 20, 21, 22 — no Preseason toggle). When the championship reso
 ```bash
 npm run import:awards -- --dry-run              # preview every season with owners; writes nothing
 npm run import:awards -- --season=<id>          # one season
-npm run import:awards -- --season=<id> --third=<ownerSeasonId>
+npm run import:awards -- --season=<id> --third=<ownerSeasonId>   # legacy fallback, see below
 npm run import:awards -- --force                # include the frozen 2023-2025 seasons
 ```
 
@@ -116,7 +127,7 @@ npm run import:awards -- --force                # include the frozen 2023-2025 s
 | ---- | ------ |
 | `--dry-run` | Compute and print the ledger; write nothing. **Always run this first and read the diff.** |
 | `--season=<id>` | Restrict to one season id. Without it, every season that has owners is processed. |
-| `--third=<ownerSeasonId>` | Names which conference-round loser finished **3rd**. The bracket has no consolation game, so without this neither `third` nor `fourth` is emitted — the script would rather record nothing than guess at a $300/$150 payout. It refuses a value that is not one of the two conference-round losers. |
+| `--third=<ownerSeasonId>` | **Legacy fallback — not the normal path.** 3rd and 4th come from the resolved consolation game. This flag names which conference-round loser finished 3rd, and is only for a season imported **before** that game was modelled (2023–2025, which have no consolation row). It is ignored when a resolved 3rd-place game exists, and it refuses a value that is not one of the two conference-round losers. |
 | `--force` | Required to touch **2023, 2024, 2025**. They were played and paid under the rules of their day and are frozen. |
 
 Behavior worth knowing:
@@ -130,8 +141,9 @@ Behavior worth knowing:
 - Exact ties split the prize evenly, one row per owner.
 - It is idempotent — running it twice converges on the same ledger.
 
-`advancePlayoffs` calls the same service when the championship resolves, so champion, runner-up
-and (if `--third` was supplied on a prior run) the placements all carry real amounts live.
+`advancePlayoffs` calls the same service when the championship resolves, so champion, runner-up,
+3rd and 4th all carry real amounts live — the placements come off the consolation game, which is
+settled in the same pass ([§2](#2-the-weekly-loop), "Playoff weeks").
 
 ## 4. Verification
 
@@ -210,7 +222,7 @@ code.
 | Symptom | Likely cause | Fix |
 | ------- | ------------ | --- |
 | `/admin/sync` shows **`0/32` scored right after a successful sync** | Every owner was written as a bye — scores were ingested before `nfl_games` existed for that week | Pull the schedule, then re-sync the week. `/standings` should already be right: the read path ignores a bye flag for an owner who has a matchup. |
-| Everyone shows a loss for the most recent week | The week is settled but not yet synced | Sync it ([§2](#2-the-weekly-loop) step 3) |
+| Some owners show a loss for the most recent week and never scored | The week is settled (games final, *some* scores in) but their rows are missing — a partial sync | Re-sync the week and confirm `/admin/sync` reads `32/32` ([§2](#2-the-weekly-loop) step 3) |
 | `/admin/sync` shows `partial` with unmatched entries | An owner submitted under a different DraftKings entry name | Fix `owner_seasons.dkEntryName` in Admin → Assignments, then re-sync. Unmatched entries are reported, never written. |
 | An owner should be marked as missing a lineup but is not | They scored above 0, or the week is not settled | Set `scores.isForfeit = true` for that owner-week directly. A stored flag is always honored as the commissioner's override and is never overwritten by the ingest path. |
 | Sync 401s | `INGEST_TOKEN` unset on the server, or the extension's token does not match | See [`DEPLOYMENT.md` §2](DEPLOYMENT.md#2-environment-variables) |

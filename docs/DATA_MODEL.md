@@ -55,7 +55,7 @@ Relationships at a glance:
 | `matchup_status` | `scheduled`, `final`                                                                     | `matchups.status`                |
 | `import_status`  | `success`, `partial`, `failed`                                                           | `score_import_runs.status`       |
 | `award_type`     | `champion`, `runner_up`, `third`, `fourth`, `weekly_high`, `season_high`, `most_points`, `other` | `season_awards.type`     |
-| `playoff_round`  | `wild_card`, `divisional`, `conference`, `championship`                                  | `playoff_matchups.round`         |
+| `playoff_round`  | `wild_card`, `divisional`, `conference`, `championship`, `third_place`                   | `playoff_matchups.round`         |
 
 ---
 
@@ -356,7 +356,7 @@ driven from Admin → Playoffs) and by the historical bracket importers.
 | `id`                    | identity PK    |                                                             |
 | `seasonId`              | integer FK     | NOT NULL → `seasons.id`, `onDelete: cascade`.               |
 | `round`                 | `playoff_round`| NOT NULL.                                                   |
-| `conference`            | `conference`   | Nullable. Set for intra-conference rounds; null for the championship. |
+| `conference`            | `conference`   | Nullable. Set for intra-conference rounds; **null** for the two cross-conference games, `championship` and `third_place`. |
 | `week`                  | integer        | Nullable.                                                   |
 | `highSeed`              | integer        | Nullable. Better seed number.                               |
 | `lowSeed`               | integer        | Nullable. Worse seed number.                                |
@@ -367,11 +367,20 @@ driven from Admin → Playoffs) and by the historical bracket importers.
 | `winnerOwnerSeasonId`   | integer FK     | Nullable → `owner_seasons.id`.                              |
 
 > Rounds are scored at fixed weeks — `wild_card` 19, `divisional` 20, `conference` 21,
-> `championship` 22 (`PLAYOFF_ROUND_WEEKS`). Those weeks live in `scores` like any other, but they
-> have **no `matchups` rows**, which is why "no matchup that week" never means "bye" past the
-> regular season. `upsertRoundGames` matches on `(round, conference, highSeed, lowSeed)` and
-> prunes superseded rows, so it is authoritative for the round it writes — otherwise an admin
-> winner override left the old pairing behind as a phantom game.
+> `championship` 22 and `third_place` **also 22** (`PLAYOFF_ROUND_WEEKS`). Those weeks live in
+> `scores` like any other, but they have **no `matchups` rows**, which is why "no matchup that
+> week" never means "bye" past the regular season. `upsertRoundGames` matches on
+> `(round, conference, highSeed, lowSeed)` and prunes superseded rows, so it is authoritative for
+> the round it writes — otherwise an admin winner override left the old pairing behind as a
+> phantom game. Pruning is scoped per `(round, conference)`, so the two week-22 games written in
+> the same call do not evict each other.
+>
+> `third_place` is the **consolation game** between the two beaten conference finalists: it is
+> generated from the conference round's losers at the same moment the championship is generated
+> from its winners, shares championship week (so it needs no extra `weekly_contests` row), and
+> its winner/loser are the season's 3rd and 4th place. It is a **leaf**, so it is absent from
+> `PLAYOFF_ROUND_ORDER` and nothing advances out of it — see
+> [`SCORING.md` §12](SCORING.md#12-the-bracket-and-the-game-that-decides-3rd).
 
 ## `playoff_odds_snapshots`
 
@@ -436,6 +445,7 @@ A fresh checkout applies them all with `npm run db:migrate`.
 | `0006_daffy_scourge.sql` | `model_snapshots` table + its unique/season indexes. |
 | `0007_concerned_iron_patriot.sql` | `owner_seasons.display_name` — the owner's name as that season's sheet listed it. |
 | `0008_shocking_lila_cheney.sql` | `is_exhibition` boolean on `matchups`, `nfl_games` **and** `scores` — the preseason namespace. |
+| `0009_lyrical_firedrake.sql` | `third_place` added to the `playoff_round` enum (`ALTER TYPE … ADD VALUE`, additive) — the consolation game that decides 3rd/4th. |
 
 To add one: edit `src/db/schema.ts`, run `npm run db:generate` (writes the SQL), review it, then
 `npm run db:migrate`. Commit the generated file.

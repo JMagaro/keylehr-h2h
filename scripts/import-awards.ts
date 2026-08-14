@@ -5,9 +5,9 @@
  *
  * Awards computed:
  *   champion / runner_up      — from the resolved championship game
- *   third / fourth            — the two conference-round losers, but ONLY when `--third`
- *                               says which one placed 3rd (the bracket has no consolation
- *                               game, so it cannot be derived)
+ *   third / fourth            — from the resolved `third_place` consolation game (winner 3rd,
+ *                               loser 4th). `--third` is a LEGACY fallback, used only for a
+ *                               season imported before that game was modelled (2023-2025)
  *   weekly_high               — top score each week, capped to the regular season
  *   season_high               — the best of those weekly highs
  *   most_points               — most regular-season Points For, taken from the standings
@@ -19,7 +19,7 @@
  * Usage:
  *   npm run import:awards -- --dry-run              # preview every eligible season
  *   npm run import:awards -- --season=1             # one season
- *   npm run import:awards -- --season=1 --third=42  # record 3rd/4th as well
+ *   npm run import:awards -- --season=1 --third=42  # legacy: 3rd/4th for a pre-consolation season
  *   npm run import:awards -- --force                # include the frozen 2023-2025 seasons
  *
  * 2023-2025 are FROZEN (played and paid under the rules of their day) and are skipped

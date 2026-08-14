@@ -1,42 +1,109 @@
 # Session handoff — KeyLehr H2H
 
 A running "where things stand" doc so a fresh Claude/context window (or contributor) can pick up
-without re-deriving everything. Update the **Next up** and **Recent work** sections as you go.
+without re-deriving everything. Update the **Snapshot**, **Recent work** and **Known open items**
+sections as you go; **[Start here](#start-here-fresh-session)** is the entry point.
 
-_Last updated: 2026-08-10 (live-scoring remediation, Phases 0–3 — **all pushed, working tree
-clean**; prior: preseason syncing from the DK Chrome extension, preseason exhibition games,
-tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model tracker)._
+_Last updated: 2026-08-14 (live-scoring remediation Phases 0–4 + the playoff **3rd-place game**;
+prior: preseason syncing from the DK Chrome extension, preseason exhibition games, tiebreaker fix
++ 2023/2024 playoffs + per-season owner names + DK salary + model tracker)._
 
 ---
 
 ## Snapshot
 
-- **Live app:** Vercel (`keylehr-h2h.vercel.app`), auto-deploys from `main`. The 10-commit
-  live-scoring remediation (`d0ba364` … `65ecf4a`) is **pushed** — `main` and `origin/main` are
-  both at `65ecf4a` and the working tree is **clean**. Those commit messages are the best
-  explanation of each change and are worth reading before touching the scoring path.
+- **Live app:** Vercel (`keylehr-h2h.vercel.app`), auto-deploys from `main`. This session is the
+  12-commit run `d0ba364` … `e2a3f1a` (`git log d0ba364^..e2a3f1a`). **Those commit messages are
+  the real design record** — read them before touching the scoring or playoff path; each one
+  states the bug, the decision and what was rejected.
+  > **Push check.** Everything through `a7ce23e` is pushed; `e2a3f1a` (the 3rd-place game) was
+  > still local when this was written. Run `git log origin/main..main` — if it lists anything,
+  > push it, and note that Vercel has not deployed it yet.
 - **Stack:** Next.js 16.2.9 (App Router, Turbopack) · React 19 · Tailwind v4 (CSS `@theme`, no
   config file) · Drizzle + Neon Postgres (**HTTP driver** — every query is a network round-trip) ·
   NextAuth (commissioner login) · a Chrome extension for DraftKings sync.
-- **Verification:** `npm run verify` is **9/9 green** (typecheck · lint · **137 unit tests** ·
-  production build · ESPN health · engine invariants · **historical snapshot unchanged** ·
-  **engine no-op proofs** · 2025 ground-truth replay). The last two TRUTH checks are new — see
-  the remediation DONE section below.
+- **Verification:** `npm run verify` is **9/9 green** at `e2a3f1a` (typecheck · lint · **144 unit
+  tests**, 16 files · production build · ESPN health · engine invariants · **historical snapshot
+  unchanged** · **engine no-op proofs** · 2025 ground-truth replay). The two TRUTH checks are from
+  this session — see the freeze-gate part of the remediation DONE section below.
+- **Migrations:** through **0009** (`third_place` added to the `playoff_round` enum), applied to
+  the production DB.
 - **Seasons in DB:** 2023, 2024, 2025 fully imported (regular season **and** playoffs, validated
   against the sheets) and now **frozen behind a snapshot gate** + 2026 (upcoming; schedule synced,
-  **all 32 owners assigned**, `missedLineup.opponentScores = league_median`, and 16 preseason
-  **exhibition** matchups generated at week 102 — no exhibition scores ingested yet). 2023–2025
-  carry `rules = NULL`, i.e. they run on `DEFAULT_SEASON_RULES`. The rebuild is feature-complete
-  vs the original Google-Sheets workflow.
+  **all 32 owners assigned**, `missedLineup.opponentScores = league_median` — set by the user in
+  Admin → Settings this session — and 16 preseason **exhibition** matchups generated at week 102,
+  no exhibition scores ingested yet). 2023–2025 carry `rules = NULL`, i.e. they run on
+  `DEFAULT_SEASON_RULES`. The rebuild is feature-complete vs the original Google-Sheets workflow.
   Verified against the prod DB on 2026-08-10: 2023/2024/2025 carry **zero** exhibition rows, which is
   why adding the `isExhibition` exclusions can't move any historical number (the 2025 ground-truth
   replay is unchanged by them).
 - **The DFS model:** owners are assigned an NFL team (drives the H2H *schedule* only); each week a score
   is the owner's **NFL-wide DraftKings lineup total**. Players were not tracked at all until Phase B.
 
-## ✅ DONE — live-scoring remediation (Phases 0–3) + the freeze gate
+## 🛑 Two structural ideas — do not undo either
 
-Ten commits, `d0ba364` … `65ecf4a`, all pushed. An audit found that the live scoring path was
+Both look like accidental complexity and both are load-bearing. If you are about to "simplify"
+one of these, read [`docs/SCORING.md`](SCORING.md) first.
+
+**1. `scores.isBye` / `scores.isForfeit` are persisted HINTS, not the source of truth.**
+Byes are derived from `nfl_games` (the real NFL schedule) and reconciled at read time against
+`matchups`; missed lineups are derived at read time and **UNIONed** with the stored `isForfeit`
+flag, which stays the commissioner's manual override. Do not "fix" this by trusting either column
+in a query, and do not drop the union — a stored flag must never be overwritten by derivation.
+The worst case is an owner with **no `scores` row at all**, which only derivation can reach.
+
+**2. The settled-week gate has TWO conjuncts. Both are required.**
+
+> A week derives missed lineups only when **every one of its NFL games is final** *and* **at least
+> one owner has posted a real (non-bye) score** for it. — `computeSettledWeeks`,
+> `src/lib/standings/forfeit-derive.ts`
+
+Each half guards a different window in which every owner is legitimately on zero: mid-Sunday
+(games not over), and after the last game but **before the DK sync lands** (no scores yet). Drop
+either one and a normal week resolves as a **league-wide false forfeit** — an auto-loss for all 32
+owners, and because the opponent then plays the league benchmark, a **double loss in all 16
+games**. The gate shipped with only the first conjunct (`1b3737a`) and was caught later the same
+session while writing `SCORING.md` (`a7ce23e`) — it self-heals on sync and cannot touch the frozen
+seasons, so nothing in `verify` went red. Both halves now have tests in `forfeit-derive.test.ts`.
+
+Consequence worth knowing operationally: one score is enough to settle a week, so a **half-synced**
+week derives forfeits for the owners still missing rows. Finish a week's sync in one go and
+confirm `/admin/sync` reads `32/32`.
+
+## ✅ DONE — the playoff 3rd-place game (`e2a3f1a`)
+
+**The league plays a consolation game.** The two beaten conference finalists meet in championship
+week, and that game decides 3rd and 4th. The bracket never modelled it, so those placements could
+not be derived at all: the awards importer used a hardcoded map of past winners, and after that was
+removed it asked the commissioner for `--third=<ownerSeasonId>` by hand. Both were working around
+a game that actually gets played.
+
+- **`third_place` on the `playoff_round` enum** (migration **0009**, additive `ALTER TYPE … ADD
+  VALUE`, applied to prod). `PLAYOFF_ROUND_WEEKS.third_place = 22` — it **shares championship
+  week**, so it is scored from the same week-22 DraftKings contest and Admin → Playoffs still
+  configures one contest id per playoff week.
+- `advanceBracket('conference', …)` now returns **two** games: the championship from the round's
+  winners, and the consolation game from its losers (`resolveLoser`). Both are cross-conference
+  (`conference = null`).
+- **It is a LEAF, not a step in the chain.** It is deliberately **absent from
+  `PLAYOFF_ROUND_ORDER`**: `advancePlayoffs` walks that list and breaks at the first round that
+  has no rows or is not fully scored, so a consolation game sitting in the chain would stop the
+  walk *before* the championship whenever it is missing or unplayed. It is resolved explicitly in
+  the same pass instead — the per-round scoring was extracted into `resolveRoundGames` so both
+  week-22 games are settled by the same code.
+- **Awards:** `loadBracketOutcome` reads the resolved consolation row — winner → `third`, loser →
+  `fourth` — so all four placements are recorded live when the championship resolves.
+  **`--third` survives only as a fallback** for seasons imported before the game was modelled;
+  it is ignored when a resolved 3rd-place game exists.
+- 2023–2025 have **no** consolation row (their importers deliberately skip the sheets' "Round 3"
+  consolation bracket) and are frozen, so nothing historical moved: 2025's bracket renders exactly
+  as it did before. `verify` 9/9.
+
+Documented in [`SCORING.md` §12](SCORING.md#12-the-bracket-and-the-game-that-decides-3rd).
+
+## ✅ DONE — live-scoring remediation (Phases 0–4) + the freeze gate
+
+Eleven commits, `d0ba364` … `a7ce23e`. An audit found that the live scoring path was
 broken in ways that only appear **during a season** — the historical seasons looked fine because
 their backfill scripts wrote the derived columns by hand. The full plan and the decisions locked
 with the user are in the commit messages; the resulting behavior is documented in
@@ -55,10 +122,10 @@ now **persisted hints, not the source of truth**:
   manually-set flag remains the commissioner's override. The ingest path still never writes the
   column — the worst case is an owner who never enters the contest and therefore has no row to
   flag, which only derivation can reach.
-- Derivation is gated on the week being **settled** (every NFL game final, `weekIsFinal` in
-  `src/lib/schedule/final.ts`). **This is the single most important safety property in the
-  system**: without it a mid-Sunday sync sees 32 owners on 0.00 and resolves the week as 32
-  forfeits with cascading auto-losses.
+- Derivation is gated on the week being **settled** — every NFL game final (`weekIsFinal` in
+  `src/lib/schedule/final.ts`) **and** at least one real score ingested (`computeSettledWeeks`).
+  **This is the single most important safety property in the system**; see "Two structural ideas"
+  above for why both halves are needed and what breaks without them.
 - A derived forfeit with **no `scores` row is scored 0** rather than left unscored. Previously
   such a matchup was non-final and got dropped entirely, denying the opponent a win *and*
   shrinking their games played — which then fed the win% tiebreaker cohorts.
@@ -72,6 +139,14 @@ sources it from the standings engine, honors per-season payout rules, and persis
 insert-then-prune (Neon HTTP has no transactions); `upsertRoundGames` prunes superseded bracket
 rows; and `/history` now uses the engine instead of re-deriving standings facts, reads the
 canonical `seasons` columns, and loads seasons through request-scoped `cache()`.
+
+**Phase 4 was the documentation pass** (`a7ce23e`) — `docs/SCORING.md`, `docs/RULES.md`,
+`docs/RUNBOOK.md` plus corrections to README/ARCHITECTURE/DATA_MODEL/DEPLOYMENT. Writing it found
+three real bugs, which is the argument for writing it: the **missing half of the settled-week
+gate** (above), `getCurrentSeason` ordering `year` ascending in every bucket so its "most recent
+completed" fallback returned the **oldest** completed season, and Admin → Settings' read-only
+"Effective rules" panel rendering the ignored `rules.regularSeasonWeeks` mirror while the editor
+directly above it wrote the canonical column. **All three are fixed.**
 
 **The freeze gate (read this before changing the engine).** 2023–2025 were played, validated
 32/32 against the commissioner's sheets, and **paid out** — they are frozen; corrections apply
@@ -186,6 +261,10 @@ npm run import:playoffs -- --season=9  --sheet=1kWMn8Zbk4K7JitaOqxMjII_LKVsKRyqa
 npm run import:playoffs -- --season=11 --sheet=15KWmUsWkQuRgdOCJWUBfaImXZjGxnFp9Lv4UsNikDaA   # 2023
 ```
 (2025 playoffs keep their own `scripts/import-playoffs-2025.ts`, which has hardcoded validation.)
+
+> Note, in light of `e2a3f1a`: "skips the consolation bracket" is why 2023–2025 have no
+> `third_place` row and therefore no 3rd/4th awards. Backfilling them would move the frozen
+> snapshot — see "Known open items".
 
 ## ✅ DONE — per-season owner display names
 
@@ -321,8 +400,9 @@ Sleeper PPR as a free proxy).
   raw `wins` back to the key — that splits genuinely-tied owners whenever games played is uneven,
   which is the normal state of a season from about week 5 on.
 - **DB migrations:** edit `src/db/schema.ts`, then `npm run db:generate` (writes SQL to `drizzle/`) and
-  `npm run db:migrate` (applies to `DATABASE_URL`). Latest: 0006 `model_snapshots`, 0007
-  `owner_seasons.displayName`, 0008 `isExhibition` on `nfl_games`/`matchups`/`scores`.
+  `npm run db:migrate` (applies to `DATABASE_URL`). Latest: 0007 `owner_seasons.displayName`, 0008
+  `isExhibition` on `nfl_games`/`matchups`/`scores`, 0009 `third_place` on the `playoff_round`
+  enum. Every one is documented in [`docs/DATA_MODEL.md`](DATA_MODEL.md#migration-history).
 - **Owner names are per-season** via `coalesce(owner_seasons.displayName, owners.name)`; only all-time
   per-person views + the global owner-management pages use the bare `owners.name`. See the DONE section.
 - **Local `.next/* 2.*` files** are an iCloud/Finder duplication artifact on this machine; they make
@@ -332,16 +412,22 @@ Sleeper PPR as a free proxy).
 
 ## Recent work (newest first)
 
-- **Live-scoring remediation, Phases 0–3** (`d0ba364` … `65ecf4a`, **pushed**) — ten isolated
+- **The playoff 3rd-place game** (`e2a3f1a`) — `third_place` round (migration 0009) generated from
+  the conference-round losers alongside the championship, scored from the same week-22 contest;
+  3rd/4th now come off a real game instead of `--third`. It is a **leaf**, kept out of
+  `PLAYOFF_ROUND_ORDER`. See the DONE section.
+- **Live-scoring remediation, Phases 0–4** (`d0ba364` … `a7ce23e`) — eleven isolated
   commits: the snapshot freeze gate + `vitest.config.ts`; pure `schedule/final.ts`,
   `standings/forfeit-derive.ts`, `standings/assemble.ts`; byes from `nfl_games` + batched ingest
   upserts; read-time forfeit derivation and bye reconciliation; win%-only tiebreaker cohorts;
   `/rules` from config + tied weekly highs + a Settings form-remount fix; awards extracted to
   `src/lib/awards/` with split ties, a regular-season cap and per-season rules; safe award
-  persistence + live recompute on the championship; bracket-row pruning; and three `/history`
-  passes (use the engine, canonical columns, request-scoped caching). Tests 77 → **137**, verify
+  persistence + live recompute on the championship; bracket-row pruning; three `/history`
+  passes (use the engine, canonical columns, request-scoped caching); and Phase 4, the docs pass
+  that found and fixed the missing half of the settled-week gate. Tests 77 → **144**, verify
   7/7 → **9/9**. See the DONE section.
-- **Documentation pass for the above** — new `docs/SCORING.md` (the scoring chain end to end),
+- **Documentation pass** (`a7ce23e`, extended `e2a3f1a`+) — new `docs/SCORING.md` (the scoring
+  chain end to end, incl. §12 the bracket and the consolation game),
   `docs/RULES.md` (every `seasons.rules` key), `docs/RUNBOOK.md` (the commissioner's weekly loop);
   corrections to `README.md`, `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `docs/DEPLOYMENT.md`.
 - **Preseason syncing from the DK Chrome extension** (`extension/popup.{html,css,js}`,
@@ -422,57 +508,78 @@ Sleeper PPR as a free proxy).
 - **Mobile-friendliness** pass (zero horizontal overflow 320–390px) and **branding** (KeyLehr logo
   in nav/footer/hero, badge favicon/app icons, faint stadium backdrop).
 
-## Known minor follow-ups (not blocking)
+## Known open items (honest list)
 
-- **The settled-week gate does not require that anything has been synced.** A week whose NFL games
-  are all final but whose scores have not been ingested yet has, for every owner, a matchup + a
-  settled week + no `scores` row — which derives as a league-wide missed lineup until the sync
-  lands. It self-heals immediately on sync, but `/standings` and any `import:awards` run in that
-  window are wrong. The approved design had a second conjunct ("**and** at least one owner has a
-  non-bye score") that is not in `getSeasonStandingsData`. Either add it, or treat "sync promptly
-  after Monday night" as the operating rule (documented in `docs/RUNBOOK.md`). **Decide before
-  week 1 of 2026.**
-- **`getCurrentSeason()` picks the OLDEST completed season, not the newest.** Its docstring says
-  "otherwise the most recent completed", but it orders `seasons.year` ascending — correct for
-  "soonest upcoming", wrong for the completed fallback. Latent today (2026 is `upcoming`, so it
-  wins), but it would bite once every season is `completed`. Drives `/rules`, Admin → Settings and
-  several admin pages.
+Nothing here blocks a deploy. Each is a real, specific gap — not a vague "could be nicer".
+
+**Needs a decision or a fix**
+
+- **A resolved 3rd-place game does not reach the bracket UI.** `getPlayoffBracket` builds its
+  `rounds` array as `PLAYOFF_ROUND_ORDER.filter(...)`, and `third_place` is deliberately not in
+  that list, so the row is loaded into `byRound` and then dropped. The rendering branch added to
+  `src/components/playoff-bracket.tsx` (and the `ROUND_LABELS.third_place` entries) is therefore
+  unreachable today on `/playoffs`, `/history/[year]` **and** Admin → Playoffs. The awards path is
+  unaffected — `loadBracketOutcome` reads `playoff_matchups` directly, so 3rd/4th still pay
+  correctly. Not caught by the `e2a3f1a` check because 2025 has no consolation row to render.
+  Fix is in `getPlayoffBracket` (emit the leaf after the chain), **not** in
+  `PLAYOFF_ROUND_ORDER` — see the 3rd-place DONE section for why that list must stay four long.
+- **2023–2025 have no 3rd/4th awards.** The league played those consolation games; the playoff
+  importers skip the sheets' "Round 3" consolation bracket, so the rows do not exist and the
+  ledger has no `third`/`fourth` for those years. Backfilling them would move the **frozen**
+  snapshot, so it needs the user's sign-off and a deliberate `npm run verify:baseline`.
+- **The $25/$50 missed-lineup fine ladder on `/rules` is hardcoded UI** — no key in
+  `seasonRulesSchema`, no ledger (fines are recorded nowhere), and the 2nd-offense **suspension is
+  deliberately not implemented**. A commissioner enforcing it sets `scores.isForfeit = true`
+  manually for the remaining weeks, which the read path always honors as an override. Revisit only
+  if the league wants it recorded.
 - **The `/rules` page is not season-scoped.** It renders `getCurrentSeason()` with no selector, so
   owners cannot look up what 2024 was scored under — which now matters, because the missed-lineup
   rule genuinely differs by era.
-- **Admin → Settings' read-only "Effective rules" panel shows `rules.regularSeasonWeeks`** (the
-  ignored JSONB mirror) while the Season card above it edits the canonical column. If they ever
-  diverge, that panel shows the stale number.
-- **The $25/$50 missed-lineup fine ladder on `/rules` is hardcoded UI** — no key in
-  `seasonRulesSchema`, no ledger, and the 2nd-offense suspension is not implemented (the
-  commissioner enforces it by setting `scores.isForfeit` manually, which the read path honors).
-  Deliberately not built; revisit only if the league wants it recorded.
 - If `payouts.weeklyHighWeeks` ever diverges from `seasons.regularSeasonWeeks`, the **stricter**
   of the two caps the weekly-high prize. Which should be authoritative is an open league question.
+
+**Stale docs / unpolished tooling**
+
+- `docs/DRAFTKINGS.md` **§5 and §7 describe things that do not exist**: a Vercel-Cron pull runbook
+  (the cron approach was rejected; there is no `vercel.json` cron entry and no `/api/cron/pull`)
+  and a `'manual-paste'` `triggeredBy` plus a hand-entry grid (the real values are `extension`,
+  `admin:preseason`, `backfill`; the schema comment on `scoreImportRuns.triggeredBy` was corrected
+  in `a7ce23e`, the doc was not). `docs/DEPLOYMENT.md` §6 already states the cron design was
+  **rejected** — DRAFTKINGS.md contradicts it. Rewrite or delete both sections.
+- `scripts/validate-dk-matcher.ts` has **no npm alias and no documentation** — it is invisible
+  unless you list the directory.
 - Dashboard **"Top of the standings"** mini-table (`getTopStandings`) still uses a simple
   win%→PF→PA sort, not the full configured tiebreaker chain. Fine for a glance; wire if desired.
-- `docs/DRAFTKINGS.md` still has a §5 runbook for the rejected Vercel-Cron pull and a §7 that
-  documents a `'manual-paste'` `triggeredBy` and a hand-entry grid that do not exist (real values
-  are `extension`, `admin:preseason`, `backfill`). `src/db/schema.ts`'s comment on
-  `scoreImportRuns.triggeredBy` repeats the stale list. `scripts/validate-dk-matcher.ts` has no
-  npm alias and is undocumented.
 - `regularSeasonWeeks` is edited only on the admin **Season** card (the column the engine reads);
   the duplicate Rules-card field was removed.
 
 ## Start here (fresh session)
 
-The rebuild is **feature-complete** vs the old Google-Sheets workflow, and the live-scoring
-remediation (Phases 0–3) is pushed and deployed — `main` and `origin/main` are both at `65ecf4a`
-with a clean tree (confirm with `git status` / `git log origin/main..main`). There is no specific
-task queued.
+Do these three things, in this order:
 
-Read this doc, [`docs/SCORING.md`](SCORING.md) if you are going anywhere near scoring, and the
-linked memories. Run `npm run verify` (must be **9/9**) before any push. The most likely future
-asks: the settled-week decision in "Known minor follow-ups" (**before week 1 of 2026**); 2026
-in-season operations (see [`docs/RUNBOOK.md`](RUNBOOK.md) and the scheduled `keylehr-verify`
-routine); training the lineup models into ML `v1.0` once 2026 produces graded weeks; or the My
-Team "team-builder wizard Phase B+" follow-ups noted above. Importers are idempotent; data for
-2023–2025 (regular season + playoffs) is in, validated, and now gated against moving.
+1. **Read this doc**, then [`docs/SCORING.md`](SCORING.md) — mandatory before touching anything in
+   `src/lib/scores/`, `src/lib/standings/`, `src/lib/playoffs/` or `src/lib/awards/`. Pay
+   attention to "Two structural ideas — do not undo either" above.
+2. **Run `npm run verify`.** It must be **9/9**. It needs `DATABASE_URL`, and its ground-truth
+   replay writes to the DB (idempotent, by design); `npm run verify:quick` skips that and the
+   production build. If the **historical snapshot** check fires, stop — you moved a frozen season.
+3. **Check the repo state:** `git status` and `git log origin/main..main`. `e2a3f1a` may still be
+   unpushed (see the push check in Snapshot).
+
+The rebuild is **feature-complete** vs the old Google-Sheets workflow and **there is no task
+queued.** Importers are idempotent; 2023–2025 (regular season + playoffs) are in, validated, and
+gated against moving.
+
+Most likely next asks: **2026 in-season operations** (the season is `upcoming` and fully
+assigned — [`docs/RUNBOOK.md`](RUNBOOK.md) is the weekly loop, plus the scheduled `keylehr-verify`
+routine); the bracket-rendering gap for the 3rd-place game (first item under "Known open items");
+training the lineup models into ML `v1.0` once 2026 produces graded weeks; or the My Team
+"team-builder wizard Phase B+" follow-ups noted above.
+
+Conventions that will bite you if you skip them: run `verify` **before** pushing (the production
+build catches `'use server'` export errors nothing else does); `src/lib/standings/` stays pure (no
+DB imports); every `scores`/`matchups` query needs the `isExhibition` filter; and the Neon HTTP
+driver means one query = one round-trip, so batch writes.
 
 ## Map of the important code
 
@@ -507,7 +614,12 @@ Team "team-builder wizard Phase B+" follow-ups noted above. Importers are idempo
 - Lineup-model versioning + performance: `src/lib/players/{models,grade,performance}.ts`
   (`grade.ts` is the pure grading math; `performance.ts` adds DB + Sleeper-stats I/O). Cmds:
   `npm run models:snapshot -- --season=<id> --week=<n>` and `models:grade`. Admin → Models drives it.
-- Playoffs bracket service: `src/lib/playoffs/service.ts` · Odds sim: `src/lib/odds/`
+- Playoffs bracket service: `src/lib/playoffs/service.ts` (`PLAYOFF_ROUND_WEEKS` /
+  `PLAYOFF_ROUND_ORDER` / `advancePlayoffs` / `getPlayoffBracket`); the pure bracket math is
+  `src/lib/standings/playoffs.ts` (`advanceBracket`, `resolveWinner`/`resolveLoser`). The
+  consolation game is explained in
+  [`SCORING.md` §12](SCORING.md#12-the-bracket-and-the-game-that-decides-3rd) · Odds sim:
+  `src/lib/odds/`
 - Rules schema (single source of truth): `src/lib/rules/schema.ts` (`DEFAULT_SEASON_RULES` = the
   canonical 2025-and-earlier config, and what 2023–2025 actually run on since their `rules` is
   NULL; the admin preset button applies it). Every key is documented in

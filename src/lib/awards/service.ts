@@ -46,9 +46,12 @@ export interface RecomputeOptions {
   /** Required to recompute a frozen season. */
   force?: boolean;
   /**
-   * Which conference-round loser finished 3rd. The bracket has no consolation game, so this
-   * cannot be derived; without it neither `third` nor `fourth` is emitted (rather than
-   * guessing at a $300/$150 payout).
+   * Which conference-round loser finished 3rd.
+   *
+   * LEGACY FALLBACK. 3rd/4th normally come off the resolved `third_place` consolation game, and
+   * this is ignored when one exists. It is here for seasons imported before that game was
+   * modelled (2023-2025, which have no consolation row). With neither, neither `third` nor
+   * `fourth` is emitted — better than guessing at a $300/$150 payout.
    */
   thirdPlaceOwnerSeasonId?: number;
 }

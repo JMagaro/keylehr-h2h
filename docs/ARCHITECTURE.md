@@ -205,6 +205,11 @@ persists results. This keeps the engine fast and trivially unit-testable.
   recursive `resolve_ties` (win% cohorts → head-to-head dominance → Points For), and a
   postseason-matchup tie broken by higher **regular-season Points For**. The engine is pure: the
   caller supplies seeds/results and persists the output.
+  Advancing the conference round produces **two** games: the championship, from its winners, and
+  the `third_place` consolation game, from its losers. That one is a **leaf** — same week as the
+  championship (22), scored from the same contest, and deliberately outside
+  `PLAYOFF_ROUND_ORDER` so the advancement walk cannot stop on it. See
+  [`SCORING.md` §12](SCORING.md#12-the-bracket-and-the-game-that-decides-3rd).
 
 `src/lib/schedule/final.ts` sits alongside as the single definition of "is this game/week
 finished?", shared by the scoring engine and the admin sync dashboard so they cannot drift apart.

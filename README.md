@@ -16,7 +16,8 @@ scoring pipeline** that replaces manual Google Sheets entry.
   Against**. A bye week (your NFL team is idle) means no matchup that week.
 - **Tiebreakers:** head-to-head record → Points For → Points Against.
 - **Playoffs mirror the NFL:** 4 division winners + 3 wild cards per conference, the #1 seed
-  gets a bye, and the bracket reseeds each round.
+  gets a bye, and the bracket reseeds each round. In championship week the two beaten conference
+  finalists also play a **consolation game** that decides 3rd and 4th.
 
 For the deeper design, see the docs linked below.
 
@@ -104,7 +105,7 @@ npm run dev             # http://localhost:3000
 | `npm run import:season`  | `tsx scripts/import-season.ts` | Backfill a season's regular season from its Google Sheet (`--year --sheet --name`). |
 | `npm run import:playoffs`| `tsx scripts/import-playoffs.ts`| Backfill a season's playoff bracket from its sheet (`--season --sheet`).             |
 | `npm run playoffs:import-2025` | `tsx scripts/import-playoffs-2025.ts` | The 2025-specific bracket importer (hardcoded validation); kept alongside the generic one. |
-| `npm run import:awards`  | `tsx scripts/import-awards.ts` | Recompute `season_awards` (champion, runner-up, weekly/season high, most points) + payouts. `-- --dry-run` previews; `--season=`, `--third=`, `--force`. |
+| `npm run import:awards`  | `tsx scripts/import-awards.ts` | Recompute `season_awards` (champion, runner-up, 3rd/4th from the consolation game, weekly/season high, most points) + payouts. `-- --dry-run` previews; `--season=`, `--force`; `--third=` is a legacy fallback for seasons with no consolation game on record (2023–2025). |
 | `npm run models:snapshot`| `tsx scripts/models.ts --action=snapshot` | Snapshot the 3 lineup models for a week (`--season --week`).               |
 | `npm run models:grade`   | `tsx scripts/models.ts --action=grade` | Grade a week's model snapshots vs actual player results.                      |
 
