@@ -66,6 +66,12 @@ export const playoffRound = pgEnum('playoff_round', [
   'divisional',
   'conference',
   'championship',
+  /**
+   * The consolation game between the two conference-round losers, played in the SAME week
+   * as the championship (22). Its winner is 3rd, its loser 4th — which is how those two
+   * payouts are determined; there is nothing to infer.
+   */
+  'third_place',
 ]);
 
 /* -------------------------------------------------------------------------- */

@@ -46,6 +46,7 @@ const ROUND_LABELS: Record<PlayoffRound, string> = {
   divisional: 'Divisional',
   conference: 'Conference',
   championship: 'Super Bowl',
+  third_place: '3rd Place',
 };
 
 const PLAYOFF_WEEKS: { week: number; round: PlayoffRound }[] = [

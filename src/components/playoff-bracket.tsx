@@ -39,6 +39,7 @@ const ROUND_LABELS: Record<PlayoffRound, string> = {
   divisional: 'Divisional',
   conference: 'Conference',
   championship: 'Championship',
+  third_place: '3rd Place',
 };
 
 /** The per-conference rounds, in order (the Championship is cross-conference). */
@@ -279,10 +280,18 @@ export function PlayoffBracket({ bracket, className }: PlayoffBracketProps) {
     NFC: new Map(),
   };
   let championshipGames: BracketGame[] = [];
+  // The consolation game is cross-conference like the championship, so it cannot be grouped
+  // into a conference column — without pulling it out here the `conference === null` guard
+  // below would silently drop it from the bracket entirely.
+  let thirdPlaceGames: BracketGame[] = [];
 
   for (const r of bracket.rounds) {
     if (r.round === 'championship') {
       championshipGames = r.games;
+      continue;
+    }
+    if (r.round === 'third_place') {
+      thirdPlaceGames = r.games;
       continue;
     }
     for (const g of r.games) {
@@ -318,7 +327,7 @@ export function PlayoffBracket({ bracket, className }: PlayoffBracketProps) {
           </div>
 
           {/* Cross-conference championship column + champion callout. */}
-          {(championshipGames.length > 0 || champion) && (
+          {(championshipGames.length > 0 || champion || thirdPlaceGames.length > 0) && (
             <div className="flex shrink-0 flex-col justify-center gap-4">
               <h3 className="text-xs font-semibold uppercase tracking-widest text-muted">
                 {ROUND_LABELS.championship}
@@ -341,6 +350,16 @@ export function PlayoffBracket({ bracket, className }: PlayoffBracketProps) {
                   {champion.teamName ? (
                     <span className="text-sm text-muted">{champion.teamName}</span>
                   ) : null}
+                </div>
+              ) : null}
+              {thirdPlaceGames.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-widest text-muted">
+                    {ROUND_LABELS.third_place}
+                  </h3>
+                  {thirdPlaceGames.map((g) => (
+                    <GameCard key={g.id} game={g} />
+                  ))}
                 </div>
               ) : null}
             </div>

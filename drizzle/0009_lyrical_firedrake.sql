@@ -1,0 +1,1 @@
+ALTER TYPE "public"."playoff_round" ADD VALUE 'third_place';

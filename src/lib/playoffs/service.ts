@@ -67,9 +67,18 @@ export const PLAYOFF_ROUND_WEEKS: Record<PlayoffRound, number> = {
   divisional: 20,
   conference: 21,
   championship: 22,
+  // The consolation game is played in championship week, so it shares week 22 and is scored
+  // from the same DraftKings contest.
+  third_place: 22,
 };
 
-/** The playoff rounds in order, earliest first. */
+/**
+ * The ADVANCEMENT chain, earliest first.
+ *
+ * `third_place` is deliberately absent: it is a leaf generated alongside the championship
+ * rather than a step that unlocks anything, and it is resolved in the same pass (see
+ * `advancePlayoffs`). Putting it in this list would make the walk stop early.
+ */
 export const PLAYOFF_ROUND_ORDER: PlayoffRound[] = [
   'wild_card',
   'divisional',
@@ -337,34 +346,24 @@ async function loadByeSeeds(
 }
 
 /**
- * Resolve every fully-scored round and generate the next round's games. Records
- * the champion (a `seasonAwards` 'champion' row) when the championship resolves.
+ * Score and decide every game of one round: fill in points from that week's `scores`, persist
+ * freshly-ingested points and resolved winners back onto the rows, and report whether the
+ * whole round is decided.
  *
- * A round is "resolved" when EVERY game in it has both owners' points recorded
- * (either ingested into `scores` for the round's week, or already written onto
- * the playoff row, or decided by a manual `winnerOwnerSeasonId` override).
- *
- * Idempotent: re-running recomputes the same winners and upserts the same next
- * round; an already-recorded champion award is not duplicated.
+ * Extracted so the championship and the `third_place` consolation game — which share week 22
+ * and are both leaves of the bracket — can be resolved by the same code in one pass.
  */
-export async function advancePlayoffs(seasonId: number): Promise<AdvanceResult> {
-  const config = await loadPlayoffConfig(seasonId);
-  const tieRule = await loadTieRule(seasonId);
-  const pfById = await loadRegularSeasonPf(seasonId);
-  const byeSeeds = await loadByeSeeds(seasonId, config);
+async function resolveRoundGames(
+  seasonId: number,
+  round: PlayoffRound,
+  tieRule: 'regular_season_pf' | 'higher_seed',
+  pfById: Map<number, number>,
+): Promise<{ results: PlayoffGameResult[]; allResolved: boolean; hasRows: boolean }> {
+  const rows = (await loadBracketRows(seasonId)).filter((r) => r.round === round);
+  if (rows.length === 0) return { results: [], allResolved: false, hasRows: false };
 
-  const resolvedRounds: PlayoffRound[] = [];
-  let championOwnerSeasonId: number | null = null;
-
-  // Walk the rounds in order; each round can unlock the next.
-  for (let i = 0; i < PLAYOFF_ROUND_ORDER.length; i++) {
-    const round = PLAYOFF_ROUND_ORDER[i];
-    const rows = (await loadBracketRows(seasonId)).filter((r) => r.round === round);
-    if (rows.length === 0) break; // this round hasn't been generated yet
-
-    const week = PLAYOFF_ROUND_WEEKS[round];
-    const weekScores = await loadWeekScores(seasonId, week);
-
+  const week = PLAYOFF_ROUND_WEEKS[round];
+  const weekScores = await loadWeekScores(seasonId, week);
     // 1. Fill in points on each game from this week's scores (idempotent), and
     //    determine whether every game is fully scored / decided.
     const results: PlayoffGameResult[] = [];
@@ -429,25 +428,67 @@ export async function advancePlayoffs(seasonId: number): Promise<AdvanceResult> 
           .where(eq(playoffMatchups.id, r.id));
       }
     }
+  return { results, allResolved, hasRows: true };
+}
+
+/**
+ * Resolve every fully-scored round and generate the next round's games. Records
+ * the champion (a `seasonAwards` 'champion' row) when the championship resolves.
+ *
+ * A round is "resolved" when EVERY game in it has both owners' points recorded
+ * (either ingested into `scores` for the round's week, or already written onto
+ * the playoff row, or decided by a manual `winnerOwnerSeasonId` override).
+ *
+ * Idempotent: re-running recomputes the same winners and upserts the same next
+ * round; an already-recorded champion award is not duplicated.
+ */
+export async function advancePlayoffs(seasonId: number): Promise<AdvanceResult> {
+  const config = await loadPlayoffConfig(seasonId);
+  const tieRule = await loadTieRule(seasonId);
+  const pfById = await loadRegularSeasonPf(seasonId);
+  const byeSeeds = await loadByeSeeds(seasonId, config);
+
+  const resolvedRounds: PlayoffRound[] = [];
+  let championOwnerSeasonId: number | null = null;
+
+  // Walk the advancement chain; each round can unlock the next.
+  for (let i = 0; i < PLAYOFF_ROUND_ORDER.length; i++) {
+    const round = PLAYOFF_ROUND_ORDER[i];
+    const { results, allResolved, hasRows } = await resolveRoundGames(
+      seasonId,
+      round,
+      tieRule,
+      pfById,
+    );
+    if (!hasRows) break; // this round hasn't been generated yet
 
     if (!allResolved) break; // can't advance past an unfinished round
 
     resolvedRounds.push(round);
 
-    // 2. Championship resolved → rebuild the season's award ledger, then stop.
+    // 2. Championship resolved → settle the consolation game too, then rebuild the ledger.
     if (round === 'championship') {
       const champ = results[0];
       if (champ) {
         championOwnerSeasonId =
           champ.winnerOwnerSeasonId ?? resolveGameWinner(champ, tieRule);
-        if (championOwnerSeasonId !== null) {
-          // Recompute the whole ledger rather than inserting a bare champion row. The old
-          // path wrote `champion` with a NULL amountCents, so the $2000 showed as $0 in net
-          // earnings until someone remembered to run the awards importer -- and runner-up,
-          // 3rd and 4th were never recorded live at all. (3rd/4th still need the
-          // commissioner to say which semi-final loser placed 3rd: `import:awards --third`.)
-          await recomputeSeasonAwards(seasonId);
-        }
+      }
+
+      // The 3rd-place game is played in this same week and is a leaf of the bracket, so it
+      // never appears in PLAYOFF_ROUND_ORDER and has to be scored explicitly here. It is
+      // scored from the same week-22 contest as the championship, so if that week has been
+      // ingested at all, both games resolve together.
+      const consolation = await resolveRoundGames(seasonId, 'third_place', tieRule, pfById);
+      if (consolation.hasRows && consolation.allResolved) {
+        resolvedRounds.push('third_place');
+      }
+
+      if (championOwnerSeasonId !== null) {
+        // Recompute the whole ledger rather than inserting a bare champion row. The old path
+        // wrote `champion` with a NULL amountCents, so the $2000 showed as $0 in net earnings
+        // until someone remembered to run the awards importer, and runner-up/3rd/4th were
+        // never recorded live at all. 3rd and 4th now come off the consolation game.
+        await recomputeSeasonAwards(seasonId);
       }
       break;
     }

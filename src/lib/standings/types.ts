@@ -18,7 +18,13 @@ export type Conference = 'AFC' | 'NFC';
 export type Division = 'East' | 'North' | 'South' | 'West';
 
 /** Playoff rounds. Mirrors the `playoff_round` enum in the DB schema. */
-export type PlayoffRound = 'wild_card' | 'divisional' | 'conference' | 'championship';
+export type PlayoffRound =
+  | 'wild_card'
+  | 'divisional'
+  | 'conference'
+  | 'championship'
+  /** Consolation game between the conference-round losers; same week as the championship. */
+  | 'third_place';
 
 /**
  * One owner's season identity + their NFL alignment.

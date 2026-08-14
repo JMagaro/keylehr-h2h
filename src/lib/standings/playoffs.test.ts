@@ -160,13 +160,40 @@ describe('advanceBracket — conference → championship', () => {
       result('AFC', 1, 2, 1, 2, 1), // AFC champ = owner 1
       result('NFC', 1, 2, 101, 102, 102), // NFC champ = owner 102 (seed 2)
     ];
-    const champ = advanceBracket('conference', confResults);
+    const games = advanceBracket('conference', confResults);
+    const champ = games.filter((g) => g.round === 'championship');
     expect(champ).toHaveLength(1);
-    expect(champ[0].round).toBe('championship');
     expect(champ[0].conference).toBeNull();
     const ids = [champ[0].highOwnerSeasonId, champ[0].lowOwnerSeasonId];
     expect(ids).toContain(1);
     expect(ids).toContain(102);
+  });
+
+  it('also pairs the two beaten finalists into a 3rd-place game', () => {
+    // The league plays the consolation game in championship week; its winner takes 3rd and
+    // its loser 4th, so the placement payouts are decided on the field rather than inferred.
+    const confResults: PlayoffGameResult[] = [
+      result('AFC', 1, 2, 1, 2, 1), //   AFC: owner 1 beats owner 2
+      result('NFC', 1, 2, 101, 102, 102), // NFC: owner 102 beats owner 101
+    ];
+    const games = advanceBracket('conference', confResults);
+    const third = games.filter((g) => g.round === 'third_place');
+    expect(third).toHaveLength(1);
+    expect(third[0].conference).toBeNull();
+    const ids = [third[0].highOwnerSeasonId, third[0].lowOwnerSeasonId];
+    expect(ids).toContain(2); //   AFC runner-up
+    expect(ids).toContain(101); // NFC runner-up
+    // And the two week-22 games share no participants.
+    const champ = games.find((g) => g.round === 'championship')!;
+    expect(ids).not.toContain(champ.highOwnerSeasonId);
+    expect(ids).not.toContain(champ.lowOwnerSeasonId);
+  });
+
+  it('produces nothing further out of the 3rd-place game', () => {
+    const consolation: PlayoffGameResult[] = [
+      { conference: null, highSeed: 2, lowSeed: 1, highOwnerSeasonId: 2, lowOwnerSeasonId: 101, highPoints: 110, lowPoints: 100 },
+    ];
+    expect(advanceBracket('third_place', consolation)).toEqual([]);
   });
 
   it('returns no further games after the championship', () => {

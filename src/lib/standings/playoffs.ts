@@ -32,7 +32,13 @@ import {
 
 const CONFERENCES: Conference[] = ['AFC', 'NFC'];
 
-/** The next round after `round`, or `null` if `round` is the championship. */
+/**
+ * The next round after `round`, or `null` when nothing follows.
+ *
+ * `third_place` is a LEAF, not a step in the chain: it is generated alongside the
+ * championship (from the same conference-round results) and played in the same week, so
+ * nothing advances out of it.
+ */
 function nextRound(round: PlayoffRound): PlayoffRound | null {
   switch (round) {
     case 'wild_card':
@@ -42,6 +48,7 @@ function nextRound(round: PlayoffRound): PlayoffRound | null {
     case 'conference':
       return 'championship';
     case 'championship':
+    case 'third_place':
       return null;
   }
 }
@@ -141,6 +148,15 @@ function resolveWinner(r: PlayoffGameResult): AdvancingOwner {
   return { ownerSeasonId: winnerId, seed, conference: r.conference };
 }
 
+/** The side of a decided game that did NOT win. */
+function resolveLoser(r: PlayoffGameResult): AdvancingOwner {
+  const winner = resolveWinner(r);
+  const loserId =
+    winner.ownerSeasonId === r.highOwnerSeasonId ? r.lowOwnerSeasonId : r.highOwnerSeasonId;
+  const seed = loserId === r.highOwnerSeasonId ? r.highSeed : r.lowSeed;
+  return { ownerSeasonId: loserId, seed, conference: r.conference };
+}
+
 /**
  * Advance the bracket: given the results of `round`, produce the games of the
  * next round, applying NFL reseeding.
@@ -185,7 +201,18 @@ export function advanceBracket(
     if (!afc || !nfc) return [];
     // Cross-conference: there is no shared seed ordering, so the lower seed
     // number is treated as the "high" slot purely for stable display.
-    return [pairGame('championship', null, afc, nfc)];
+    const games = [pairGame('championship', null, afc, nfc)];
+
+    // The two beaten conference finalists play a consolation game the same week. Its
+    // winner takes 3rd and its loser 4th, so the placement payouts are decided on the
+    // field rather than inferred.
+    const losers = results.map(resolveLoser);
+    const afcLoser = losers.find((w) => w.conference === 'AFC');
+    const nfcLoser = losers.find((w) => w.conference === 'NFC');
+    if (afcLoser && nfcLoser) {
+      games.push(pairGame('third_place', null, afcLoser, nfcLoser));
+    }
+    return games;
   }
 
   // Intra-conference rounds: reseed within each conference.

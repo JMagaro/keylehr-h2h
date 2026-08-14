@@ -102,6 +102,27 @@ async function loadBracketOutcome(
     notes.push('No resolved championship game — skipping champion/runner-up');
   }
 
+  // 3rd/4th are decided on the field: the two beaten conference finalists play a consolation
+  // game in championship week. Its winner is 3rd, its loser 4th — nothing is inferred.
+  const consolation = rows.filter(
+    (r) => r.round === 'third_place' && r.winnerOwnerSeasonId !== null,
+  );
+  if (consolation.length > 1) {
+    notes.push(
+      `WARNING: ${consolation.length} resolved 3rd-place games — bracket has stale rows; skipping 3rd/4th`,
+    );
+    return out;
+  }
+  if (consolation.length === 1) {
+    const g = consolation[0];
+    out.thirdOwnerSeasonId = g.winnerOwnerSeasonId;
+    out.fourthOwnerSeasonId =
+      g.highOwnerSeasonId === g.winnerOwnerSeasonId ? g.lowOwnerSeasonId : g.highOwnerSeasonId;
+    return out;
+  }
+
+  // No consolation game on record. Seasons imported before it was modelled (2023-2025) have
+  // none, so `--third` remains available to record those by hand.
   const confGames = rows.filter((r) => r.round === 'conference' && r.winnerOwnerSeasonId !== null);
   const semiLosers = confGames
     .map((g) => (g.highOwnerSeasonId === g.winnerOwnerSeasonId ? g.lowOwnerSeasonId : g.highOwnerSeasonId))
@@ -117,7 +138,9 @@ async function loadBracketOutcome(
   }
   if (thirdPlaceOwnerSeasonId === undefined) {
     notes.push(
-      '3rd/4th not emitted: the bracket has no consolation game, so pass --third=<ownerSeasonId> to record them',
+      '3rd/4th not emitted: no resolved 3rd-place game yet. It is generated with the ' +
+        'championship and scored from the same week-22 contest; for a season imported before ' +
+        'that existed, pass --third=<ownerSeasonId>',
     );
     return out;
   }
