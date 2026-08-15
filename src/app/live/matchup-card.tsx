@@ -99,6 +99,12 @@ function TeamSide({ team }: { team: LiveTeam }) {
 export function MatchupCard({ matchup }: { matchup: LiveMatchup }) {
   const { home, away } = matchup;
   const bothCaptured = home.hasSnapshot && away.hasSnapshot;
+  // Any captured side is worth showing. Requiring BOTH hid every roster we had whenever an
+  // opponent was missing — which is the normal state mid-capture, and was the state for all
+  // six owners in the first real capture.
+  const anyCaptured = home.hasSnapshot || away.hasSnapshot;
+  // Only claim a leader when both totals are real. Comparing a number to an unknown is not a
+  // comparison.
   const leader =
     bothCaptured && home.points !== away.points ? (home.points > away.points ? 'home' : 'away') : null;
 
@@ -112,7 +118,7 @@ export function MatchupCard({ matchup }: { matchup: LiveMatchup }) {
           <TeamSide team={away} />
         </div>
 
-        {bothCaptured ? (
+        {anyCaptured ? (
           <details className="group">
             <summary className="cursor-pointer list-none text-xs font-medium text-muted hover:text-foreground">
               <span className="group-open:hidden">Show players</span>
@@ -122,24 +128,33 @@ export function MatchupCard({ matchup }: { matchup: LiveMatchup }) {
               {[home, away].map((team) => (
                 <div key={team.ownerSeasonId}>
                   <div className="mb-1 text-xs font-semibold">{team.ownerName}</div>
-                  <table className="w-full">
-                    <tbody>
-                      {sortSlots(team.slots).map((s, i) => (
-                        <SlotRow key={`${s.slot}-${s.name ?? 'hidden'}-${i}`} slot={s} />
-                      ))}
-                    </tbody>
-                  </table>
+                  {team.hasSnapshot ? (
+                    <table className="w-full">
+                      <tbody>
+                        {sortSlots(team.slots).map((s, i) => (
+                          <SlotRow key={`${s.slot}-${s.name ?? 'hidden'}-${i}`} slot={s} />
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="text-xs text-muted">
+                      Lineup not captured — nothing is known about this roster, which is why the
+                      total reads &mdash; rather than 0.00.
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
           </details>
         ) : (
-          <Badge variant="tie">
-            {!home.hasSnapshot && !away.hasSnapshot
-              ? 'Neither lineup captured'
-              : `${(!home.hasSnapshot ? home : away).ownerName}'s lineup not captured`}
-          </Badge>
+          <Badge variant="tie">Neither lineup captured</Badge>
         )}
+
+        {anyCaptured && !bothCaptured ? (
+          <Badge variant="tie">
+            {(!home.hasSnapshot ? home : away).ownerName}&apos;s lineup not captured
+          </Badge>
+        ) : null}
       </CardBody>
     </Card>
   );
