@@ -285,7 +285,7 @@ Audit log: one row per DraftKings leaderboard pull (auto or manual). Written by 
 | `entriesTotal`     | integer         | NOT NULL, default 0. Leaderboard entries seen.              |
 | `entriesMatched`   | integer         | NOT NULL, default 0. Mapped to an owner.                    |
 | `entriesUnmatched` | integer         | NOT NULL, default 0. Could not be mapped.                   |
-| `triggeredBy`      | varchar(64)     | Free-form; today `extension` (ingest API), `admin:preseason` (paste form), `backfill` (importers). |
+| `triggeredBy`      | varchar(64)     | Free-form; today `extension` (ingest API), `admin:paste` (Admin → Lineups), `backfill` (importers, the default). `admin:preseason` is **legacy** — present on historical rows, no longer written since Admin → Preseason was removed. |
 | `error`            | text            | Nullable failure detail.                                    |
 | `rawPayload`       | jsonb           | Raw leaderboard payload retained for debugging/replay.      |
 | `createdAt`        | timestamptz     | NOT NULL, default `now()`.                                  |

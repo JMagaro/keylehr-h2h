@@ -13,6 +13,11 @@
   Neon's serverless driver runs on Node; never put DB calls behind `runtime = 'edge'`.
 - Pages that read live league data (standings, dashboard) use `export const dynamic = 'force-dynamic'`
   or `export const revalidate = <seconds>` so they reflect the latest scores.
+  > ⚠️ **`/live` and `/live/[matchupId]` are the deliberate exceptions — do NOT add `force-dynamic`
+  > there.** It implies `fetchCache = 'force-no-store'`, which silently disables the Data Cache for
+  > **every** fetch on the route, turning one shared ESPN fan-out into one per viewer. Those routes
+  > are already dynamic because they await `searchParams`/`params`. Both carry a comment saying so;
+  > see [`SCORING.md` §15](SCORING.md#caching-and-the-one-thing-not-to-do).
 
 ## 1. Async request APIs
 
@@ -96,6 +101,35 @@ Use from a `<form action={createOwner}>` or via `useActionState` in a client com
 - Segment config still valid: `export const dynamic = 'force-dynamic' | 'force-static'`,
   `export const revalidate = 3600`, `export const fetchCache = ...`.
 - For our ESPN schedule fetch, use `{ next: { revalidate: 3600 } }` (hourly) — it changes rarely.
+- `unstable_cache` is the right tool for caching a non-`fetch` computation while `cacheComponents`
+  is off (`'use cache'` is unavailable). `src/lib/live/stats.ts` uses it to share one ESPN fan-out
+  across all viewers.
+
+### ⚠️ `revalidateTag` now takes a REQUIRED cache-life profile
+
+```ts
+import { revalidateTag } from 'next/cache'
+
+revalidateTag('live:1:102')          // ❌ Next 13/14 form — TypeScript error in 16
+revalidateTag('live:1:102', 'max')   // ✅
+```
+
+The declaration is `revalidateTag(tag: string, profile: string | CacheLifeConfig): undefined`
+(`node_modules/next/dist/server/web/spec-extension/revalidate.d.ts`). **`node_modules/next/cache.d.ts`
+is the authority** — the bundled guide
+`node_modules/next/dist/docs/01-app/02-guides/caching-without-cache-components.md` still shows the
+one-argument form (lines 229/238), so copying from it does not compile. The upgrade guide
+(`02-guides/upgrading/version-16.md` §"Caching APIs") documents the change.
+
+- `'max'` = **stale-while-revalidate**: serve the stale entry, refresh behind it. Right for content
+  where a slight delay is fine.
+- Need *immediate* expiry instead? Use **`updateTag`** — but only from a Server Action.
+
+Our one caller is `src/app/api/ingest/lineups/route.ts`, which drops the week's cached ESPN stat
+index after a roster capture: `revalidateTag(liveTag(seasonId, week), 'max')`.
+
+This is exactly the class of breaking change `AGENTS.md` warns about — **read the bundled guide in
+`node_modules/next/dist/docs/`, then check the `.d.ts` before trusting it.**
 
 ## 6. `next.config.ts`
 
@@ -144,3 +178,7 @@ Dark mode via `@theme` inside `@media (prefers-color-scheme: dark)` (or a `.dark
 4. No `tailwind.config.js` — use `@theme` in CSS.
 5. Edge runtime can't run the DB client — keep DB on Node.
 6. Server Actions and async Server Components must be `async`.
+7. **`revalidateTag(tag)` no longer compiles** — it needs a cache-life profile,
+   `revalidateTag(tag, 'max')`. The bundled caching guide still shows the old form.
+8. **`force-dynamic` also disables the Data Cache** (via `fetchCache = 'force-no-store'`), so don't
+   reach for it on a route whose whole point is a shared cached fetch — see `/live`.

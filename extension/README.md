@@ -181,10 +181,14 @@ auto-fills (see below) — no manual Contest ID needed.
 
 ### Preseason (exhibition) syncs
 
-**First**, sync the schedule in **Admin → Preseason** so the exhibition matchups exist — otherwise
-the scores land with nothing to score them against and `/live` shows no games for the week. (Byes
-are not a hazard here: exhibition weeks never produce one.) The paste form on that page remains as
-a fallback.
+> **The app can no longer create an exhibition week.** Admin → Preseason and `syncPreseasonWeek`
+> were removed — the league decided it doesn't want exhibitions. This toggle still works, and still
+> posts the offset week, so **existing** exhibition weeks (week 102) can be re-scored and stay
+> visible on `/live`. But if no exhibition matchups exist for the week, the scores land with nothing
+> to score them against and `/live` shows no games. Treat this section as maintenance for data that
+> already exists, not a way to start a new preseason.
+
+(Byes are not a hazard here: exhibition weeks never produce one.)
 
 Then tick **Preseason** in the popup. The Week input now means *preseason week* and accepts
 **1–3**; the extension POSTs it offset into the exhibition namespace (`100 + week` →

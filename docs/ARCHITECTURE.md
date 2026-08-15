@@ -123,8 +123,10 @@ nfl_games        (the real NFL schedule for the season)
 matchups         (owner-vs-owner head-to-head schedule)
 ```
 
-> Preseason **exhibition** games use the same two stages via `syncPreseasonWeek` (one week at a
-> time, `seasontype=1`, rows flagged `isExhibition`). See below and `docs/DATA_MODEL.md`.
+> Preseason **exhibition** games used to go through the same two stages via `syncPreseasonWeek`.
+> **That path was removed** (`ed6ef78`) — no new exhibition week can be created. Existing
+> `isExhibition` rows are untouched and still filtered out of every stats query. See below and
+> [`SCORING.md` §2](SCORING.md#2-the-three-week-namespaces).
 
 ### `src/lib/espn/`
 
@@ -133,8 +135,9 @@ matchups         (owner-vs-owner head-to-head schedule)
   **schedule only** (home/away team ids, kickoff, status) and deliberately ignores ESPN scores,
   since scoring comes from DraftKings. Exposes `fetchWeekGames` and `fetchSeasonSchedule`, plus
   `buildScoreboardUrl` (exported for testing) and an `EspnFetchError`. All three take an optional
-  `seasonType` that defaults to the regular season (`2`); pass the exported
-  `SEASON_TYPE_PRESEASON` (`1`) to pull preseason weeks — see `syncPreseasonWeek` below.
+  `seasonType` that defaults to the regular season (`2`). `SEASON_TYPE_PRESEASON` (`1`) is still
+  exported but has **zero consumers** since the exhibition sync was removed — nothing pulls a
+  preseason week today.
   Defensive parsing skips unusable events instead of crashing. Uses `fetch(..., { next: { revalidate: 3600 } })`
   so the schedule is re-validated at most hourly (the `next` option is harmlessly ignored under
   plain Node/`tsx`).
@@ -153,16 +156,23 @@ it updates the volatile fields (`away_team_id`, `kickoff`, `espn_event_id`, `sta
 whose teams can't be mapped are skipped and reported in `unmappedEspnTeamIds` (which should be
 empty if the team seed data is current).
 
-`syncPreseasonWeek(seasonId, year, preseasonWeek)` is the exhibition counterpart: it pulls **one**
-NFL preseason week (`seasontype=1`) and writes it to `nfl_games` with `isExhibition: true`, stored
-at the offset week `100 + preseasonWeek` (`src/lib/schedule/preseason.ts`) so it can never collide
-with the regular season (1–18) or playoffs (19–22) on the same unique index. Same conflict key and
-idempotency as the regular sync. Driven from **Admin → Preseason**, not from `schedule:pull`.
+> **There is no exhibition counterpart any more.** `syncPreseasonWeek` and Admin → Preseason were
+> removed in `ed6ef78` — the league does not run exhibitions, so **nothing pulls an NFL preseason
+> week (`seasontype=1`) and no new exhibition schedule or matchups can be created.**
+> `SEASON_TYPE_PRESEASON` remains declared in `src/lib/espn/client.ts` with zero consumers.
+>
+> **The `isExhibition` isolation stays and must not be removed.** Exhibition rows exist in the
+> database (week 102), stored at the offset week `100 + preseasonWeek`
+> (`src/lib/schedule/preseason.ts`) so they can never collide with the regular season (1–18) or
+> playoffs (19–22) on the same unique index. Every standings/stats query filters them out; that
+> filter is the only thing keeping old test data out of all-time records. See
+> [`SCORING.md` §2](SCORING.md#2-the-three-week-namespaces).
 
-Scoring those weeks uses the **same ingest path as any other week** — no separate pipeline. The
-ingest endpoint accepts two disjoint `week` namespaces (`1–25` and `101–103`), and the Chrome
-extension's **Preseason** toggle posts the offset value; `isExhibition` is derived from the week
-alone. See [`DRAFTKINGS.md` §10](DRAFTKINGS.md#10-the-ingest-endpoint-implemented).
+Scoring an **existing** exhibition week uses the **same ingest path as any other week** — no
+separate pipeline. The ingest endpoint accepts two disjoint `week` namespaces (`1–25` and
+`101–103`), and the Chrome extension's **Preseason** toggle posts the offset value; `isExhibition`
+is derived from the week alone. See
+[`DRAFTKINGS.md` §10](DRAFTKINGS.md#10-the-ingest-endpoint-implemented).
 
 ### `src/lib/matchups/generate.ts`
 

@@ -71,6 +71,21 @@ Consequences that trip people up:
 Helpers: `src/lib/schedule/preseason.ts` (`toExhibitionWeek` / `fromExhibitionWeek` /
 `isExhibitionWeek` / `exhibitionWeekLabel`).
 
+> **Exhibition: creation removed, isolation permanent.** As of `ed6ef78` the league can no longer
+> *create* an exhibition week — Admin → Preseason, `src/lib/preseason/query.ts` and
+> `syncPreseasonWeek` are gone, and `SEASON_TYPE_PRESEASON` has **zero consumers**. That is
+> deliberate: the league does not want exhibitions.
+>
+> **The isolation stays, and must.** The `isExhibition` columns, every query filter, the `101`–`103`
+> range on the ingest endpoint, and `src/lib/schedule/preseason.ts` are all untouched — because
+> **exhibition rows exist in the database** (week 102 carries 16 matchups, 12 scores and 6 lineup
+> snapshots as of 2026-08-15). The namespace is what keeps that data out of standings, seeding,
+> playoffs, payouts and all-time records. Deleting the isolation because "we don't do preseason any
+> more" would let that test data silently pollute every historical number. Leave it in place.
+>
+> `/live` still renders those weeks like any other, and the extension's **Preseason** toggle still
+> posts a `101`–`103` week, so the existing rows remain viewable and re-scorable.
+
 ## 3. The derivation principle
 
 > **`scores.isBye` and `scores.isForfeit` are persisted hints, not the source of truth.**
@@ -112,7 +127,8 @@ forfeit set equals the stored `isForfeit` set for 2023–2025 (see [§13](#13-wh
   private contest leaderboard and POSTs it to `POST /api/ingest/draftkings`; the route calls
   this. See [`DRAFTKINGS.md`](DRAFTKINGS.md) and [`../extension/README.md`](../extension/README.md).
 - **`writeTeamScores`** — keyed by NFL team name instead of DK entry name. Used by the historical
-  season importers and the Admin → Preseason paste fallback.
+  season importers. (It also backed the old Admin → Preseason paste form, which no longer exists —
+  see [§2](#2-the-three-week-namespaces).)
 
 Both:
 
@@ -416,7 +432,9 @@ would hand the ground-truth replay stale rows.
 > **Proven end to end** on a real capture — season 1, week 102 (an exhibition week): 6/6 owners,
 > 54 slots, 24 revealed, all enriched to teams, 16/16 games loaded, zero unresolved, and a
 > reconciliation against DraftKings' own per-owner numbers of **max |delta| 0.00**. That is the
-> estimate agreeing exactly with the authority it must never replace.
+> estimate agreeing exactly with the authority it must never replace — **on a preseason contest
+> with 6 owners.** It proves the wiring, not the engine's precision across a full Sunday; see
+> [Remaining gaps](#remaining-gaps).
 >
 > Not to be confused with the **live-scoring remediation** (`docs/HANDOFF.md`), which was a
 > different piece of work with its own Phase 0–4 numbering. That one fixed §3–§7 of *this* chain;
@@ -640,6 +658,7 @@ from `src/app/api/ingest/draftkings/route.ts` with no behaviour change.
 | `src/lib/live/stats.ts` | The week's ESPN stat index. `buildLiveStatIndex(games)` (unwrapped, for scripts/tests) and `getLiveStatsForWeek(seasonId, week, games)` (cached). Plus `playerStatKey(name, teamKey)` and `liveTag(seasonId, week)`. Types: `LiveStatIndex`, `LivePlayerStat`, `LiveDstStat`, `LiveGameSummary`, `LiveGameRef`. |
 | `src/lib/live/assemble.ts` | `assembleLive(matchups, snapshots, index)` — **pure**: no DB, no network, no clock. Types: `LiveView`, `LiveMatchup`, `LiveTeam`, `LiveSlot`, `LiveSlotStatus`. 17 unit tests. |
 | `src/lib/live/query.ts` | The only DB module behind `/live`, and **read-only**: `getLiveWeekData(seasonId, week)`, `getDefaultLiveWeek(seasonId)`, `getMatchupLocation(matchupId)`, type `LiveTeamContext`. |
+| `src/lib/live/staleness.ts` | **Pure.** `assessCaptureStaleness(input)` and `countConcealedSlots(matchups)` — detects a capture that has been overtaken by kickoffs. 8 unit tests. See [below](#the-staleness-problem--one-capture-is-not-enough). |
 
 **The join is `(normalizeName, teamKey)`** — Phase 4, and it lives in `playerStatKey`. The team
 component is not optional: name alone collides on real players (Bijan vs Brian Robinson, Travis vs
@@ -671,6 +690,37 @@ would hide a genuine name-matching failure. They are a third thing: scored as 0,
 
 **A missing DEFENSE is `unresolved`, not `noStats`.** Points allowed alone guarantees a defense a
 row in any loaded boxscore, so its absence really does mean we don't know.
+
+#### The staleness problem — one capture is not enough
+
+**This is the most consequential way the live estimate can be quietly wrong**, and it is not a bug
+in the scoring — it is a property of when the roster was read.
+
+DraftKings conceals a player until *that player's* game kicks off. So a capture taken at 1pm
+legitimately hides the entire late slate: those slots carry no identity, contribute nothing, and the
+UI honestly describes them as "to play". **That reading is correct at 1pm and wrong at 5pm.** By
+then those games have started, DraftKings would now reveal the players, and the only reason they are
+still missing is that nobody re-captured. Every one of them is scoring points the estimate excludes,
+so the totals are silently *low* — and low in a way that looks like a normal quiet afternoon.
+
+Measured on the real capture: **14 of 16 games had started while 30 roster spots were still
+concealed.**
+
+**The test is precise, not a heuristic.** A slot is concealed at capture time `T` exactly when its
+player's game starts after `T`. Therefore a re-capture reveals more **iff** some game kicked off
+after `T` and has since started — which is what `assessCaptureStaleness` computes. It leans on the
+same property that makes revealed data trustworthy in the first place: concealment tracks kickoff
+exactly ([Phase 2](#capturing-the-rosters-phase-2)).
+
+That precision is what keeps it quiet in the **lookalike** case: right after a 1pm capture, the
+early games have started and the late-slate players are concealed — but no game has kicked off
+*since* the capture, so there is nothing to re-capture yet and no warning is shown.
+
+When it does fire, `/live` says **"These totals are low — re-sync to fix"**, naming how many games
+have kicked off since the capture and how many roster spots are still unknown.
+
+> **Operationally: sync again after the last kickoff of the day**, or the late slate scores zero.
+> See [`RUNBOOK.md`](RUNBOOK.md#roster-capture--what-feeds-live).
 
 #### Caching, and the one thing not to do
 
@@ -717,10 +767,18 @@ rosters that exist are exhibition ones, and opening on an empty week looks like 
 **`/live` cannot leak an information advantage.** A concealed slot has no identity *stored*, so the
 page can only ever show what DraftKings had already unlocked to everyone.
 
-> **`liveTag()` has no invalidator today.** The tag is attached to the cached entry, but nothing in
-> the repo calls `revalidateTag()`. A fresh capture calls `revalidatePath('/live')` instead, and the
-> 30-second TTL bounds staleness regardless. Wire `revalidateTag(liveTag(seasonId, week))` into the
-> capture path if you ever want a capture to bust the stat index immediately.
+**A capture busts the stat index.** `POST /api/ingest/lineups` calls
+`revalidateTag(liveTag(seasonId, week), 'max')` after a successful ingest — the only caller of
+`liveTag`. A capture is the one moment we *know* the roster changed, and it usually happens because
+games are underway, so newly-revealed players are scored against current stats rather than an index
+cached up to 30s ago. (The snapshots themselves are read uncached, so the new roster would appear
+regardless; this is about the stat side.)
+
+> ⚠️ **Next 16 changed `revalidateTag`'s signature: the cache-life profile is a REQUIRED second
+> argument.** `'max'` means stale-while-revalidate. The bundled
+> `caching-without-cache-components.md` guide still shows the one-argument form, which does **not**
+> typecheck — `node_modules/next/cache.d.ts` is the authority. See
+> [`NEXTJS16_NOTES.md` §5](NEXTJS16_NOTES.md#5-data-fetching--caching-cachecomponents-off).
 
 ### Phase log
 
@@ -740,8 +798,16 @@ Genuine remaining gaps are listed [below the table](#remaining-gaps).
 
 Real, specific, and none of them blocking:
 
-- **`pointsAllowedMode` is still `'raw'` and still unconfirmed** (see [above](#what-ships-today--the-engine-phase-1)). `dkStats` is the instrument for settling it; the 0.00 reconciliation was on an exhibition slate, which is not a hard test of the DST tiers.
-- **`liveTag()` has no invalidator** — see the note above.
+- **⚠️ The 0.00 reconciliation proves less than it looks like it does.** It was a **preseason
+  contest with 6 owners**, on a small DraftKings slate. It shows the pipeline is wired correctly end
+  to end; it is *not* evidence the engine is exact across a full regular-season Sunday.
+- **`pointsAllowedMode` is still `'raw'` and still unconfirmed** (see
+  [above](#what-ships-today--the-engine-phase-1)). That preseason slate barely exercises the DST
+  tiers. `dkStats` is the instrument — settle it on a regular-season week containing a defensive or
+  return touchdown, where getting it wrong lands a DST exactly one tier off.
+- **A ~16-game cold render has never been tested against `maxDuration = 30`.** The fan-out runs at
+  concurrency 6; the proving capture needed 1–2 games, not 16. If a cold Sunday render times out,
+  this is the first thing to look at.
 - **A pasted capture is never enriched**, so it is not scorable. Admin → Lineups sends no `draftGroupId`.
 - **2-pt conversions, safeties and blocked kicks stay best-effort**, by nature of the source ([exact vs best-effort](#exact-vs-best-effort)).
 

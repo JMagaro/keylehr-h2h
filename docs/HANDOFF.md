@@ -6,35 +6,40 @@ sections as you go; **[Start here](#start-here-fresh-session)** is the entry poi
 
 _Last updated: 2026-08-15 (**live in-progress scoring is DONE, Phases 0–5** — the pure DK engine +
 ESPN adapter, roster capture/storage with migration `0010` **applied**, the `draftableId` → identity
-bridge, `src/lib/live/`, the **`/live`** + **`/live/[matchupId]`** pages, one-button Sync in
-**extension v1.3.0**, and the retirement of the public `/preseason` page; **all five commits are
-local — nothing pushed**. Prior: live-scoring *remediation* Phases 0–4 + the playoff **3rd-place
-game**, preseason syncing from the DK Chrome extension, preseason exhibition games, tiebreaker fix
-+ 2023/2024 playoffs + per-season owner names + DK salary + model tracker)._
+bridge, `src/lib/live/` incl. **capture-staleness detection**, the **`/live`** +
+**`/live/[matchupId]`** pages, one-button Sync in **extension v1.3.0**, `liveTag` wired to the
+capture, and the removal of **all** exhibition tooling (public page *and* admin setup); **all seven
+commits are local — nothing pushed**. Prior: live-scoring *remediation* Phases 0–4 + the playoff
+**3rd-place game**, preseason syncing from the DK Chrome extension, preseason exhibition games,
+tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model tracker)._
 
 ---
 
 ## Snapshot
 
 - **Live app:** Vercel (`keylehr-h2h.vercel.app`), auto-deploys from `main`. The live-scoring
-  session is the five-commit run `6559f0f` … `d3cc2e9` (`git log -p 6559f0f^..HEAD`), on top of the
+  session is the seven-commit run `6559f0f` … `4a697ca` (`git log -p 6559f0f^..HEAD`), on top of the
   earlier 12-commit run `d0ba364` … `e2a3f1a`. **Those commit messages are the real design record**
   — read them before touching the scoring, live or playoff paths; each one states the bug, the
   decision and what was rejected.
-  > **Push check.** ⚠️ **All five live-scoring commits are LOCAL.** Run `git log origin/main..main`
+  > **Push check.** ⚠️ **All seven live-scoring commits are LOCAL.** Run `git log origin/main..main`
   > — if it lists anything, push it, and note that Vercel has not deployed it yet. Nothing on
   > production serves `/live` until you do.
+  > **One caveat when reading the log:** `d3cc2e9`'s message says "Admin → Preseason STAYS". That was
+  > true when written and was **superseded an hour later by `ed6ef78`**, which removed it. The
+  > commits are still the design record; this is the one place a later commit reversed an earlier
+  > one's stated decision.
 - **Stack:** Next.js 16.2.9 (App Router, Turbopack) · React 19 · Tailwind v4 (CSS `@theme`, no
   config file) · Drizzle + Neon Postgres (**HTTP driver** — every query is a network round-trip) ·
   NextAuth (commissioner login) · a Chrome extension for DraftKings sync.
-- **Verification:** `npm run verify` is **9/9 green** (typecheck · lint · **282 unit tests,
-  22 files** · production build · ESPN health · engine invariants · **historical snapshot
+- **Verification:** `npm run verify` is **9/9 green** (typecheck · lint · **291 unit tests,
+  23 files** · production build · ESPN health · engine invariants · **historical snapshot
   unchanged** · **engine no-op proofs** · 2025 ground-truth replay), with the frozen-history
   snapshot byte-identical. The two TRUTH checks are from the remediation session — see the
   freeze-gate part of that DONE section below. It was 144 tests / 16 files at `e2a3f1a`; the extra
-  **138 across 6 new files** are the live-scoring work — 63 engine (`score` 41 + `espn-extract` 22),
-  58 capture (`normalize` 30 + `no-write` 21 + `enrich` 7), and 17 `live/assemble`. Typecheck and
-  lint are clean.
+  **147 across 7 new files** are the live-scoring work — 63 engine (`score` 41 + `espn-extract` 22),
+  58 capture (`normalize` 30 + `no-write` 21 + `enrich` 7), 17 `live/assemble` and 8
+  `live/staleness`. Typecheck and lint are clean.
 - **Migrations:** applied through **0010** — `0010_polite_nicolaos.sql` (the two live-scoring
   capture tables) is **applied to production**; `lineup_snapshots` and `lineup_capture_runs` exist
   with their unique + season/week indexes. It is purely additive (two new tables, no ALTERs), so it
@@ -226,23 +231,33 @@ all-time records.
   ```
   grep -n 'from(scores)\|from(matchups)' src/lib/history.ts   # every hit needs an isExhibition filter
   ```
-- **Surfaces (superseded by `d3cc2e9` — read this carefully):** originally a public
-  **`/preseason`** page plus an admin **`/admin/preseason`**. **The public page is GONE**
-  (`src/app/preseason/page.tsx`, its nav entry and `getPreseasonSeasonOptions` were all removed):
-  `/live` renders exhibition weeks like any other week, with far more detail, so a second read-only
-  page was a thing to maintain that showed less. **Admin → Preseason REMAINS** and is not optional —
-  it is the *setup* tool (`src/app/admin/(panel)/preseason/`, `syncPreseasonWeek`) that pulls the
-  ESPN preseason week and generates the exhibition matchups in the first place; its `revalidatePath`
-  calls now point at `/live`. `src/lib/preseason/query.ts` also remains, with that admin page as its
-  **only** consumer. The public nav order in `src/components/nav-links.ts` is now Dashboard ·
-  My Team · **Live** · Standings · Playoffs · Lineup Builder · Cohen's Corner · History · Rules.
+- **Surfaces — ALL GONE as of `ed6ef78`. Creation removed, isolation permanent.** Originally a
+  public `/preseason` page plus an admin `/admin/preseason`. `d3cc2e9` removed the public page
+  (arguing the admin tool should stay); **`ed6ef78` then removed the rest**, because the league
+  decided it does not want exhibitions at all. Deleted: `src/app/preseason/`,
+  `getPreseasonSeasonOptions`, `src/app/admin/(panel)/preseason/{page,actions,preseason-forms}.tsx`,
+  the Admin nav entry, `src/lib/preseason/query.ts`, and **`syncPreseasonWeek`**.
+  `SEASON_TYPE_PRESEASON` is now declared in `src/lib/espn/client.ts` with **zero consumers**, and
+  `scripts/pull-schedule.ts` has no preseason flag — so **nothing can create a new exhibition week.**
+  That is the intended end state.
+  > 🛑 **The isolation is NOT dead code — do not remove it.** `isExhibition` columns, every query
+  > filter, the `101`–`103` ingest range and `src/lib/schedule/preseason.ts` all stay, because
+  > **exhibition rows exist in the database** (week 102: 16 matchups, 12 scores, 6 lineup snapshots
+  > as of 2026-08-15). The namespace is the only thing keeping that test data out of standings,
+  > seeding, playoffs, payouts and all-time records. Deleting the filters "because we don't do
+  > preseason any more" would silently corrupt every historical number. `/live` still renders those
+  > weeks and the extension's **Preseason** toggle still posts `101`–`103`.
+
+  The public nav order in `src/components/nav-links.ts` is now Dashboard · My Team · **Live** ·
+  Standings · Playoffs · Lineup Builder · Cohen's Corner · History · Rules, and the dashboard hero +
+  Explore card link to `/live`.
 - **Scoring a preseason week (updated — the extension now does it):** the DK Sync extension has a
   **Preseason** checkbox; the Week input then means preseason week 1–3 and the extension POSTs the
   offset week (101–103). `POST /api/ingest/draftkings` accepts **two disjoint week ranges** —
   `1–25` (regular/playoff) and `101–103` (preseason exhibition) — and rejects everything in
   between, so a typo can't land a preseason score in a real week. Nothing else flags the sync:
-  `ingestLeaderboard` derives `isExhibition` from the week. The paste form on Admin → Preseason is
-  now the **fallback** (for when there's no DK contest to pull from), not the only path. Live Sync
+  `ingestLeaderboard` derives `isExhibition` from the week. (The Admin → Preseason paste form that
+  used to be the fallback here no longer exists — see the Surfaces note above.) Live Sync
   works in preseason mode with no change to `extension/background.js` — it carries the week through
   opaquely and auto-stops on DK contest completion, which is week-agnostic. **Gotcha:**
   `extension/popup.js` *mirrors* `PRESEASON_WEEK_BASE`/`MAX_PRESEASON_WEEK` (and the route's
@@ -428,7 +443,33 @@ Sleeper PPR as a free proxy).
 
 ## Recent work (newest first)
 
-- **Live in-progress scoring — Phases 4–5: `/live` ships** (`6559f0f` … `d3cc2e9`, ⚠️ **all five
+- **Stale-capture detection + `liveTag` wired** (`4a697ca`). Tests 283 → **291**. New pure module
+  `src/lib/live/staleness.ts` (`assessCaptureStaleness`, `countConcealedSlots`, 8 tests).
+  - **The problem it solves is the estimate's biggest silent failure.** DK conceals a player until
+    their game kicks off, so a 1pm capture legitimately hides the late slate and the UI calls those
+    slots "to play" — right at 1pm, **wrong at 5pm**, when those players are scoring points the
+    estimate excludes and the only reason they're missing is that nobody re-captured. Measured:
+    **14 of 16 games started while 30 roster spots were still concealed.**
+  - **The test is precise, not heuristic:** a slot is concealed at capture time `T` exactly when its
+    game starts after `T`, so a re-capture helps **iff** some game kicked off after `T` and has since
+    started. That means it stays *quiet* in the lookalike case (just after a 1pm capture: early games
+    underway, late players concealed, nothing to re-capture yet). `/live` renders
+    **"These totals are low — re-sync to fix"**.
+  - **`liveTag` is now wired.** `POST /api/ingest/lineups` calls
+    `revalidateTag(liveTag(seasonId, week), 'max')` after a successful ingest — the only caller.
+    ⚠️ **Next 16 requires that second cache-life argument**; the bundled
+    `caching-without-cache-components.md` guide still shows the one-arg form, which does not
+    typecheck. Recorded in
+    [`NEXTJS16_NOTES.md` §5](NEXTJS16_NOTES.md#5-data-fetching--caching-cachecomponents-off).
+- **Exhibition tooling removed; `/live` on the home page** (`ed6ef78`). The league decided it does
+  not want exhibitions, so the **creation** path is gone entirely — Admin → Preseason (page/actions/
+  forms), its nav entry, `src/lib/preseason/query.ts` and `syncPreseasonWeek`. This **reverses
+  `d3cc2e9`'s stated decision** to keep the admin tool. `SEASON_TYPE_PRESEASON` now has zero
+  consumers. **The `isExhibition` isolation deliberately stays** — see the preseason DONE section for
+  why removing it would corrupt history. Also: `/live` links on the dashboard hero + Explore card,
+  and `matchup-switcher.tsx` → `matchup-nav.tsx` (prev/next + dropdown in one component, labels now
+  naming **both** owners, since one name doesn't identify a pairing).
+- **Live in-progress scoring — Phases 4–5: `/live` ships** (`6559f0f` … `d3cc2e9`, ⚠️ **all seven
   commits local**). `src/lib/live/` joins captured rosters to ESPN stats and two routes render it.
   Tests 255 → **282**, verify 9/9, frozen snapshot byte-identical. Written up in
   [`SCORING.md` §15](SCORING.md#rendering-it--live-phases-45). Seven things to carry forward:
@@ -469,10 +510,12 @@ Sleeper PPR as a free proxy).
   else. The probe panel is now "Troubleshooting — DraftKings endpoints" and says it is not part of
   normal use; Live Sync is documented as **optional** (it keeps DK's OFFICIAL totals fresh and needs
   the machine awake — `/live` does not).
-  > **Admin → Preseason STAYS.** The removed thing is the read-only public page, its nav entry and
-  > `getPreseasonSeasonOptions`. Admin → Preseason is the **setup tool** (`syncPreseasonWeek`
-  > generates the exhibition schedule + matchups); its `revalidatePath` calls now point at `/live`.
-  > `src/lib/preseason/query.ts` still exists — its only consumer is that admin page.
+  > ~~**Admin → Preseason STAYS.**~~ **SUPERSEDED by `ed6ef78`, one commit later.** At the time,
+  > only the public page was removed and the admin setup tool was kept deliberately. The league then
+  > decided it does not want exhibitions at all, so `ed6ef78` removed the admin page,
+  > `src/lib/preseason/query.ts` and `syncPreseasonWeek` too. Kept here because `d3cc2e9`'s commit
+  > message still argues for keeping it, and that is the one place in the log where a later commit
+  > reverses an earlier stated decision.
 - **Live in-progress scoring — Phase 3: one-click roster capture** (committed in `6559f0f`). The DK
   roster endpoint was found, the extension went **1.1.0 → 1.2.0**, and captures are now enriched at
   write time. Tests 234 → **255**. Six things to carry forward:
@@ -644,36 +687,15 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
 
 **Needs a decision or a fix**
 
-- **⚠️ UNCOMMITTED: something is removing preseason entirely, and it contradicts `d3cc2e9`.**
-  Present in the working tree (deletions **staged**, the rest not) at the time of writing, *after*
-  the five live-scoring commits landed:
-  `src/app/admin/(panel)/preseason/{page,actions,preseason-forms}.tsx`, `src/lib/preseason/query.ts`,
-  the Admin nav entry, **and `syncPreseasonWeek` (78 lines out of `src/lib/schedule/sync.ts`)** are
-  all deleted; `src/app/page.tsx` gains `/live` links on the hero and the Explore card. The
-  deletion set is internally consistent — no dangling imports — so it is deliberate, not damage.
-  **Everything else in these docs describes `HEAD` (`d3cc2e9`), where Admin → Preseason still
-  exists.** Decide and then make the docs match:
-  - If this ships, **nothing can create exhibition games any more.** `SEASON_TYPE_PRESEASON` drops
-    to **zero consumers** and `scripts/pull-schedule.ts` has no preseason flag, so a *new*
-    exhibition week's `nfl_games` and matchups cannot be generated. The rest of the namespace
-    survives — `isExhibitionWeek`, the 101–103 ingest range and `/live`'s exhibition rendering are
-    untouched — so **existing** data (week 102) keeps working and scores can still be ingested. The
-    loss is specifically the *setup* step.
-  - `d3cc2e9`'s commit message argues the opposite ("Admin → Preseason STAYS … it is not a view, it
-    is the setup tool"), so one of the two is out of date. Resolve that before pushing.
-- **`liveTag()` has no invalidator.** `src/lib/live/stats.ts` exports `liveTag(seasonId, week)` and
-  attaches it to the cached stat index, but **nothing in the repo calls `revalidateTag`**. A fresh
-  capture calls `revalidatePath('/live')` instead, and the 30-second TTL bounds staleness anyway, so
-  this is not a bug — but the tag reads like a wired-up invalidation hook and is not one. Decide
-  whether to wire `revalidateTag(liveTag(...))` into the capture path or drop the export.
 - **`pointsAllowedMode` is still unsettled.** It ships `'raw'`; DK has historically excluded points
-  its DST was not on the field for. The 0.00 reconciliation below was on an **exhibition** slate,
-  which is not a hard test of the DST tiers. `dkStats` is the instrument — settle it on a
-  regular-season week with a defensive or return TD.
+  its DST was not on the field for. The 0.00 reconciliation was on a **preseason** contest with 6
+  owners, which barely exercises the DST tiers. `dkStats` is the instrument — settle it on a
+  regular-season week with a defensive or return TD, where being wrong lands a DST exactly one tier
+  off.
 - **The capture that proved the path was preseason, on one season.** Season 1 / week 102, 6 owners,
-  54 slots. A full 32-owner regular-season Sunday has not been exercised end to end — the fan-out is
-  ~16 games instead of 1–2, and the 30s `maxDuration` on a cold render has not been tested against
-  that.
+  54 slots. A full 32-owner regular-season Sunday has not been exercised end to end, and **a ~16-game
+  cold render has never been tested against `maxDuration = 30`** (the fan-out runs at concurrency 6;
+  the proving capture needed a fraction of that). If a cold Sunday render times out, start here.
 - **A pasted capture is never enriched.** Admin → Lineups sends no `draftGroupId`, so
   `ingestLineups` skips `enrichLineups` and the snapshot keeps only whatever names/teams DK's payload
   carried — which for a real DK roster payload is *none*. That makes a pasted capture unscorable by
@@ -786,10 +808,10 @@ driver means one query = one round-trip, so batch writes.
   owner. **Every query here that touches `scores`/`matchups` must filter `isExhibition` —
   see the maintenance rule in the preseason DONE section.**
 - Preseason (exhibition) games: `src/lib/schedule/preseason.ts` (week-namespace helpers, pure,
-  `preseason.test.ts`), `src/lib/schedule/sync.ts` `syncPreseasonWeek`, `src/lib/preseason/query.ts`
-  (read model — **only** consumer is Admin → Preseason); route Admin → Preseason
-  (`src/app/admin/(panel)/preseason/`). The public view is `/live`, which renders exhibition weeks
-  like any other; there is no `/preseason` route. Rows carry `isExhibition` (migration 0008) and are excluded
+  `preseason.test.ts`) — **that is all that's left.** `syncPreseasonWeek`,
+  `src/lib/preseason/query.ts` and both preseason routes were removed in `ed6ef78`; no new
+  exhibition week can be created. The view for existing ones is `/live`, which renders them like any
+  other week. Rows carry `isExhibition` (migration 0008) and are excluded
   from every stats query. Scores arrive through the normal ingest endpoint at the offset week —
   `POST /api/ingest/draftkings` accepts `1–25` **or** `101–103` — driven by the extension's
   **Preseason** toggle (`extension/popup.js`, which mirrors the constants).
@@ -829,10 +851,13 @@ driver means one query = one round-trip, so batch writes.
 - **Joining the two halves and rendering them:** `src/lib/live/` — `stats.ts` (the cached ESPN stat
   index; `buildLiveStatIndex`, `getLiveStatsForWeek`, `playerStatKey`, `liveTag`,
   `LIVE_INDEX_REVALIDATE_SECONDS = 30`) · `assemble.ts` (**pure**, `assembleLive`, 17 tests, and the
-  home of the five slot states) · `query.ts` (**reads only**: `getLiveWeekData`,
-  `getDefaultLiveWeek`, `getMatchupLocation`). Routes: `src/app/live/` (list) and
-  `src/app/live/[matchupId]/` (head-to-head detail, prev/next + dropdown switcher). **Neither route
-  may set `dynamic = 'force-dynamic'`** — see [`SCORING.md` §15](SCORING.md#rendering-it--live-phases-45).
+  home of the five slot states) · `staleness.ts` (**pure**, `assessCaptureStaleness` /
+  `countConcealedSlots`, 8 tests — the "re-sync, your totals are low" detector) · `query.ts`
+  (**reads only**: `getLiveWeekData`, `getDefaultLiveWeek`, `getMatchupLocation`). Routes:
+  `src/app/live/` (list) and `src/app/live/[matchupId]/` (head-to-head detail; `matchup-nav.tsx` =
+  prev/next + dropdown). **Neither route may set `dynamic = 'force-dynamic'`** — see
+  [`SCORING.md` §15](SCORING.md#rendering-it--live-phases-45). `liveTag` is invalidated by
+  `POST /api/ingest/lineups`.
 - Admin (commissioner): `src/app/admin/(panel)/` — Owners · Assignments · Schedule · **Preseason** ·
   Sync · **Lineups** · Playoffs · **Slates** · **Models** · Settings · Users (all auth-gated)
 - Season importers (idempotent): `scripts/import-season{,3}.ts` (regular season; `import-season3.ts` is

@@ -135,7 +135,7 @@ has a complete, replayable history. Key fields (full table in [`DATA_MODEL.md`](
 | ---------------------------------------------- | ------------------------------------------------------------- |
 | `status` (`success`/`partial`/`failed`)        | Outcome of the run.                                           |
 | `entriesTotal` / `entriesMatched` / `entriesUnmatched` | Reconciliation counts (expect 32 matched in steady state). |
-| `triggeredBy` (`extension` / `admin:preseason` / `backfill`) | Who/what initiated the run.                       |
+| `triggeredBy` (`extension` / `admin:paste` / `backfill`; legacy `admin:preseason`) | Who/what initiated the run.                       |
 | `error`                                        | Failure detail (e.g. auth/session expiry).                   |
 | `rawPayload` (jsonb)                           | The raw leaderboard payload, retained for debugging/replay.   |
 
@@ -148,11 +148,13 @@ Because the authenticated DK read is fragile and against ToS, the pipeline **mus
 manual fallback**:
 
 1. **Paste leaderboard JSON.** Capture the leaderboard payload from the browser/DevTools and paste
-   it into the extension's **Paste manually** box (see [`../extension/README.md`](../extension/README.md))
-   or, for exhibition weeks, into **Admin → Preseason**. The same mapping → `scores` → audit logic
-   runs. The `triggeredBy` values actually written today are **`extension`**, **`admin:preseason`**
-   and **`backfill`** (`scoreImportRuns.triggeredBy` is free-form text) — there is no
-   `'manual-paste'` value.
+   it into the extension's **Paste manually** box (see
+   [`../extension/README.md`](../extension/README.md)). The same mapping → `scores` → audit logic
+   runs. The `triggeredBy` values **written today** are **`extension`** (both ingest routes),
+   **`admin:paste`** (Admin → Lineups) and **`backfill`** (the default, used by importers);
+   `scoreImportRuns.triggeredBy` is free-form text and there is no `'manual-paste'` value.
+   **`admin:preseason` is legacy** — it survives on historical rows but is no longer produced,
+   because Admin → Preseason was removed in `ed6ef78`.
 2. **Hand-enter scores.** *Not built* — there is no admin grid for typing a week's points, so the
    paste path above is the only in-app fallback.
 

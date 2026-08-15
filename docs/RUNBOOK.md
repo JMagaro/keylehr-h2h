@@ -87,21 +87,20 @@ counts toward Points For and repairs itself on the next sync (see
    "Missed lineup — auto-loss · FF" row on `/my-team`, with the opponent's Points Against equal
    to that week's league median (2026 rule).
 
-### Preseason exhibition weeks
+### Preseason exhibition weeks — no longer created
 
-Preseason games are tracked but **never** count toward standings, seeding, playoffs, payouts, or
-all-time records.
+**The league does not run exhibitions any more, and the app can no longer set one up.** `ed6ef78`
+removed Admin → Preseason, `src/lib/preseason/query.ts` and `syncPreseasonWeek`; nothing now pulls
+an ESPN preseason week, so a *new* exhibition week's games and matchups cannot be generated. That is
+intended, not a gap.
 
-1. Admin → **Preseason**: choose the preseason week (1–3) and click **Sync & generate matchups** — this pulls that ESPN
-   preseason week (`seasontype=1`) into `nfl_games` at the offset week `100 + preseasonWeek` and
-   regenerates matchups in one action.
-2. Score it with the extension: tick the **Preseason** checkbox. The Week input now means
-   *preseason week* (1–3) and the extension POSTs the offset week (101–103). The paste form on
-   Admin → Preseason remains as a fallback.
-3. Results show on **`/live`**, which renders exhibition weeks like any other and opens on the
-   most recently captured week. (There is no separate `/preseason` page — it was retired once
-   `/live` covered the same ground with more detail. **Admin → Preseason stays**: it is the setup
-   tool that generates the exhibition schedule and matchups, not a view.)
+**What stays, and why it must:** the `isExhibition` columns and every query filter, the `101`–`103`
+ingest range, and `src/lib/schedule/preseason.ts`. There is real exhibition data in the database
+(week 102 — 16 matchups, 12 scores, 6 lineup snapshots as of 2026-08-15), and this isolation is the
+only thing keeping it out of standings, seeding, playoffs, payouts and all-time records. **Do not
+"clean up" the exhibition filters because preseason is retired** — that would let test data pollute
+every historical number. Existing exhibition weeks still render on `/live`, and the extension's
+**Preseason** toggle still posts a `101`–`103` week, so those rows stay viewable and re-scorable.
 
 The regular (`1–25`) and exhibition (`101–103`) week ranges the ingest API accepts are
 **disjoint**, so a typo cannot land a preseason score in a real week. Byes are never derived for
@@ -119,11 +118,25 @@ one authenticated roster request per entry, because DraftKings has no bulk roste
 is no separate button to click. See
 [`../extension/README.md`](../extension/README.md#lineups-captured-automatically-by-sync).
 
-**When to sync for `/live`'s benefit.** DraftKings conceals a player until *that player's* game
-kicks off, and DK Classic allows late swap, so one capture at the 1pm lock cannot know about a 4pm
-swap or name a 4pm player. Sync again after the later kickoff windows: captures are append-only and
-the newest one wins. A concealed player has scored nothing, so **no points are ever missing from a
-capture — only names**.
+#### ⚠️ One capture is not enough — sync again after the last kickoff
+
+This is the single most important operational rule for `/live`, and getting it wrong makes the page
+quietly wrong rather than obviously broken.
+
+DraftKings conceals a player until *that player's* game kicks off. A capture taken at the 1pm lock
+therefore hides the **entire late slate** — those roster spots have no identity at all and count as
+nothing. That is honest at 1pm. **By 5pm it is wrong:** those players are on the field scoring
+points that the estimate is not counting, so every affected owner's total is silently *low*. On the
+first real capture, **14 of 16 games had started while 30 roster spots were still concealed.**
+
+**So: hit Sync again after the last kickoff of the day** (and after any late-swap window you care
+about — DK Classic allows swaps until each player's own kickoff). Captures are append-only and the
+newest one wins, so re-syncing is always safe and never loses anything.
+
+`/live` detects this for you and says **"These totals are low — re-sync to fix"**, naming how many
+games have kicked off since the last capture and how many roster spots are still unknown. It stays
+quiet when re-capturing would not actually help — for example right after a 1pm capture, when the
+early games are underway but nothing has kicked off *since* you captured.
 
 **What "good" looks like on `/live`.** The page states `N/M games loaded` and names any owner with
 no capture rather than showing them as `0.00`. Players whose game is loaded but who have no ESPN row
@@ -297,5 +310,7 @@ code.
 | **Sync** reports scores fine but the Lineups card shows a failure | Expected behaviour, not a bug: the roster half is best-effort and reports separately so it cannot cast doubt on the scores | Re-run **Sync**. If it keeps failing, DraftKings may have moved the roster endpoint — use the popup's **Troubleshooting — DraftKings endpoints** panel and send the output to whoever maintains the app. |
 | `/live` shows players as **unresolved** | Those players' games did not load from ESPN — the page says `N/M games loaded` | Usually transient; reload. Unresolved is never scored as 0, so a total showing unresolved slots is a **floor**, not a wrong number. |
 | `/live` shows an owner's total as **—** | No roster was captured for them that week | Run **Sync** from the extension. The page names them rather than showing `0.00`, because zero would be indistinguishable from a forfeit. |
+| `/live` says **"These totals are low — re-sync to fix"** | Games have kicked off since the last capture, so DraftKings would now reveal players it was hiding — those players are scoring and the estimate is excluding them | Hit **Sync** in the extension. This is the expected mid-Sunday workflow, not a fault — see [One capture is not enough](#-one-capture-is-not-enough--sync-again-after-the-last-kickoff). |
+| Totals on `/live` look too low but there's **no** warning | Nothing has kicked off since your capture, so re-capturing would reveal nothing | Not a staleness problem. Check `N/M games loaded` and the unresolved count instead. |
 | `verify` fails on **historical snapshot unchanged** | A change moved a frozen season | Stop. See [§6](#6-the-snapshot-gate). |
 | `verify` fails on **engine no-op proofs** | A precondition that makes the derivation model safe on history no longer holds | Stop — the corresponding change is not safe and needs a fresh look. The message names the season and the proof. |
