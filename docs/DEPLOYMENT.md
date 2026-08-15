@@ -112,6 +112,13 @@ Additional admins can be added **without a redeploy** through the `users` table 
 > [`DRAFTKINGS.md`](DRAFTKINGS.md)). `CRON_SECRET` and `DK_SESSION_COOKIE` are leftovers from this
 > design and are read by nothing.
 >
+> **The motivating problem is solved a different way.** What a cron was wanted for — numbers that
+> move during games — is what **`/live`** now does: rosters are captured once from the
+> commissioner's browser, and the running estimate is recomputed from ESPN's **keyless** boxscore on
+> demand. No stored DraftKings credentials, no schedule, no machine left on. See
+> [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). The
+> DraftKings leaderboard is still the only thing that writes `scores`, and it still needs a human.
+>
 > The sketch below is kept only because it remains the shape any future unattended pull would
 > take. **Do not follow it as setup instructions.**
 

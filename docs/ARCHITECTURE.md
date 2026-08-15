@@ -47,15 +47,20 @@ All four App Router surfaces ship today. See [§2](#2-request-flow) for the coun
 - **Public pages:** rendered as async Server Components that query Postgres through the Drizzle
   client and render server-side. Because `cacheComponents` is off, live pages opt into dynamic
   rendering (`export const dynamic = 'force-dynamic'` or `export const revalidate = N`) so they
-  reflect the latest scores. Shipped: the dashboard, Standings, Playoffs, Preseason, My Team
-  (plus the lineup Builder), History (index, per-season, head-to-head), Rules, and Cohen's Corner.
+  reflect the latest scores. Shipped: the dashboard, Standings, Playoffs, **Live** (`/live` and
+  `/live/[matchupId]`), My Team (plus the lineup Builder), History (index, per-season,
+  head-to-head), Rules, and Cohen's Corner.
+  > **`/live` is the deliberate exception: it must NOT set `force-dynamic`.** That flag implies
+  > `fetchCache = 'force-no-store'`, which would disable the Data Cache for every fetch on the
+  > route and turn one shared ESPN fan-out into one per viewer. It is already dynamic because it
+  > awaits `searchParams`. See [§9](#9-live-in-progress-scoring-built).
 - **Admin pages (`src/app/admin/(panel)/`):** gated behind Auth.js. CRUD runs as **Server
   Actions** that mutate the database and call `revalidatePath()`. Shipped: the dashboard, Owners
   (list + detail), Assignments, Schedule, Preseason, Sync, **Lineups**, Playoffs, Slates, Models,
   Settings and Users, plus the `/admin/login` route.
 - **Route handlers (`src/app/api/.../route.ts`):** `POST /api/ingest/draftkings` (the extension's
   score ingest, bearer `INGEST_TOKEN`), `POST /api/ingest/lineups` (roster capture for the live
-  estimate — same token, **never** writes a score; see [§9](#9-live-in-progress-scoring-partly-built)),
+  estimate — same token, **never** writes a score; see [§9](#9-live-in-progress-scoring-built)),
   `GET /api/seasons` (the extension's season picker / connection probe), and the Auth.js catch-all.
   GET handlers are **not** cached by default in Next 16.
 - **`middleware.ts`:** gates `/admin/*` (except `/admin/login`) — see [§6](#6-auth--admin-model-implemented).
@@ -288,9 +293,9 @@ A manual fallback is therefore mandatory. See [`DRAFTKINGS.md`](DRAFTKINGS.md) f
 caveats, and mitigations — including [§11](DRAFTKINGS.md#11-endpoint-inventory--what-is-public-and-what-needs-auth),
 the probed inventory of which DK endpoints work without a session.
 
-A separate path for showing points *while games are in progress* is under construction. It has its
-own tables and is **read-only with respect to this pipeline** — it never writes `scores` — see
-[§9](#9-live-in-progress-scoring-partly-built).
+A separate path shows points *while games are in progress*. It has its own tables and is
+**read-only with respect to this pipeline** — it never writes `scores` — see
+[§9](#9-live-in-progress-scoring-built).
 
 ## 8. Key tables (quick reference)
 
@@ -314,23 +319,24 @@ own tables and is **read-only with respect to this pipeline** — it never write
 | `lineup_capture_runs` | Audit log of each roster capture, incl. which DK URL worked.        |
 
 Full column-level detail is in [`DATA_MODEL.md`](DATA_MODEL.md). The two `lineup_*` tables arrived
-in migration `0010`, which is applied — see [§9](#9-live-in-progress-scoring-partly-built).
+in migration `0010`, which is applied — see [§9](#9-live-in-progress-scoring-built).
 
-## 9. Live in-progress scoring (partly built)
+## 9. Live in-progress scoring (built)
 
-> **What exists (Phases 0–3 of 5):** a pure DraftKings scoring engine and a public-ESPN stat
-> adapter under `src/lib/dfs/`, plus roster capture and storage under `src/lib/lineups/`
-> (`POST /api/ingest/lineups` + Admin → Lineups), fed by the Chrome extension's one-click
-> **Capture lineups** (v1.2.0). **What does not exist:** DK→ESPN player matching, and any `/live`
-> page. Do not read this as a shipped feature. Full detail —
-> [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
+> **Shipped (Phases 0–5):** a pure DraftKings scoring engine and a public-ESPN stat adapter under
+> `src/lib/dfs/`; roster capture and storage under `src/lib/lineups/` (`POST /api/ingest/lineups`
+> + Admin → Lineups), fed by the Chrome extension's single **Sync** button (v1.3.0); and the join
+> + read model under `src/lib/live/`, rendered by **`/live`** and **`/live/[matchupId]`**. It is
+> still an **estimate** — DraftKings' leaderboard remains the sole authority for `scores`. Full
+> detail — [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
 
 The scoring pipeline in [§7](#7-draftkings-scoring-pipeline-implemented--via-the-browser-extension)
-needs the commissioner's browser, so a week's numbers only move when someone syncs. The plan for
-in-progress numbers: capture each owner's DK **roster** from that same browser (a few times a week —
-DK Classic allows late swap, so captures are versioned rather than overwritten), then recompute the
-points server-side from ESPN's public boxscore API — no DK session on the server, no cron, machine
-can be off in between.
+needs the commissioner's browser, so a week's *official* numbers only move when someone syncs. The
+in-progress path breaks that dependency: capture each owner's DK **roster** from that same browser
+(a few times a week — DK Classic allows late swap, so captures are versioned rather than
+overwritten), then recompute the points server-side from ESPN's public boxscore API — no DK session
+on the server, no cron, **machine can be off in between**. That asymmetry is the whole design:
+authenticate once for *who was started*, then compute all week from public data.
 
 ```text
 WHO THEY STARTED (authenticated, re-captured)        WHAT THEY DID (public, recomputed on demand)
@@ -349,24 +355,38 @@ lineup_capture_runs  (audit)                               │     extractGame  
       │                                              PlayerStatLine / DstStatLine
       └──────────────────┬─────────────────────────────────┘   (src/lib/dfs/stat-line.ts)
                          ▼
-        src/lib/dfs/score.ts   scorePlayer / scoreDst / scoreLineup  (pure)
-        src/lib/dfs/rules.ts   DK_CLASSIC_NFL  (frozen rule data)
+        src/lib/live/stats.ts    the week's stat index, keyed (normalizeName, teamKey)
+                                 unstable_cache, 30s — ONE fan-out serves every viewer
                          ▼
+        src/lib/live/assemble.ts assembleLive(matchups, snapshots, index)  (pure)
+        src/lib/dfs/score.ts     scorePlayer / scoreDst / scoreLineup      (pure)
+        src/lib/dfs/rules.ts     DK_CLASSIC_NFL  (frozen rule data)
+                         ▼
+        /live  and  /live/[matchupId]
             an ESTIMATE — displayed only, never written to `scores`
 ```
 
-The join between the two halves — matching a captured DK player to an ESPN athlete — is Phase 4 and
-does not exist yet. Half of its input does: DK's roster payload names nobody and no team, only a
+The join between the two halves — matching a captured DK player to an ESPN athlete — is
+`playerStatKey(name, teamKey)` in `src/lib/live/stats.ts`. Both parts are mandatory: name alone
+collides on real players league-wide. DK's roster payload names nobody and no team, only a
 `draftableId`, so `enrich.ts` resolves that against the **public** draftables endpoint at capture
 time (DK expires draftables for old draft groups, so a snapshot must stand alone). That is what puts
-the `(name, teamKey)` pair on the snapshot that Phase 4 will match on.
+the `(name, teamKey)` pair on the snapshot the index matches against.
+
+`assembleLive` is **pure** — no DB, no network, no clock — which is what makes the display rules
+unit-testable. The rule that matters: **a slot we could not score is never rendered as `0.00`.**
+Zero is a real DraftKings result, so the five slot states (`scored`, `pending`, `concealed`,
+`noStats`, `unresolved`) keep "he scored nothing" apart from "we don't know", and a team total is a
+floor with the reason attached. Full rationale, including why `noStats` is its own state, is in
+[`SCORING.md` §15](SCORING.md#the-five-slot-states--the-load-bearing-concept).
 
 Three architectural constraints, all deliberate:
 
 - **The estimate cannot enter the scoring chain.** `src/lib/dfs/` imports no database and no
   `src/lib/standings/`, so the module graph forbids it outright. The capture path *does* need the
   database, so it is fenced by a test instead: `src/lib/lineups/no-write.test.ts` scans every module
-  under `src/lib/dfs`, `src/lib/lineups` and `src/lib/live` and fails on any write to `scores`,
+  under `src/lib/dfs`, `src/lib/lineups` and `src/lib/live` — **and the `src/app/live` route**,
+  since a server component can reach the database directly — and fails on any write to `scores`,
   `matchups`, `playoff_matchups`, `season_awards` or `nfl_games`. Reads are allowed; writes are not.
   DraftKings' leaderboard remains the sole authority for `scores`.
 - **The engine is pure and the rule set is data**, so both are exhaustively unit-tested (63 tests)

@@ -405,13 +405,18 @@ would hand the ground-truth replay stale rows.
 
 ## 15. Live in-progress scoring (an estimate, never a score)
 
-> **Status: partly built (Phases 0–3 of 5).** The scoring **engine** and its ESPN adapter ship in
+> **Status: built (Phases 0–5).** The scoring **engine** and its ESPN adapter ship in
 > `src/lib/dfs/`; roster **capture and storage** ship in `src/lib/lineups/`, behind
-> `POST /api/ingest/lineups` and Admin → Lineups; the Chrome extension (v1.2.0) captures all 32
-> rosters in one click. Nothing yet matches captured players to ESPN athletes, and there is no
-> `/live` page — see [what is not built yet](#what-is-not-built-yet) at the end of this section.
+> `POST /api/ingest/lineups` and Admin → Lineups; the Chrome extension (v1.3.0) captures scores
+> **and** rosters from one **Sync** click; `src/lib/live/` joins the two halves and
+> [**`/live`**](#rendering-it--live-phases-45) renders them.
 >
 > Migration `drizzle/0010_polite_nicolaos.sql` (the two capture tables) is **applied** to production.
+>
+> **Proven end to end** on a real capture — season 1, week 102 (an exhibition week): 6/6 owners,
+> 54 slots, 24 revealed, all enriched to teams, 16/16 games loaded, zero unresolved, and a
+> reconciliation against DraftKings' own per-owner numbers of **max |delta| 0.00**. That is the
+> estimate agreeing exactly with the authority it must never replace.
 >
 > Not to be confused with the **live-scoring remediation** (`docs/HANDOFF.md`), which was a
 > different piece of work with its own Phase 0–4 numbering. That one fixed §3–§7 of *this* chain;
@@ -422,7 +427,7 @@ extension from the commissioner's logged-in browser ([§4](#4-ingest-write-time)
 needs a live session, so keeping the numbers moving *during* the games means leaving a machine
 on all week.
 
-The alternative being built: capture each owner's DraftKings **roster** (still authenticated, still
+The alternative, now built: capture each owner's DraftKings **roster** (still authenticated, still
 from the commissioner's browser — a handful of times a week, not continuously), then recompute
 DraftKings points **server-side** from ESPN's public boxscore API. No DK auth on the server, no
 cron, machine can be off between captures. See
@@ -447,11 +452,13 @@ Two things hold the invariant up, and they are different in kind:
   `src/lib/standings/`. The engine *cannot* reach the chain.
 - **Mechanically:** the capture path *does* need the database, so it gets a test instead.
   `src/lib/lineups/no-write.test.ts` scans every non-test `.ts` under `src/lib/dfs`,
-  `src/lib/lineups` and `src/lib/live` (a directory that does not exist yet is skipped) and fails if
-  any of them writes to `scores`, `matchups`, `playoff_matchups`, `season_awards` or `nfl_games`, or
-  calls `ingestLeaderboard` / `writeTeamScores`. **Every module in those directories is scanned —
-  the list is discovered, not enumerated, so a new file is covered the moment it lands.** It also
-  asserts it found something to scan, so a guard that silently checks nothing fails loudly.
+  `src/lib/lineups` and `src/lib/live` — **and the `src/app/live` route itself**, because a server
+  component can reach the database directly and "the lib layer is clean" would be an incomplete
+  proof. It fails if any of them writes to `scores`, `matchups`, `playoff_matchups`, `season_awards`
+  or `nfl_games`, or calls `ingestLeaderboard` / `writeTeamScores`. **Every module in those
+  directories is scanned — the list is discovered, not enumerated, so a new file is covered the
+  moment it lands.** It also asserts it found something to scan, so a guard that silently checks
+  nothing fails loudly. 21 tests.
 
 Reads are deliberately allowed — a live view is *supposed* to read `scores` and show DraftKings'
 authoritative number beside the estimate. Only writes are forbidden.
@@ -623,18 +630,120 @@ rejects everything rather than falling open) and `src/lib/ingest/week-schema.ts`
 `MAX_REGULAR_WEEK` 25, `MIN_EXHIBITION_WEEK` 101, `MAX_EXHIBITION_WEEK` 103). Both were extracted
 from `src/app/api/ingest/draftkings/route.ts` with no behaviour change.
 
-### What is NOT built yet
+### Rendering it — `/live` (Phases 4–5)
 
-Everything below is **planned**. Do not read the code as finished.
+`src/lib/live/` joins the two halves — *who they started* (captured) and *what those players did*
+(public) — and `/live` renders the result.
+
+| Module | Role |
+| ------ | ---- |
+| `src/lib/live/stats.ts` | The week's ESPN stat index. `buildLiveStatIndex(games)` (unwrapped, for scripts/tests) and `getLiveStatsForWeek(seasonId, week, games)` (cached). Plus `playerStatKey(name, teamKey)` and `liveTag(seasonId, week)`. Types: `LiveStatIndex`, `LivePlayerStat`, `LiveDstStat`, `LiveGameSummary`, `LiveGameRef`. |
+| `src/lib/live/assemble.ts` | `assembleLive(matchups, snapshots, index)` — **pure**: no DB, no network, no clock. Types: `LiveView`, `LiveMatchup`, `LiveTeam`, `LiveSlot`, `LiveSlotStatus`. 17 unit tests. |
+| `src/lib/live/query.ts` | The only DB module behind `/live`, and **read-only**: `getLiveWeekData(seasonId, week)`, `getDefaultLiveWeek(seasonId)`, `getMatchupLocation(matchupId)`, type `LiveTeamContext`. |
+
+**The join is `(normalizeName, teamKey)`** — Phase 4, and it lives in `playerStatKey`. The team
+component is not optional: name alone collides on real players (Bijan vs Brian Robinson, Travis vs
+Trevor Etienne, Josh vs Jonathan Allen) and produced 18 phantom mismatches in the self-test before
+the team key was added. Phase 2's capture-time enrichment is what puts that team key on a snapshot.
+
+#### The five slot states — the load-bearing concept
+
+**A slot we could not score is NEVER 0.00.** Zero is a real DraftKings result — a player can
+genuinely score nothing — so every *other* reason a number is missing gets its own state, and the
+team total is a **floor** with the reason attached. A mid-Sunday page where everyone sits near zero
+must never be readable as "everyone forfeited"; that is the same class of bug this whole document
+exists to prevent, avoided here by never producing the ambiguous value in the first place.
+
+| `LiveSlotStatus` | Meaning | `points` |
+| ---------------- | ------- | -------- |
+| `scored` | We have the player's stat line. Real — and **may legitimately be 0**. | a number |
+| `pending` | Their game has not kicked off. Contributes nothing *yet*, and says so. | `null` |
+| `concealed` | DraftKings is still hiding the player. Same arithmetic as `pending`; we don't even have the name. | `null` |
+| `noStats` | Their game **is** underway **and** we loaded its boxscore, but they have no row in it. | `0` |
+| `unresolved` | Their game did not load at all, so we genuinely do not know. **The only bad state.** | `null` |
+
+**Why `noStats` is separate from `unresolved`** — this was measured, not guessed. ESPN lists only
+players who *recorded* a stat, so a missing row in a **loaded** boxscore means the player has done
+nothing, which DraftKings pays as exactly 0. In the first real capture, **13 of 24 revealed players
+had no ESPN row and every one was worth 0.00 per DraftKings.** Calling those `unresolved` would
+paint `?` over half of every roster and make a working page read as broken; calling them `scored`
+would hide a genuine name-matching failure. They are a third thing: scored as 0, counted separately.
+
+**A missing DEFENSE is `unresolved`, not `noStats`.** Points allowed alone guarantees a defense a
+row in any loaded boxscore, so its absence really does mean we don't know.
+
+#### Caching, and the one thing not to do
+
+`getLiveStatsForWeek` wraps the whole ESPN fan-out in `unstable_cache`
+(`LIVE_INDEX_REVALIDATE_SECONDS = 30`, tagged with `liveTag()`), so **one warm entry serves every
+viewer** — 32 owners refreshing is not 32× the upstream traffic, and Vercel's Data Cache is shared
+across instances. The cache key includes the event ids, so a schedule correction produces a new
+entry rather than serving a stale slate. `cacheComponents` is not enabled in `next.config.ts`, so
+`use cache` is unavailable and `unstable_cache` is the correct tool.
+
+The index stores **stat lines, not points**. The cached payload stays small, and a scoring-rule fix
+takes effect immediately instead of waiting out a cache TTL.
+
+The fan-out runs at **concurrency 6** with `Promise.allSettled` semantics: one failed game degrades
+to "15 of 16 loaded" — surfaced in the UI — rather than throwing the page. Players in a game that
+did not load become `unresolved`, never 0.
+
+> **Do NOT add `export const dynamic = 'force-dynamic'` to either `/live` route.** Every other data
+> page in this repo sets it, so copying the idiom is the obvious mistake — and here it is actively
+> harmful: `force-dynamic` implies `fetchCache = 'force-no-store'`, which silently disables the Data
+> Cache for **every** fetch on the route (bundled Next 16.2.9 docs,
+> `caching-without-cache-components.md:97-99`). The sharing above would collapse into one ESPN
+> fan-out per viewer. Both routes are already dynamic because they await `searchParams`/`params`.
+> Both set `runtime = 'nodejs'` and `maxDuration = 30` (a cold render fans out to ~16 summaries).
+
+#### The routes
+
+- **`/live`** — the week's matchups as cards; the whole card is a `<Link>` to the detail page.
+  Shows `N/M games loaded`, "lineups as of …", and names any owner with **no capture** rather than
+  showing them as `0.00`. `?season=` and `?week=` override the defaults.
+- **`/live/[matchupId]`** — the head-to-head: both rosters mirrored around a centre slot rail,
+  each row carrying the player's points, a plain-English stat line, and their game state (or their
+  opponent and kickoff time if it hasn't started). Prev/next are real `<Link>`s that wrap at both
+  ends, plus a dropdown switcher. It resolves the matchup's week and then goes through the **same**
+  `getLiveWeekData` + `getLiveStatsForWeek` path as the list, so clicking in costs **no extra ESPN
+  traffic** however many people do it.
+
+Exhibition weeks render like any other week — `getLiveWeekData` derives `isExhibition` from the week
+and applies it as a **required** filter ([§2](#2-the-three-week-namespaces)). `/live` opens on the
+most recently **captured** week rather than `seasons.currentWeek`, because a capture is a deliberate
+act aimed at a specific week; during preseason the season pointer still says week 1 while the only
+rosters that exist are exhibition ones, and opening on an empty week looks like a broken feature.
+
+**`/live` cannot leak an information advantage.** A concealed slot has no identity *stored*, so the
+page can only ever show what DraftKings had already unlocked to everyone.
+
+> **`liveTag()` has no invalidator today.** The tag is attached to the cached entry, but nothing in
+> the repo calls `revalidateTag()`. A fresh capture calls `revalidatePath('/live')` instead, and the
+> 30-second TTL bounds staleness regardless. Wire `revalidateTag(liveTag(seasonId, week))` into the
+> capture path if you ever want a capture to bust the stat index immediately.
+
+### Phase log
+
+All five phases are **done**. Kept as the design record — each row says what the phase settled.
+Genuine remaining gaps are listed [below the table](#remaining-gaps).
 
 | Phase | Scope | State |
 | ----- | ----- | ----- |
 | 0 | Prove which DK endpoints are reachable; add the extension's roster-endpoint diagnosis | **Done** — see [`DRAFTKINGS.md` §11](DRAFTKINGS.md#11-endpoint-inventory--what-is-public-and-what-needs-auth) and [`../extension/README.md`](../extension/README.md) |
 | 1 | Pure scoring engine + ESPN adapter + self-test | **Done** — the table above |
 | 2 | Roster storage + server-side ingest (API, admin paste, normalizer, the no-write guard) | **Done** — [above](#capturing-the-rosters-phase-2). Migration 0010 is applied. |
-| 3 | Capturing all 32 rosters from the extension in one click | **Done** — extension v1.2.0's **Capture lineups** button: leaderboard → entry keys → one authenticated roster request per entry (concurrency 4), POSTed raw as `rawLineups`. See [`../extension/README.md`](../extension/README.md#capture-lineups-roster-capture-for-live-scoring). |
-| 4 | Matching captured DK players to ESPN athletes at scale | Not built. No `src/lib/dfs/identity.ts`. On a real slate, DK → ESPN matching on `(normalizeName, teamKey)` hit 172/172 during design — **the team key is mandatory**; an initial+surname key without it collides league-wide (Bijan vs Brian Robinson, Travis vs Trevor Etienne, Josh vs Jonathan Allen). Phase 2's enrichment is what puts that team key on a snapshot in the first place. |
-| 5 | A `/live` page, and reconciling the estimate against DK's final number | **In progress, undocumented.** `src/lib/live/` now exists and is being written; the no-write guard already covers it. There is still **no `/live` route**, so the `revalidatePath('/live')` in the admin action remains a forward reference — harmless, but not evidence a page exists. ⚠️ Nothing in `src/lib/live/` is described in these docs yet: it was mid-write at the last docs pass. Document it before relying on it. |
+| 3 | Capturing all rosters from the extension in one click | **Done** — and folded into the single **Sync** button at v1.3.0: leaderboard → entry keys → one authenticated roster request per entry (concurrency 4), POSTed raw as `rawLineups`. See [`../extension/README.md`](../extension/README.md#lineups-captured-automatically-by-sync). |
+| 4 | Matching captured DK players to ESPN athletes at scale | **Done** — `playerStatKey(name, teamKey)` in `src/lib/live/stats.ts`, matching on `(normalizeName, teamKey)`. Validated 172/172 against a live slate's DK draftables; **the team key is mandatory** (see above). No separate `identity.ts` was needed: the key *is* the index key. |
+| 5 | A `/live` page, and reconciling the estimate against DK's final number | **Done** — [`/live` and `/live/[matchupId]`](#rendering-it--live-phases-45). Reconciled against DraftKings' own numbers on a real capture at **max &#124;delta&#124; 0.00** across 6 owners, 0 unresolved, 16/16 games loaded. |
+
+#### Remaining gaps
+
+Real, specific, and none of them blocking:
+
+- **`pointsAllowedMode` is still `'raw'` and still unconfirmed** (see [above](#what-ships-today--the-engine-phase-1)). `dkStats` is the instrument for settling it; the 0.00 reconciliation was on an exhibition slate, which is not a hard test of the DST tiers.
+- **`liveTag()` has no invalidator** — see the note above.
+- **A pasted capture is never enriched**, so it is not scorable. Admin → Lineups sends no `draftGroupId`.
+- **2-pt conversions, safeties and blocked kicks stay best-effort**, by nature of the source ([exact vs best-effort](#exact-vs-best-effort)).
 
 **The DraftKings roster endpoint is now known** —
 `scores/v2/entries/{draftGroupId}/{entryKey}?format=json&embed=roster`, credentialed, one request

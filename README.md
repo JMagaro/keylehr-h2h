@@ -109,7 +109,7 @@ npm run dev             # http://localhost:3000
 | `npm run models:snapshot`| `tsx scripts/models.ts --action=snapshot` | Snapshot the 3 lineup models for a week (`--season --week`).               |
 | `npm run models:grade`   | `tsx scripts/models.ts --action=grade` | Grade a week's model snapshots vs actual player results.                      |
 | `npm run dfs:selftest`   | `tsx scripts/dfs-selftest.ts` | Check the DraftKings scoring engine (`src/lib/dfs/`) across a whole week against Sleeper's independently computed PPR. Network only, no DB writes. `-- --year=2025 --week=4 [--verbose]`; defaults to 2025 week 1. Exits non-zero above a 5% unexplained rate. |
-| `npm run live:check`     | `tsx scripts/live-check.ts`   | Score every **in-progress** NFL game straight from ESPN and print the top DK scorers — a CLI preview of the future `/live` page. Network only, no auth, no DB. `-- --watch` polls until the stats move (proving ESPN updates live); `-- --event=<espnId>`, `-- --seasontype=<1\|2>`. |
+| `npm run live:check`     | `tsx scripts/live-check.ts`   | Score every **in-progress** NFL game straight from ESPN and print the top DK scorers — the same engine `/live` uses, without the DB or any captured roster. Network only, no auth, no DB. `-- --watch` polls until the stats move (proving ESPN updates live); `-- --event=<espnId>`, `-- --seasontype=<1\|2>`. |
 
 > **Run `npm run verify` before pushing.** Its production `build` step catches production-only
 > errors (e.g. invalid `'use server'` exports) that `dev`, `typecheck`, and `lint` all let through —
@@ -136,7 +136,7 @@ DailyFantasy/
 ├─ scripts/
 │  ├─ pull-schedule.ts          # CLI: ESPN schedule sync + matchup generation
 │  ├─ dfs-selftest.ts           # CLI: DK scoring engine vs Sleeper PPR, a whole week at a time
-│  ├─ live-check.ts             # CLI: score in-progress games from ESPN (a preview of /live)
+│  ├─ live-check.ts             # CLI: score in-progress games from ESPN (the /live engine, no DB)
 │  └─ fixtures/                 # Frozen ESPN + DK payloads, and the standings baseline (verify's snapshot gate)
 ├─ src/
 │  ├─ app/                      # Next.js App Router (layout, page, globals.css)
@@ -148,11 +148,12 @@ DailyFantasy/
 │     ├─ espn/                  # ESPN scoreboard client + types (regular + preseason seasonType)
 │     ├─ dfs/                   # Pure DK Classic scoring engine + ESPN boxscore adapter (live ESTIMATE only)
 │     ├─ lineups/               # DK roster capture: normalize → ingest → query (+ the no-write guard test)
+│     ├─ live/                  # /live read model: stats.ts (cached ESPN index) → assemble.ts (pure) → query.ts (reads only)
 │     ├─ ingest/                # auth.ts + week-schema.ts — shared by both ingest endpoints
 │     ├─ nfl/                   # team-keys.ts — the one provider-abbreviation → nfl_teams.key normalizer
 │     ├─ schedule/              # syncSeasonSchedule / syncPreseasonWeek → upserts nfl_games; preseason.ts week-namespace helpers
 │     ├─ matchups/              # generateMatchups → derives matchups from nfl_games
-│     ├─ preseason/             # Public read model for the /preseason exhibition page
+│     ├─ preseason/             # Exhibition read model — sole consumer is Admin → Preseason (the public view is /live)
 │     ├─ scores/                # DK leaderboard ingest + the admin sync-status query
 │     ├─ standings/             # Pure standings/seeding/tiebreaker engine + the DB adapter (query.ts)
 │     ├─ awards/                # Pure payout computation + the persistence service
@@ -173,15 +174,15 @@ DailyFantasy/
 | ------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | **P0** | Scaffold + deploy (Next 16, Tailwind v4, Vercel)                      | **Done.** Deployed on Vercel, auto-deploy from `main`; KeyLehr branding + landing dashboard.    |
 | **P1** | Data model + admin panel + schedule auto-pull + matchup generation    | **Done.** Schema, seed, ESPN sync (batched upserts), matchup generation, and the commissioner admin panel (assignments, owners, users, settings, schedule, **preseason**, playoffs, sync, data-status) with NextAuth login. |
-| **P2** | Public pages                                                          | **Done.** Dashboard, Standings, Playoffs (picture + odds chart + bracket), History (all-time records, per-season pages, head-to-head), **Rules (rules-driven)**, the **per-team My Team dashboard**, and the **Preseason** exhibition page. Mobile-friendly. `/cohens-corner` ships as a routed **placeholder** ("coming soon") — content pending. |
+| **P2** | Public pages                                                          | **Done.** Dashboard, Standings, Playoffs (picture + odds chart + bracket), History (all-time records, per-season pages, head-to-head), **Rules (rules-driven)**, the **per-team My Team dashboard**, and **Live** (`/live`, incl. exhibition weeks). Mobile-friendly. `/cohens-corner` ships as a routed **placeholder** ("coming soon") — content pending. |
 | **P3** | DraftKings scoring pipeline + manual fallback                        | **Done.** Ingest API + the **Chrome extension** (live sync) feed `scores`; standings/seeding honor the season's configured rules. |
 | **P4** | Playoffs / history                                                    | **Done.** Config-driven seeding + bracket, history/all-time pages, playoff-odds Monte-Carlo.    |
 | **P5** | Migrate prior season(s) from the Google Sheet                         | **Done for 2023–2025** (regular season **and** playoff brackets) — `import-season3.ts` (2025, the verify anchor) + the generic `import-season.ts` / `import-playoffs.ts`. Each validates against the published sheets. |
 | **P6** | My Team Phase B — lineup builder + player news                        | **Done.** Free Sleeper/ESPN signals, 3 risk models, **DraftKings salary + $50k cap optimization**, a player-news strip, and a **model-performance tracker** (Admin → Models) that the models will train into ML v1.0 from. |
-| **P7** | Preseason exhibition games                                            | **Done.** Optional for-fun preseason game — owner-vs-owner matchups + DK scores at a separate week namespace (`week = 100 + preseasonWeek`), surfaced on the public **`/preseason`** page and driven from **Admin → Preseason**. Scored by the DK Sync extension's **Preseason** toggle (paste form as fallback); the ingest API accepts `1–25` or `101–103`. Tracked in the app but **never** counted toward standings, seeding, playoffs, payouts, or all-time records. |
+| **P7** | Preseason exhibition games                                            | **Done.** Optional for-fun preseason game — owner-vs-owner matchups + DK scores at a separate week namespace (`week = 100 + preseasonWeek`), set up from **Admin → Preseason** and surfaced on **`/live`**, which renders exhibition weeks like any other. (The separate read-only `/preseason` page was retired once `/live` covered it with more detail.) Scored by the DK Sync extension's **Preseason** toggle (paste form as fallback); the ingest API accepts `1–25` or `101–103`. Tracked in the app but **never** counted toward standings, seeding, playoffs, payouts, or all-time records. |
 | **P8** | Live-scoring remediation + freeze gate                                 | **Done.** Byes derived from the NFL schedule, missed lineups derived at read time behind a settled-week gate, win%-only tiebreaker cohorts, deterministic tie-splitting payouts, and `/history` routed through the engine — all behind a snapshot gate that proves 2023–2025 never move. See [`docs/SCORING.md`](docs/SCORING.md). |
-| **P9** | Live in-progress scoring (an estimate, never a score)                  | **In progress — Phases 0–3 of 5.** A pure, tested DK Classic engine fed by ESPN's public boxscore API (`src/lib/dfs/`), plus roster capture + storage (`src/lib/lineups/`, `POST /api/ingest/lineups`, **Admin → Lineups**) behind a test that mechanically forbids the live path from writing a score. The Chrome extension (v1.2.0) captures all 32 rosters in one click, and each `draftableId` is resolved to a name/team from DraftKings' public slate at capture time. **Still NOT built:** DK→ESPN player matching, and a `/live` page. The computed figure is an estimate: DraftKings' leaderboard stays the sole authority for `scores`. See [`docs/SCORING.md` §15](docs/SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). |
-| **Next** | Finish P9 (player matching → `/live`)                               | Otherwise the rebuild is feature-complete vs the Sheets workflow. See [`docs/HANDOFF.md`](docs/HANDOFF.md). |
+| **P9** | Live in-progress scoring (an estimate, never a score)                  | **Done — Phases 0–5.** A pure, tested DK Classic engine fed by ESPN's public boxscore API (`src/lib/dfs/`), roster capture + storage (`src/lib/lineups/`, `POST /api/ingest/lineups`, **Admin → Lineups**), and the join + read model (`src/lib/live/`) behind **`/live`** and **`/live/[matchupId]`** — all behind a test that mechanically forbids the live path from writing a score. The Chrome extension (v1.3.0) posts scores **and** rosters from one **Sync** click. Because rosters are captured once and scoring comes from ESPN's keyless boxscore, `/live` keeps moving with every machine switched off. Reconciled against DraftKings' own numbers on a real capture at **max \|delta\| 0.00**. The computed figure is still an estimate: DraftKings' leaderboard stays the sole authority for `scores`. See [`docs/SCORING.md` §15](docs/SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). |
+| **Next** | Settle `pointsAllowedMode` empirically from `dkStats`                | Otherwise the rebuild is feature-complete vs the Sheets workflow. See [`docs/HANDOFF.md`](docs/HANDOFF.md). |
 
 ## Documentation
 

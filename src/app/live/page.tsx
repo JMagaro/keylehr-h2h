@@ -31,6 +31,7 @@ import { SeasonSelector } from '@/components/season-selector';
 import { assembleLive } from '@/lib/live/assemble';
 import { getDefaultLiveWeek, getLiveWeekData } from '@/lib/live/query';
 import { getLiveStatsForWeek } from '@/lib/live/stats';
+import { assessCaptureStaleness, countConcealedSlots } from '@/lib/live/staleness';
 import { exhibitionWeekLabel, isExhibitionWeek } from '@/lib/schedule/preseason';
 import { getDefaultStandingsSeasonId, getSeasonOptions } from '@/lib/standings/query';
 
@@ -100,6 +101,18 @@ export default async function LivePage({
 
   const partialSlate = view.gamesTotal > 0 && view.gamesLoaded < view.gamesTotal;
 
+  // The estimate's most consequential failure mode: a capture taken before the late games,
+  // never repeated. Those players are playing and scoring, and we do not even know their
+  // names — so the totals below are silently low until someone re-captures.
+  const staleness = assessCaptureStaleness({
+    games: index.games,
+    kickoffByTeam: Object.fromEntries(
+      Object.entries(data.teamContext).map(([k, c]) => [k, c.kickoff]),
+    ),
+    capturedAt: view.latestCapturedAt,
+    concealedSlots: countConcealedSlots(view.matchups),
+  });
+
   return (
     <Container width="wide" as="div" className="flex flex-col gap-8 py-10">
       {header}
@@ -140,6 +153,25 @@ export default async function LivePage({
               </span>
             ) : null}
           </div>
+
+          {staleness.shouldRecapture ? (
+            <Card className="border-tie/30 bg-tie-soft/40">
+              <CardBody className="flex items-start gap-3">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0 text-tie" aria-hidden="true" />
+                <p className="text-sm">
+                  <span className="font-semibold">
+                    These totals are low — re-sync to fix.
+                  </span>{' '}
+                  {staleness.gamesStartedSinceCapture} game
+                  {staleness.gamesStartedSinceCapture === 1 ? ' has' : 's have'} kicked off since
+                  the last capture, so DraftKings would now reveal players it was hiding.{' '}
+                  {staleness.concealedSlots} roster spot
+                  {staleness.concealedSlots === 1 ? ' is' : 's are'} still unknown and counting
+                  as nothing. Hit Sync in the Chrome extension to fill them in.
+                </p>
+              </CardBody>
+            </Card>
+          ) : null}
 
           {/* Surfaced, never swallowed: an owner with no capture is not an owner with 0.00. */}
           {view.missingCaptures.length > 0 ? (

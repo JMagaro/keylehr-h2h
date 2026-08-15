@@ -229,7 +229,8 @@ namespace. The refinement itself lives in `src/lib/ingest/week-schema.ts` (`week
 and Admin → Lineups agree on what a legal week is. **Nothing else marks an exhibition sync** —
 `ingestLeaderboard` derives `isExhibition`
 from the week alone (`isExhibitionWeek`), so a week-`102` POST writes scores that surface on
-`/preseason` and are excluded from standings, seeding, playoffs, payouts, and all-time records.
+`/live` (which renders exhibition weeks like any other) and are excluded from standings, seeding,
+playoffs, payouts, and all-time records.
 `src/lib/schedule/preseason.test.ts` pins these invariants; the extension mirrors the same
 constants client-side (its **Preseason** toggle is what produces a 101–103 week).
 
@@ -290,6 +291,12 @@ _Last probed: 2026-08-14; the roster endpoint confirmed against live traffic 202
 | `GET api.draftkings.com/contests/v1/contests/{contestId}?format=json` | Contest metadata (entry counts, payouts, **draft group id**). Works for a contest you are not in. | `extension/page-hook.js` (`resolveDraftGroupId`) — the roster endpoint is keyed by draft group, not contest. |
 | `GET api.draftkings.com/lineups/v1/gametypes/1/rules?format=json` | The Classic rule set. | Nothing — it is the evidence behind `src/lib/dfs/rules.ts`. |
 
+> **We are using the same endpoint DraftKings' own UI does.** Watching the gamecenter's own network
+> traffic shows it calling
+> `draftgroups/v1/draftgroups/{draftGroupId}/draftables/{id,id,id}` — the comma-separated form of
+> the public draftables endpoint above. Whatever DK's own page calls is by definition supported, so
+> `draftableId` → identity enrichment is not relying on a back door.
+
 The gametype-rules response is what pins the roster shape:
 
 ```text
@@ -332,12 +339,14 @@ extension resolves the draft group from the public contest-metadata endpoint abo
 > ⚠️ **There is no bulk roster endpoint.** The obvious one —
 > `scores/v1/leaderboards/{contestId}?format=json&embed=leaderboard,roster` — answers **HTTP 200
 > with an empty `entryByEntryKey` map**. It looks like it works and returns nothing, so a
-> status-code check alone will report success. Because of that, rosters are fetched **one
+> status-code check alone will report success. **Re-confirmed on a live contest** during the first
+> real capture — still `entryByEntryKey: {}`. Because of that, rosters are fetched **one
 > authenticated request per entry**: leaderboard → entry keys → N rosters, at concurrency 4 with
 > 150–300 ms of jitter.
 
 You do **not** have to click into anyone's lineup first. The entry keys come from the same
-leaderboard fetch the weekly score sync already does.
+leaderboard fetch the weekly score sync already does — and since extension v1.3.0 that fetch
+happens **once** and serves both halves of **Sync**.
 
 **Concealment.** DraftKings hides a player from opponents until that player's game kicks off. A
 concealed slot arrives as `{ rosterPosition, draftableId: 0, isSwappable: true, yetToPlay: true }`
@@ -369,11 +378,12 @@ until those ids are resolved against the **public** draftables endpoint above. T
 `src/lib/lineups/enrich.ts`, and it runs at **capture** time because DK expires draftables for old
 draft groups — see [§12](#12-the-roster-ingest-endpoint-implemented).
 
-The extension still ships the **Diagnose roster endpoint** panel (added in v1.1.0) that walks
-candidate URL templates from inside the DK page and, failing that, reports every
-`api.draftkings.com` URL DK's own gamecenter requested. It is how the template above was found and
-is kept for the day DraftKings moves it. See
-[`../extension/README.md`](../extension/README.md#diagnose-roster-endpoint-phase-0-of-live-scoring).
+The extension still ships that probe panel (added in v1.1.0, relabelled **Troubleshooting —
+DraftKings endpoints** in v1.3.0) — it walks candidate URL templates from inside the DK page and,
+failing that, reports every `api.draftkings.com` URL DK's own gamecenter requested. It is how the
+template above was found and is kept for the day DraftKings moves it; it is **not** part of normal
+use. See
+[`../extension/README.md`](../extension/README.md#troubleshooting--draftkings-endpoints).
 
 > **The database records the answer too.** Because "which URL worked" is exactly the fact most
 > likely to be lost, every roster capture stores it: `lineup_capture_runs.sourceUrlTemplate`
@@ -437,8 +447,9 @@ one records **who they started**, so the app can recompute a running total from 
 boxscore during games. It writes only `lineup_snapshots` / `lineup_capture_runs` — **never
 `scores`**. See [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
 
-> **Who calls it.** The Chrome extension's **Capture lineups** button (v1.2.0+) posts `rawLineups`
-> here. The **Admin → Lineups** paste box does *not* go through this endpoint — it calls the same
+> **Who calls it.** The Chrome extension posts `rawLineups` here — from the **Capture lineups**
+> button in v1.2.0, and from the single **Sync** button since v1.3.0, which does scores and rosters
+> off one leaderboard read. The **Admin → Lineups** paste box does *not* go through this endpoint — it calls the same
 > `ingestLineups` directly from a server action with `triggeredBy = 'admin:paste'`, and it sends no
 > `draftGroupId`, so **a pasted capture is never enriched**: it keeps only the names and teams DK's
 > own payload happened to carry.

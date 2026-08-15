@@ -49,7 +49,14 @@ counts toward Points For and repairs itself on the next sync (see
      **Standings** tab.
    - Open the extension popup → pick the **Season**, confirm the auto-filled **Week** → click
      **Sync Week N**.
-   - The **Paste manually** expander is the guaranteed fallback if the leaderboard read fails.
+   - The **Paste manually** expander is the guaranteed fallback if the leaderboard read fails
+     (scores only — it does not capture rosters).
+
+   > **One button does both halves.** Since v1.3.0, **Sync** posts the official scores *and*
+   > captures every owner's roster from the same DraftKings read. Scores go first; the roster half
+   > is **best-effort** and reports into its own **Lineups** card, so a roster problem never blocks
+   > or casts doubt on a score sync that worked. Rosters are what feed `/live` — see
+   > [Roster capture](#roster-capture--what-feeds-live) below.
 
    > **Sync a week in one go.** A finished-but-unsynced week is safe — it is not *settled* until
    > at least one real score exists, so it simply reads as unplayed. A **half-synced** week is
@@ -91,22 +98,38 @@ all-time records.
 2. Score it with the extension: tick the **Preseason** checkbox. The Week input now means
    *preseason week* (1–3) and the extension POSTs the offset week (101–103). The paste form on
    Admin → Preseason remains as a fallback.
-3. Results show on the public `/preseason` page.
+3. Results show on **`/live`**, which renders exhibition weeks like any other and opens on the
+   most recently captured week. (There is no separate `/preseason` page — it was retired once
+   `/live` covered the same ground with more detail. **Admin → Preseason stays**: it is the setup
+   tool that generates the exhibition schedule and matchups, not a view.)
 
 The regular (`1–25`) and exhibition (`101–103`) week ranges the ingest API accepts are
 **disjoint**, so a typo cannot land a preseason score in a real week. Byes are never derived for
 an exhibition week.
 
-### Roster capture — not part of the weekly loop yet
+### Roster capture — what feeds `/live`
 
-> **Skip this unless you are working on live scoring.** Capturing rosters changes nothing an owner
-> sees: there is no `/live` page, and captured lineups never touch standings, seeding, payouts or
-> `scores`. The weekly loop above is complete without it.
+> Captured lineups **never** touch standings, seeding, payouts or `scores`. They feed the `/live`
+> estimate only. The weekly loop above is still correct without a single capture — you just get no
+> live page.
 
-**The normal path is the extension.** With the contest's gamecenter tab open, the popup's
-**Capture lineups** button (v1.2.0+) reads the leaderboard for entry keys and then fetches every
-owner's roster — one authenticated request each, because DraftKings has no bulk roster endpoint.
-See [`../extension/README.md`](../extension/README.md#capture-lineups-roster-capture-for-live-scoring).
+**The normal path is the extension, and it is automatic.** Since v1.3.0 the popup's **Sync** button
+captures rosters as part of the same DraftKings read it uses for scores: leaderboard → entry keys →
+one authenticated roster request per entry, because DraftKings has no bulk roster endpoint. There
+is no separate button to click. See
+[`../extension/README.md`](../extension/README.md#lineups-captured-automatically-by-sync).
+
+**When to sync for `/live`'s benefit.** DraftKings conceals a player until *that player's* game
+kicks off, and DK Classic allows late swap, so one capture at the 1pm lock cannot know about a 4pm
+swap or name a 4pm player. Sync again after the later kickoff windows: captures are append-only and
+the newest one wins. A concealed player has scored nothing, so **no points are ever missing from a
+capture — only names**.
+
+**What "good" looks like on `/live`.** The page states `N/M games loaded` and names any owner with
+no capture rather than showing them as `0.00`. Players whose game is loaded but who have no ESPN row
+score 0 (correctly — ESPN only lists players who recorded a stat); only players whose **game did not
+load** read as *unresolved*, and that is the one state worth chasing. See
+[`SCORING.md` §15](SCORING.md#the-five-slot-states--the-load-bearing-concept).
 
 **Admin → Lineups** (`/admin/lineups?season=<id>&week=<n>`, defaulting to week 1) shows three
 things: how many DraftKings rosters have been captured for the week (`captured N/32` — the
@@ -270,6 +293,9 @@ code.
 | Sync 401s | `INGEST_TOKEN` unset on the server, or the extension's token does not match | See [`DEPLOYMENT.md` §2](DEPLOYMENT.md#2-environment-variables) |
 | **Admin → Lineups** errors on a missing relation (`lineup_snapshots` / `lineup_capture_runs`) | Migration `0010` has not been applied to *that* database (production has it) | `npm run db:migrate`. Nothing else depends on it; scoring is unaffected either way. |
 | A capture reads **32/32 owners but only a few players revealed** | Not a fault — DraftKings conceals each player until their game kicks off | Nothing to do. Re-capture after later kickoffs; no points are missing, only names. |
-| A capture reports **0 enriched slots** with revealed players | DK's public draftables lookup for that draft group failed, so no team keys were resolved — the snapshot is stored but not scorable | Re-run **Capture lineups**. Confirm the draft group id resolves at `api.draftkings.com/contests/v1/contests/{contestId}?format=json`. |
+| A capture reports **0 enriched slots** with revealed players | DK's public draftables lookup for that draft group failed, so no team keys were resolved — the snapshot is stored but not scorable | Re-run **Sync**. Confirm the draft group id resolves at `api.draftkings.com/contests/v1/contests/{contestId}?format=json`. |
+| **Sync** reports scores fine but the Lineups card shows a failure | Expected behaviour, not a bug: the roster half is best-effort and reports separately so it cannot cast doubt on the scores | Re-run **Sync**. If it keeps failing, DraftKings may have moved the roster endpoint — use the popup's **Troubleshooting — DraftKings endpoints** panel and send the output to whoever maintains the app. |
+| `/live` shows players as **unresolved** | Those players' games did not load from ESPN — the page says `N/M games loaded` | Usually transient; reload. Unresolved is never scored as 0, so a total showing unresolved slots is a **floor**, not a wrong number. |
+| `/live` shows an owner's total as **—** | No roster was captured for them that week | Run **Sync** from the extension. The page names them rather than showing `0.00`, because zero would be indistinguishable from a forfeit. |
 | `verify` fails on **historical snapshot unchanged** | A change moved a frozen season | Stop. See [§6](#6-the-snapshot-gate). |
 | `verify` fails on **engine no-op proofs** | A precondition that makes the derivation model safe on history no longer holds | Stop — the corresponding change is not safe and needs a fresh look. The message names the season and the proof. |

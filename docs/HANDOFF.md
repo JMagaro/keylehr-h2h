@@ -4,35 +4,37 @@ A running "where things stand" doc so a fresh Claude/context window (or contribu
 without re-deriving everything. Update the **Snapshot**, **Recent work** and **Known open items**
 sections as you go; **[Start here](#start-here-fresh-session)** is the entry point.
 
-_Last updated: 2026-08-15 (**live in-progress scoring, Phases 0–3** — the pure DK engine + ESPN
-adapter, roster capture/storage with migration `0010` now **applied**, the `draftableId` → identity
-bridge, and one-click roster capture in **extension v1.2.0**, all uncommitted; prior: live-scoring
-*remediation* Phases 0–4 + the playoff **3rd-place game**, preseason syncing from the DK Chrome
-extension, preseason exhibition games, tiebreaker fix + 2023/2024 playoffs + per-season owner names
-+ DK salary + model tracker)._
+_Last updated: 2026-08-15 (**live in-progress scoring is DONE, Phases 0–5** — the pure DK engine +
+ESPN adapter, roster capture/storage with migration `0010` **applied**, the `draftableId` → identity
+bridge, `src/lib/live/`, the **`/live`** + **`/live/[matchupId]`** pages, one-button Sync in
+**extension v1.3.0**, and the retirement of the public `/preseason` page; **all five commits are
+local — nothing pushed**. Prior: live-scoring *remediation* Phases 0–4 + the playoff **3rd-place
+game**, preseason syncing from the DK Chrome extension, preseason exhibition games, tiebreaker fix
++ 2023/2024 playoffs + per-season owner names + DK salary + model tracker)._
 
 ---
 
 ## Snapshot
 
-- **Live app:** Vercel (`keylehr-h2h.vercel.app`), auto-deploys from `main`. This session is the
-  12-commit run `d0ba364` … `e2a3f1a` (`git log d0ba364^..e2a3f1a`). **Those commit messages are
-  the real design record** — read them before touching the scoring or playoff path; each one
-  states the bug, the decision and what was rejected.
-  > **Push check.** Everything through `a7ce23e` is pushed; `e2a3f1a` (the 3rd-place game) was
-  > still local when this was written. Run `git log origin/main..main` — if it lists anything,
-  > push it, and note that Vercel has not deployed it yet.
+- **Live app:** Vercel (`keylehr-h2h.vercel.app`), auto-deploys from `main`. The live-scoring
+  session is the five-commit run `6559f0f` … `d3cc2e9` (`git log -p 6559f0f^..HEAD`), on top of the
+  earlier 12-commit run `d0ba364` … `e2a3f1a`. **Those commit messages are the real design record**
+  — read them before touching the scoring, live or playoff paths; each one states the bug, the
+  decision and what was rejected.
+  > **Push check.** ⚠️ **All five live-scoring commits are LOCAL.** Run `git log origin/main..main`
+  > — if it lists anything, push it, and note that Vercel has not deployed it yet. Nothing on
+  > production serves `/live` until you do.
 - **Stack:** Next.js 16.2.9 (App Router, Turbopack) · React 19 · Tailwind v4 (CSS `@theme`, no
   config file) · Drizzle + Neon Postgres (**HTTP driver** — every query is a network round-trip) ·
   NextAuth (commissioner login) · a Chrome extension for DraftKings sync.
-- **Verification:** `npm run verify` is **9/9 green** (typecheck · lint · **255 unit tests**,
-  21 files · production build · ESPN health · engine invariants · **historical snapshot
+- **Verification:** `npm run verify` is **9/9 green** (typecheck · lint · **282 unit tests,
+  22 files** · production build · ESPN health · engine invariants · **historical snapshot
   unchanged** · **engine no-op proofs** · 2025 ground-truth replay), with the frozen-history
   snapshot byte-identical. The two TRUTH checks are from the remediation session — see the
   freeze-gate part of that DONE section below. It was 144 tests / 16 files at `e2a3f1a`; the extra
-  111 are the **uncommitted** live-scoring work in the working tree — 63 engine (Phase 1) + 48
-  capture/enrichment (Phases 2–3) — see Recent work. (Counted mid-session while Phase 5 was
-  actively landing under `src/lib/live/`, so expect it to have grown; re-run rather than trust it.)
+  **138 across 6 new files** are the live-scoring work — 63 engine (`score` 41 + `espn-extract` 22),
+  58 capture (`normalize` 30 + `no-write` 21 + `enrich` 7), and 17 `live/assemble`. Typecheck and
+  lint are clean.
 - **Migrations:** applied through **0010** — `0010_polite_nicolaos.sql` (the two live-scoring
   capture tables) is **applied to production**; `lineup_snapshots` and `lineup_capture_runs` exist
   with their unique + season/week indexes. It is purely additive (two new tables, no ALTERs), so it
@@ -224,13 +226,16 @@ all-time records.
   ```
   grep -n 'from(scores)\|from(matchups)' src/lib/history.ts   # every hit needs an isExhibition filter
   ```
-- **Surfaces:** a public **`/preseason`** page (`src/app/preseason/page.tsx`, read model
-  `src/lib/preseason/query.ts`) showing the exhibition matchups/scores/winners, labeled
-  "exhibition — doesn't count"; and an admin **`/admin/preseason`**
-  (`src/app/admin/(panel)/preseason/`) to pick the preseason week, sync + generate matchups, and
-  enter scores. Nav gained **Preseason** (public + admin) — after origin's nav refresh the public
-  order in `src/components/nav-links.ts` is Dashboard · My Team · Standings · Playoffs ·
-  **Preseason** · Lineup Builder · Cohen's Corner · History · Rules. `npm run verify` 7/7.
+- **Surfaces (superseded by `d3cc2e9` — read this carefully):** originally a public
+  **`/preseason`** page plus an admin **`/admin/preseason`**. **The public page is GONE**
+  (`src/app/preseason/page.tsx`, its nav entry and `getPreseasonSeasonOptions` were all removed):
+  `/live` renders exhibition weeks like any other week, with far more detail, so a second read-only
+  page was a thing to maintain that showed less. **Admin → Preseason REMAINS** and is not optional —
+  it is the *setup* tool (`src/app/admin/(panel)/preseason/`, `syncPreseasonWeek`) that pulls the
+  ESPN preseason week and generates the exhibition matchups in the first place; its `revalidatePath`
+  calls now point at `/live`. `src/lib/preseason/query.ts` also remains, with that admin page as its
+  **only** consumer. The public nav order in `src/components/nav-links.ts` is now Dashboard ·
+  My Team · **Live** · Standings · Playoffs · Lineup Builder · Cohen's Corner · History · Rules.
 - **Scoring a preseason week (updated — the extension now does it):** the DK Sync extension has a
   **Preseason** checkbox; the Week input then means preseason week 1–3 and the extension POSTs the
   offset week (101–103). `POST /api/ingest/draftkings` accepts **two disjoint week ranges** —
@@ -423,7 +428,52 @@ Sleeper PPR as a free proxy).
 
 ## Recent work (newest first)
 
-- **Live in-progress scoring — Phase 3: one-click roster capture** (⚠️ **uncommitted**). The DK
+- **Live in-progress scoring — Phases 4–5: `/live` ships** (`6559f0f` … `d3cc2e9`, ⚠️ **all five
+  commits local**). `src/lib/live/` joins captured rosters to ESPN stats and two routes render it.
+  Tests 255 → **282**, verify 9/9, frozen snapshot byte-identical. Written up in
+  [`SCORING.md` §15](SCORING.md#rendering-it--live-phases-45). Seven things to carry forward:
+  - **The join is `playerStatKey(name, teamKey)`** — `(normalizeName, teamKey)`. No separate
+    identity module was needed; the key *is* the index key. The team half is mandatory (Bijan vs
+    Brian Robinson, Travis vs Trevor Etienne, Josh vs Jonathan Allen).
+  - **Five slot states, and `noStats` is the subtle one.** `scored` · `pending` · `concealed` ·
+    `noStats` (game loaded, player has no ESPN row → scores **0**, because ESPN only lists players
+    who recorded a stat) · `unresolved` (that game did not load → **never** a zero). Measured, not
+    guessed: in the first real capture **13 of 24 revealed players had no ESPN row and every one was
+    worth 0.00 per DraftKings**. Collapsing `noStats` into `unresolved` would paint `?` over half of
+    every roster; collapsing it into `scored` would hide a real matching failure. A missing
+    **defense** stays `unresolved` — points allowed alone guarantees a DST a row in a loaded
+    boxscore.
+  - **Do NOT add `dynamic = 'force-dynamic'` to either live route.** It implies
+    `fetchCache = 'force-no-store'`, which kills the Data Cache for every fetch on the route — one
+    warm ESPN fan-out serving all viewers becomes one per viewer. Both routes carry the comment and
+    the Next 16.2.9 doc reference. They are already dynamic via `searchParams`/`params`, and both
+    set `runtime = 'nodejs'` + `maxDuration = 30`.
+  - **The index stores STAT LINES, not points**, behind `unstable_cache` at 30s. Small payload, and
+    a scoring-rule fix takes effect without waiting out a TTL. Fan-out is concurrency 6 with
+    `Promise.allSettled` semantics, so a failed game degrades to "15 of 16 loaded", never a thrown
+    page.
+  - **The detail page reuses the list's data path** (`getLiveWeekData` + `getLiveStatsForWeek`), so
+    clicking into a matchup costs **no** extra ESPN traffic.
+  - **PROVEN END TO END.** Season 1 week 102 (exhibition): 6/6 owners, 54 slots, 24 revealed, all
+    enriched to teams, 16/16 games loaded, 0 unresolved, and **max |delta| 0.00** against
+    DraftKings' own per-owner numbers.
+  - **`/live` cannot leak an information advantage** — a concealed slot has no identity *stored*, so
+    the page can only ever show what DK had already unlocked.
+- **One Sync button; the public `/preseason` page retired** (`d3cc2e9`, extension **1.3.0**).
+  **Sync** now posts scores *and* lineups off a single DraftKings read (`captureRosters` returns
+  `entries` alongside `lineups`); scores go first, lineups are best-effort and report in their own
+  card, and an outright roster failure falls back to the plain leaderboard read. `onCaptureLineups`
+  and its button are gone, replaced by `saveCapturedLineups(cap, season, week, contestId)`.
+  `postIngestTo` now **always** produces an error message — an HTML error page makes `res.json()`
+  fail and `statusText` is empty over HTTP/2, which used to render "Saving failed —" and nothing
+  else. The probe panel is now "Troubleshooting — DraftKings endpoints" and says it is not part of
+  normal use; Live Sync is documented as **optional** (it keeps DK's OFFICIAL totals fresh and needs
+  the machine awake — `/live` does not).
+  > **Admin → Preseason STAYS.** The removed thing is the read-only public page, its nav entry and
+  > `getPreseasonSeasonOptions`. Admin → Preseason is the **setup tool** (`syncPreseasonWeek`
+  > generates the exhibition schedule + matchups); its `revalidatePath` calls now point at `/live`.
+  > `src/lib/preseason/query.ts` still exists — its only consumer is that admin page.
+- **Live in-progress scoring — Phase 3: one-click roster capture** (committed in `6559f0f`). The DK
   roster endpoint was found, the extension went **1.1.0 → 1.2.0**, and captures are now enriched at
   write time. Tests 234 → **255**. Six things to carry forward:
   - **The endpoint is
@@ -456,7 +506,7 @@ Sleeper PPR as a free proxy).
     errors, a per-stat diff cannot, and it is how `pointsAllowedMode` gets settled empirically.
     `null` = no breakdown in the payload; `[]` = DK says nothing has happened yet. Not the same
     thing.
-- **Live in-progress scoring — Phase 2: roster capture + storage** (⚠️ **uncommitted**, on top of
+- **Live in-progress scoring — Phase 2: roster capture + storage** (committed in `6559f0f`, on top of
   the Phase 0–1 tree below). Two new tables (`lineup_capture_runs`, `lineup_snapshots`; migration
   `0010_polite_nicolaos.sql`, **now applied to production**), `src/lib/lineups/`
   (`normalize.ts` → `ingest.ts` → `query.ts`), `POST /api/ingest/lineups`, and **Admin → Lineups**
@@ -466,21 +516,21 @@ Sleeper PPR as a free proxy).
     `allowLateSwap: true`, so the roster in effect is the *newest* row per `(ownerSeason, week)`
     (`DISTINCT ON`). Do not "simplify" it to one row per owner-week.
   - **`no-write.test.ts` is the safety invariant made mechanical** — it scans every module under
-    `src/lib/dfs`, `src/lib/lineups`, `src/lib/live` (discovered, not enumerated, so new files are
-    covered automatically) and fails on any write to
+    `src/lib/dfs`, `src/lib/lineups`, `src/lib/live` **and the `src/app/live` route** (discovered,
+    not enumerated, so new files are covered automatically) and fails on any write to
     `scores`/`matchups`/`playoff_matchups`/`season_awards`/`nfl_games` or any call to
     `ingestLeaderboard`/`writeTeamScores`. Reads are fine. If it fires, you want a new table.
   - **Three modules were extracted, behaviour unchanged:** `src/lib/ingest/auth.ts` and
     `src/lib/ingest/week-schema.ts` out of the DK route, and `src/lib/scores/owner-match.ts` out of
     `scores/ingest.ts` (both ingests MUST match entry names identically).
-- **Live in-progress scoring — Phases 0 and 1 only** (⚠️ **uncommitted working tree** at the time
-  of writing: `src/lib/dfs/`, `src/lib/nfl/`, `scripts/dfs-selftest.ts`, two ESPN fixtures, and the
+- **Live in-progress scoring — Phases 0 and 1 only** (committed in `6559f0f`; described here as the
+  working tree it was at the time of writing: `src/lib/dfs/`, `src/lib/nfl/`, `scripts/dfs-selftest.ts`, two ESPN fixtures, and the
   extension at v1.1.0). A pure DraftKings Classic scoring engine fed by ESPN's public boxscore API,
   so in-progress points can be computed **server-side** without a DK session or a machine left on.
   **It is an ESTIMATE and must never enter the scoring chain** — nothing in `src/lib/dfs/` imports
   the DB or `src/lib/standings/`, and nothing there writes a row. (Phase 2, above, added the
-  capture path, which does use the DB — hence the no-write guard. **Phases 4–5 — DK→ESPN player
-  matching and a `/live` page — are still not built.**) Also extracted
+  capture path, which does use the DB — hence the no-write guard. Phases 4–5 — DK→ESPN player
+  matching and the `/live` page — landed later in this same run; see the top entry.) Also extracted
   `normalizeTeamKey()` out of three private
   copies into `src/lib/nfl/team-keys.ts`, and moved `DK_CLASSIC_SALARY_CAP` into
   `src/lib/dfs/rules.ts` (still re-exported from `draftkings/draftables.ts`, so every existing
@@ -517,7 +567,8 @@ Sleeper PPR as a free proxy).
   now points at the extension, with the paste box as the fallback. `background.js` unchanged (Live
   Sync is week-agnostic). See the DONE section.
 - **Preseason exhibition games** (migration 0008 `isExhibition` on `nfl_games`/`matchups`/`scores`;
-  `src/lib/schedule/preseason.ts`; `syncPreseasonWeek`; `/preseason` + Admin → Preseason): tracked
+  `src/lib/schedule/preseason.ts`; `syncPreseasonWeek`; `/preseason` (since retired — see the DONE
+  section) + Admin → Preseason): tracked
   owner-vs-owner preseason matchups + DK scores at a separate week namespace (`week = 100 +
   preseasonWeek`) that **never** affect standings/seeding/playoffs/payouts/all-time. Every real-stats
   query and the pure engine exclude `isExhibition`; unit-tested. See the DONE section.
@@ -593,15 +644,36 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
 
 **Needs a decision or a fix**
 
-- **`src/lib/live/` is undocumented.** Phase 5 (`stats.ts`, `assemble.ts`, `query.ts`) was being
-  written *while* this docs pass ran, so nothing in it is described anywhere — not here, not in
-  [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). There is
-  still no `/live` route. Run docs again once its shape settles; do not assume the modules do what
-  their names suggest.
-- **No capture has ever run against production.** Migration `0010` is applied and both tables are
-  **empty**. The whole path — extension → `/api/ingest/lineups` → enrichment → Admin → Lineups — has
-  not yet been exercised on a real Sunday, so its first live run is still a test. A dev database may
-  still be on `0009`; run `npm run db:migrate` there.
+- **⚠️ UNCOMMITTED: something is removing preseason entirely, and it contradicts `d3cc2e9`.**
+  Present in the working tree (deletions **staged**, the rest not) at the time of writing, *after*
+  the five live-scoring commits landed:
+  `src/app/admin/(panel)/preseason/{page,actions,preseason-forms}.tsx`, `src/lib/preseason/query.ts`,
+  the Admin nav entry, **and `syncPreseasonWeek` (78 lines out of `src/lib/schedule/sync.ts`)** are
+  all deleted; `src/app/page.tsx` gains `/live` links on the hero and the Explore card. The
+  deletion set is internally consistent — no dangling imports — so it is deliberate, not damage.
+  **Everything else in these docs describes `HEAD` (`d3cc2e9`), where Admin → Preseason still
+  exists.** Decide and then make the docs match:
+  - If this ships, **nothing can create exhibition games any more.** `SEASON_TYPE_PRESEASON` drops
+    to **zero consumers** and `scripts/pull-schedule.ts` has no preseason flag, so a *new*
+    exhibition week's `nfl_games` and matchups cannot be generated. The rest of the namespace
+    survives — `isExhibitionWeek`, the 101–103 ingest range and `/live`'s exhibition rendering are
+    untouched — so **existing** data (week 102) keeps working and scores can still be ingested. The
+    loss is specifically the *setup* step.
+  - `d3cc2e9`'s commit message argues the opposite ("Admin → Preseason STAYS … it is not a view, it
+    is the setup tool"), so one of the two is out of date. Resolve that before pushing.
+- **`liveTag()` has no invalidator.** `src/lib/live/stats.ts` exports `liveTag(seasonId, week)` and
+  attaches it to the cached stat index, but **nothing in the repo calls `revalidateTag`**. A fresh
+  capture calls `revalidatePath('/live')` instead, and the 30-second TTL bounds staleness anyway, so
+  this is not a bug — but the tag reads like a wired-up invalidation hook and is not one. Decide
+  whether to wire `revalidateTag(liveTag(...))` into the capture path or drop the export.
+- **`pointsAllowedMode` is still unsettled.** It ships `'raw'`; DK has historically excluded points
+  its DST was not on the field for. The 0.00 reconciliation below was on an **exhibition** slate,
+  which is not a hard test of the DST tiers. `dkStats` is the instrument — settle it on a
+  regular-season week with a defensive or return TD.
+- **The capture that proved the path was preseason, on one season.** Season 1 / week 102, 6 owners,
+  54 slots. A full 32-owner regular-season Sunday has not been exercised end to end — the fan-out is
+  ~16 games instead of 1–2, and the 30s `maxDuration` on a cold render has not been tested against
+  that.
 - **A pasted capture is never enriched.** Admin → Lineups sends no `draftGroupId`, so
   `ingestLineups` skips `enrichLineups` and the snapshot keeps only whatever names/teams DK's payload
   carried — which for a real DK roster payload is *none*. That makes a pasted capture unscorable by
@@ -656,21 +728,31 @@ Do these three things, in this order:
 2. **Run `npm run verify`.** It must be **9/9**. It needs `DATABASE_URL`, and its ground-truth
    replay writes to the DB (idempotent, by design); `npm run verify:quick` skips that and the
    production build. If the **historical snapshot** check fires, stop — you moved a frozen season.
-3. **Check the repo state:** `git status` and `git log origin/main..main`. `e2a3f1a` may still be
-   unpushed (see the push check in Snapshot).
+3. **Check the repo state:** `git status` and `git log origin/main..main`. ⚠️ **The five
+   live-scoring commits `6559f0f` … `d3cc2e9` are local** (see the push check in Snapshot).
 
 The rebuild is **feature-complete** vs the old Google-Sheets workflow. Importers are idempotent;
 2023–2025 (regular season + playoffs) are in, validated, and gated against moving.
 
-**The one task in flight is live in-progress scoring, and Phases 0–3 exist** (the pure engine + the
-ESPN adapter, roster capture/storage — `src/lib/lineups/`, `POST /api/ingest/lineups`,
-Admin → Lineups — and the extension's one-click **Capture lineups** at v1.2.0, with `draftableId`
-resolved to name/team at capture time). Migration `0010` is applied. **Phases 4–5 — matching DK
-players to ESPN athletes, and a `/live` page — are not built.** The next move is Phase 4:
-`(normalizeName, teamKey)` → ESPN athlete, which the enriched snapshots now supply the inputs for.
-Read [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score) before
-touching it; the safety invariant there is not optional, and
-`src/lib/lineups/no-write.test.ts` will fail the build if you cross it.
+**Live in-progress scoring is DONE (Phases 0–5)** — the pure engine + ESPN adapter, roster
+capture/storage (`src/lib/lineups/`, `POST /api/ingest/lineups`, Admin → Lineups), the join and read
+model (`src/lib/live/`), and the **`/live`** + **`/live/[matchupId]`** pages. Migration `0010` is
+applied. The extension is at **v1.3.0**, where one **Sync** button posts scores and rosters from a
+single DraftKings read. A real capture reconciled against DraftKings' own numbers at
+**max |delta| 0.00** across 6 owners with zero unresolved slots.
+
+Before touching any of it, read
+[`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). Three things
+there are not optional:
+
+- **The estimate must never be written to `scores`.** `src/lib/lineups/no-write.test.ts` fails the
+  build if you cross it — and it now scans the `src/app/live` route too, not just the libraries.
+- **A slot we could not score is never `0.00`.** The five states (`scored` · `pending` ·
+  `concealed` · `noStats` · `unresolved`) exist because a fabricated zero is indistinguishable from
+  a real one, and a page full of zeroes reads as a league of forfeits.
+- **Do not add `dynamic = 'force-dynamic'` to `/live`.** Every other data page sets it; here it
+  would disable the Data Cache for every fetch on the route and turn one shared ESPN fan-out into
+  one per viewer. Both live routes carry a comment saying so.
 
 Other likely asks: **2026 in-season operations** (the season is `upcoming` and fully
 assigned — [`docs/RUNBOOK.md`](RUNBOOK.md) is the weekly loop, plus the scheduled `keylehr-verify`
@@ -705,8 +787,9 @@ driver means one query = one round-trip, so batch writes.
   see the maintenance rule in the preseason DONE section.**
 - Preseason (exhibition) games: `src/lib/schedule/preseason.ts` (week-namespace helpers, pure,
   `preseason.test.ts`), `src/lib/schedule/sync.ts` `syncPreseasonWeek`, `src/lib/preseason/query.ts`
-  (public read model); routes `/preseason` (`src/app/preseason/`) + Admin → Preseason
-  (`src/app/admin/(panel)/preseason/`). Rows carry `isExhibition` (migration 0008) and are excluded
+  (read model — **only** consumer is Admin → Preseason); route Admin → Preseason
+  (`src/app/admin/(panel)/preseason/`). The public view is `/live`, which renders exhibition weeks
+  like any other; there is no `/preseason` route. Rows carry `isExhibition` (migration 0008) and are excluded
   from every stats query. Scores arrive through the normal ingest endpoint at the offset week —
   `POST /api/ingest/draftkings` accepts `1–25` **or** `101–103` — driven by the extension's
   **Preseason** toggle (`extension/popup.js`, which mirrors the constants).
@@ -741,7 +824,15 @@ driver means one query = one round-trip, so batch writes.
   `src/app/admin/(panel)/lineups/`. Tables `lineup_snapshots` / `lineup_capture_runs`
   (migration 0010, applied). Shared with the score ingest:
   `src/lib/ingest/{auth,week-schema}.ts` + `src/lib/scores/owner-match.ts`. The capture side of the
-  extension is `page-hook.js` `captureRosters()`.
+  extension is `page-hook.js` `captureRosters()` (which since v1.3.0 also returns the leaderboard
+  `entries`, so one read serves both halves of **Sync**).
+- **Joining the two halves and rendering them:** `src/lib/live/` — `stats.ts` (the cached ESPN stat
+  index; `buildLiveStatIndex`, `getLiveStatsForWeek`, `playerStatKey`, `liveTag`,
+  `LIVE_INDEX_REVALIDATE_SECONDS = 30`) · `assemble.ts` (**pure**, `assembleLive`, 17 tests, and the
+  home of the five slot states) · `query.ts` (**reads only**: `getLiveWeekData`,
+  `getDefaultLiveWeek`, `getMatchupLocation`). Routes: `src/app/live/` (list) and
+  `src/app/live/[matchupId]/` (head-to-head detail, prev/next + dropdown switcher). **Neither route
+  may set `dynamic = 'force-dynamic'`** — see [`SCORING.md` §15](SCORING.md#rendering-it--live-phases-45).
 - Admin (commissioner): `src/app/admin/(panel)/` — Owners · Assignments · Schedule · **Preseason** ·
   Sync · **Lineups** · Playoffs · **Slates** · **Models** · Settings · Users (all auth-gated)
 - Season importers (idempotent): `scripts/import-season{,3}.ts` (regular season; `import-season3.ts` is

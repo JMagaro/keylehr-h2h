@@ -28,8 +28,11 @@
  *
  * NOTHING here writes a score. See docs/SCORING.md §15.
  */
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+
+import { liveTag } from '@/lib/live/stats';
 
 import { isAuthorized } from '@/lib/ingest/auth';
 import { weekSchema } from '@/lib/ingest/week-schema';
@@ -219,6 +222,19 @@ export async function POST(request: Request): Promise<Response> {
       triggeredBy: 'extension',
       rawPayload: rawRosters ?? rawLineups ?? lineups,
     });
+
+    // A capture is the one moment we KNOW the roster changed, and it usually happens because
+    // games are underway. Drop the week's cached ESPN index so the newly-revealed players are
+    // scored against current stats rather than whatever was cached up to 30s ago.
+    //
+    // (The snapshots themselves are read uncached, so /live would pick up the new roster
+    // regardless — this is about the stat side, and it is the only caller of `liveTag`.)
+    //
+    // NOTE the second argument. In Next 16 `revalidateTag` requires a cache-life profile
+    // (`'max'` = stale-while-revalidate: serve the stale entry, refresh behind it), even
+    // though the caching-without-cache-components guide still shows the one-argument form.
+    // The type declaration is the authority here — see node_modules/next/cache.d.ts.
+    revalidateTag(liveTag(seasonId, week), 'max');
 
     return NextResponse.json({
       matched: result.matched,
