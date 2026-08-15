@@ -53,6 +53,7 @@ describe('normalizeSlotObject', () => {
       revealed: true,
       dkScore: null,
       dkStats: null,
+      dkProjection: null,
     });
   });
 

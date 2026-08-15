@@ -63,6 +63,8 @@ export interface LiveSlot {
    * difference is expected and is not an error — the UI must date it.
    */
   dkStats: DkStat[] | null;
+  /** DraftKings' pregame projection — see ./projection for how it becomes a projected final. */
+  dkProjection: number | null;
 }
 
 export interface LiveTeam {
@@ -145,6 +147,7 @@ function resolveSlot(slot: LineupSlotInput, index: LiveStatIndex): LiveSlot {
     position: slot.position,
     dkScore: slot.dkScore,
     dkStats: slot.dkStats,
+    dkProjection: slot.dkProjection,
   };
 
   // DraftKings hid this player because their game has not kicked off. We know the roster

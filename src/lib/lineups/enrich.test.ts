@@ -101,6 +101,7 @@ describe('applyDraftableIndex', () => {
               revealed: true,
               dkScore: 3.4,
               dkStats: null,
+              dkProjection: null,
             },
           ],
         },

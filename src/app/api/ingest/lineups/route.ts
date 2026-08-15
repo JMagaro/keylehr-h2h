@@ -70,6 +70,8 @@ const slotSchema = z.object({
     )
     .nullable()
     .optional(),
+  /** DraftKings' pregame projection, the input to a live projected final. */
+  dkProjection: z.number().finite().nullable().optional(),
 });
 
 const lineupSchema = z.object({
@@ -192,6 +194,7 @@ export async function POST(request: Request): Promise<Response> {
           revealed: s.revealed ?? Boolean(s.draftableId || s.dkPlayerId || s.name),
           dkScore: s.dkScore ?? null,
           dkStats: s.dkStats ?? null,
+          dkProjection: s.dkProjection ?? null,
         })),
       });
     }

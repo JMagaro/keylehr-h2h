@@ -32,6 +32,8 @@ import { assembleLive } from '@/lib/live/assemble';
 import { getDefaultLiveWeek, getLiveWeekData } from '@/lib/live/query';
 import { getLiveStatsForWeek } from '@/lib/live/stats';
 import { assessCaptureStaleness, countConcealedSlots } from '@/lib/live/staleness';
+import { lineupMinutes } from '@/lib/live/minutes';
+import { projectLineup, winProbability } from '@/lib/live/projection';
 import { exhibitionWeekLabel, isExhibitionWeek } from '@/lib/schedule/preseason';
 import { getDefaultStandingsSeasonId, getSeasonOptions } from '@/lib/standings/query';
 
@@ -100,6 +102,25 @@ export default async function LivePage({
   const view = assembleLive(data.matchups, data.snapshots, index);
 
   const partialSlate = view.gamesTotal > 0 && view.gamesLoaded < view.gamesTotal;
+
+  // Order by CLOSENESS, not matchup id. On a Sunday afternoon the interesting cards are the
+  // ones that could still go either way, and burying them behind blowouts wastes the top of
+  // the page. Fully-uncaptured matchups sort last — there is nothing to be close about.
+  const ordered = [...view.matchups]
+    .map((m) => {
+      const known = m.home.hasSnapshot && m.away.hasSnapshot;
+      if (!known) return { m, rank: Number.POSITIVE_INFINITY };
+      const homeProj = projectLineup(m.home, index.teamState);
+      const awayProj = projectLineup(m.away, index.teamState);
+      const minutes =
+        lineupMinutes(m.home.slots, index.teamState).minutesLeft +
+        lineupMinutes(m.away.slots, index.teamState).minutesLeft;
+      const odds = winProbability(homeProj.projected, awayProj.projected, minutes);
+      // Distance from a coin flip: 0 is a dead heat, 0.5 is decided.
+      return { m, rank: Math.abs(odds.home - 0.5) };
+    })
+    .sort((a, b) => a.rank - b.rank)
+    .map((x) => x.m);
 
   // The estimate's most consequential failure mode: a capture taken before the late games,
   // never repeated. Those players are playing and scoring, and we do not even know their
@@ -204,7 +225,7 @@ export default async function LivePage({
           ) : null}
 
           <div className="grid gap-4 lg:grid-cols-2">
-            {view.matchups.map((m) => (
+            {ordered.map((m) => (
               <MatchupCard key={m.id} matchup={m} />
             ))}
           </div>

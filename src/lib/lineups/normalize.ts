@@ -78,6 +78,20 @@ export interface LineupSlotInput {
    * endpoint is the only place it exists, and it is gone once the contest ages out.
    */
   dkStats: DkStat[] | null;
+  /**
+   * DraftKings' PREGAME projection for this player — what DK expected them to score before
+   * kickoff, captured while it still exists.
+   *
+   * This is the input to a live projected final. DraftKings' own in-game projection was
+   * reverse-engineered exactly from three captured samples:
+   *
+   *     realTimeProjection = score + pregameProjection x (minutesRemaining / 60)
+   *
+   * i.e. a player is expected to earn their pregame rate over whatever game time is left. We
+   * recompute it live from ESPN's clock rather than storing DK's value, because DK's is only
+   * as fresh as the capture. See src/lib/live/projection.ts.
+   */
+  dkProjection: number | null;
 }
 
 /** One owner's captured lineup, before owner matching. */
@@ -139,6 +153,10 @@ const TEAM_KEYS = [
 
 /** DraftKings' own fantasy points for a drafted player, when it reveals them. */
 const SCORE_KEYS = ['score', 'Score', 'fantasyPoints', 'FantasyPoints'] as const;
+
+/** DK nests projections under `projection`; take the PREGAME one — see `dkProjection`. */
+const PROJECTION_CONTAINER_KEYS = ['projection', 'Projection'] as const;
+const PREGAME_PROJECTION_KEYS = ['pregameProjection', 'PregameProjection'] as const;
 
 /** DK's per-stat breakdown array, and the fields inside one of its rows. */
 const STATS_KEYS = ['stats', 'Stats'] as const;
@@ -233,6 +251,13 @@ function readDkStats(obj: Bag): DkStat[] | null {
   return out;
 }
 
+/** DraftKings' pregame projection, from the nested `projection` object. */
+function readProjection(obj: Bag): number | null {
+  const container = firstValue(obj, PROJECTION_CONTAINER_KEYS);
+  if (!isBag(container)) return null;
+  return toNum(firstValue(container, PREGAME_PROJECTION_KEYS));
+}
+
 /** Numeric ids of 0 mean "absent" in DK's roster payload, not "player number zero". */
 function toIdStr(v: unknown): string | null {
   const s = toStr(v);
@@ -270,6 +295,7 @@ export function normalizeSlotObject(obj: Bag): LineupSlotInput {
     revealed,
     dkScore: revealed ? score : null,
     dkStats: revealed ? readDkStats(obj) : null,
+    dkProjection: revealed ? readProjection(obj) : null,
   };
 }
 

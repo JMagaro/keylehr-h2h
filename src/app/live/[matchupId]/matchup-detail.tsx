@@ -17,6 +17,12 @@ import type { LiveMatchup, LiveSlot, LiveTeam } from '@/lib/live/assemble';
 import type { LiveTeamContext } from '@/lib/live/query';
 import type { LiveStatIndex } from '@/lib/live/stats';
 import { formatMinutes, lineupMinutes, type LineupMinutes } from '@/lib/live/minutes';
+import {
+  formatWinProbability,
+  projectLineup,
+  winProbability,
+  type LineupProjection,
+} from '@/lib/live/projection';
 import { formatPoints, cn } from '@/lib/utils';
 
 /** Roster order, so both sides line up row for row. */
@@ -190,12 +196,27 @@ function TeamHeader({
   );
 }
 
-function TeamScore({ team }: { team: LiveTeam }) {
+function TeamScore({
+  team,
+  projection,
+}: {
+  team: LiveTeam;
+  projection: LineupProjection | null;
+}) {
   if (!team.hasSnapshot) {
     // Never 0.00 for an uncaptured roster — see assemble.ts.
     return <span className="text-3xl font-bold text-muted">—</span>;
   }
-  return <span className="text-3xl font-bold tabular-nums">{formatPoints(team.points)}</span>;
+  return (
+    <span className="flex flex-col items-center">
+      <span className="text-3xl font-bold tabular-nums">{formatPoints(team.points)}</span>
+      {projection && !projection.isFinal ? (
+        // DraftKings' own projection model, recomputed live from ESPN's clock:
+        // score + pregame × (minutes left / 60). See lib/live/projection.ts.
+        <span className="text-[11px] text-muted">proj {formatPoints(projection.projected)}</span>
+      ) : null}
+    </span>
+  );
 }
 
 export function MatchupDetail({
@@ -209,9 +230,34 @@ export function MatchupDetail({
 }) {
   const { home, away } = matchup;
   const rows = pairSlots(home.slots, away.slots);
+
+  // The biggest single-slot gap is usually the story of a matchup, and it is otherwise easy
+  // to miss in nine near-identical rows. Only counted where BOTH sides are actually scored —
+  // a gap against an unknown is not a gap.
+  let biggestGapIndex = -1;
+  let biggestGap = 0;
+  rows.forEach(([h, a], i) => {
+    if (h?.points === null || a?.points === null || !h || !a) return;
+    const gap = Math.abs((h.points ?? 0) - (a.points ?? 0));
+    if (gap > biggestGap) {
+      biggestGap = gap;
+      biggestGapIndex = i;
+    }
+  });
   const bothCaptured = home.hasSnapshot && away.hasSnapshot;
   const homeMinutes = lineupMinutes(home.slots, index.teamState);
   const awayMinutes = lineupMinutes(away.slots, index.teamState);
+  const homeProj = home.hasSnapshot ? projectLineup(home, index.teamState) : null;
+  const awayProj = away.hasSnapshot ? projectLineup(away, index.teamState) : null;
+  // Only meaningful when BOTH sides are known — a probability against an unknown is not one.
+  const odds =
+    homeProj && awayProj
+      ? winProbability(
+          homeProj.projected,
+          awayProj.projected,
+          homeMinutes.minutesLeft + awayMinutes.minutesLeft,
+        )
+      : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -220,9 +266,24 @@ export function MatchupDetail({
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
             <TeamHeader team={home} align="left" minutes={homeMinutes} />
             <div className="flex items-center gap-3">
-              <TeamScore team={home} />
-              <span className="text-xs text-muted">vs</span>
-              <TeamScore team={away} />
+              <TeamScore team={home} projection={homeProj} />
+              <span className="flex flex-col items-center text-xs text-muted">
+                <span>vs</span>
+                {odds ? (
+                  // An ESTIMATE from projected margin and time left — labelled, never dressed
+                  // up as a measurement. See lib/live/projection.ts for the model.
+                  <span className="mt-0.5 whitespace-nowrap text-[11px]">
+                    {odds.settled
+                      ? formatWinProbability(odds.home, true) === 'Won'
+                        ? `${home.ownerName} won`
+                        : `${away.ownerName} won`
+                      : `${formatWinProbability(Math.max(odds.home, 1 - odds.home), false)} ${
+                          odds.home >= 0.5 ? home.ownerName : away.ownerName
+                        }`}
+                  </span>
+                ) : null}
+              </span>
+              <TeamScore team={away} projection={awayProj} />
             </div>
             <TeamHeader team={away} align="right" minutes={awayMinutes} />
           </div>
@@ -246,11 +307,21 @@ export function MatchupDetail({
               {rows.map(([h, a], i) => (
                 <div
                   key={`${h?.slot ?? ''}-${a?.slot ?? ''}-${i}`}
-                  className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3"
+                  className={cn(
+                    'grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3',
+                    i === biggestGapIndex && biggestGap >= 5 && 'bg-accent/5',
+                  )}
                 >
                   <PlayerCell slot={h} ctx={h?.teamKey ? teamContext[h.teamKey] : undefined} index={index} align="left" />
-                  <div className="w-12 shrink-0 text-center text-[11px] font-semibold text-muted">
-                    {h?.slot ?? a?.slot ?? ''}
+                  <div className="flex w-12 shrink-0 flex-col items-center">
+                    <span className="text-[11px] font-semibold text-muted">
+                      {h?.slot ?? a?.slot ?? ''}
+                    </span>
+                    {i === biggestGapIndex && biggestGap >= 5 ? (
+                      <span className="text-[9px] font-semibold uppercase text-accent">
+                        +{formatPoints(biggestGap)}
+                      </span>
+                    ) : null}
                   </div>
                   <PlayerCell slot={a} ctx={a?.teamKey ? teamContext[a.teamKey] : undefined} index={index} align="right" />
                 </div>

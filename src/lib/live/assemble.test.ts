@@ -27,6 +27,7 @@ const slot = (over: Partial<LineupSlotInput> = {}): LineupSlotInput => ({
   revealed: true,
   dkScore: null,
   dkStats: null,
+  dkProjection: null,
   ...over,
 });
 
