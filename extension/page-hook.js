@@ -554,6 +554,9 @@
       lineups,
       failures,
       missingKeys,
+      // The leaderboard rows this capture already had to fetch, so the caller can sync SCORES
+      // from the same read instead of asking DraftKings for the same page twice.
+      entries: board.entries,
     };
   }
 

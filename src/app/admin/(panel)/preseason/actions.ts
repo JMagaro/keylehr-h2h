@@ -50,7 +50,7 @@ export async function syncPreseasonAction(
   const sync = await syncPreseasonWeek(parsed.seasonId, season.year, parsed.preseasonWeek);
   const gen = await generateMatchups(parsed.seasonId);
   revalidatePath('/admin/preseason');
-  revalidatePath('/preseason');
+  revalidatePath('/live');
 
   if (sync.gamesUpserted === 0) {
     return {
@@ -100,7 +100,7 @@ export async function pasteScoresAction(
     triggeredBy: 'admin:preseason',
   });
   revalidatePath('/admin/preseason');
-  revalidatePath('/preseason');
+  revalidatePath('/live');
   return {
     ok: true,
     message:

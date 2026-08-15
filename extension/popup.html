@@ -87,12 +87,8 @@
           <span class="live-title">Lineups <em>— for live scoring</em></span>
         </div>
         <div id="lineupsStatus" class="live-status" role="status" aria-live="polite">
-          Capture everyone’s picks after lock, then again later to catch late swaps.
+          Captured automatically whenever you Sync. Sync again later to catch late swaps.
         </div>
-        <button id="lineupsBtn" class="secondary lineups-btn" type="button" disabled>
-          <span id="lineupsSpinner" class="spinner" hidden></span>
-          <span id="lineupsLabel">Capture lineups</span>
-        </button>
         <div id="lastCaptured" class="last-synced" hidden></div>
       </div>
 
@@ -109,24 +105,33 @@
             min
           </label>
         </div>
+        <!--
+          Live Sync keeps the OFFICIAL DraftKings totals refreshed during games, which needs
+          this machine on. The app's /live page does NOT need it: that computes its own
+          estimate from public NFL stats and keeps moving with everything here switched off.
+          So this is now optional — use it when you want DraftKings' own number kept current.
+        -->
         <div id="liveStatus" class="live-status" role="status" aria-live="polite">
-          Live Sync off — toggle on to keep scores updating during games.
+          Optional. /live already updates on its own from public NFL stats. Turn this on only to
+          keep DraftKings&rsquo; official totals refreshed too — it needs this computer awake.
         </div>
         <button id="liveStopBtn" class="secondary live-stop" type="button" hidden>Stop Live Sync</button>
       </div>
 
-      <!-- =================== ROSTER ENDPOINT DIAGNOSIS ==================== -->
+      <!-- ======================= TROUBLESHOOTING ========================== -->
       <!--
-        Phase 0 of live scoring. DK's roster endpoint is undocumented and auth-gated, so it
-        cannot be found from outside a logged-in browser. This probes candidate URLs and, if
-        they all fail, shows every api.draftkings.com URL the gamecenter itself requested —
-        whatever DK's own UI calls is by definition the right endpoint.
+        NOT part of normal use — Sync does everything. This exists for one situation: if
+        DraftKings changes its roster endpoint, this rediscovers it by showing every
+        api.draftkings.com URL the gamecenter itself requested. Whatever DK's own UI calls is
+        by definition the right endpoint, which is how the current one was found.
       -->
       <details id="diagnoseExpander" class="expander">
-        <summary>Diagnose roster endpoint</summary>
+        <summary>Troubleshooting — DraftKings endpoints</summary>
         <p class="hint">
-          Open a contest <strong>gamecenter</strong> tab, click an entry to load a lineup, then
-          run this. Copy the result into <code>docs/DRAFTKINGS.md</code>.
+          You should never need this. Sync already captures scores and lineups. Use it only if
+          lineup capture starts failing, which would mean DraftKings changed its API: open a
+          contest <strong>gamecenter</strong> tab, click an entry to load a lineup, run this,
+          and send the result to whoever maintains the app.
         </p>
         <button id="probeBtn" class="secondary" type="button">
           <span id="probeSpinner" class="spinner" hidden></span>

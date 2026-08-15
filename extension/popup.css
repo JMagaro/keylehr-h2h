@@ -476,9 +476,6 @@ button.big {
   color: var(--muted);
 }
 
-.lineups-btn {
-  margin-top: 8px;
-}
 
 /* ---- paste expander ---- */
 .expander {

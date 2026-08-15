@@ -96,7 +96,7 @@ export default async function AdminPreseasonPage({
             <CardTitle>Exhibition matchups — Preseason week {preseasonWeek}</CardTitle>
             <Badge variant="tie">Exhibition · doesn&apos;t count</Badge>
           </div>
-          <CardDescription>What the public /preseason page shows.</CardDescription>
+          <CardDescription>These appear on /live, which renders exhibition weeks like any other.</CardDescription>
         </CardHeader>
         <CardBody>
           {!view.hasData || view.games.length === 0 ? (

@@ -15,7 +15,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { Container } from '@/components/container';
 import { PageHeader } from '@/components/page-header';
@@ -26,6 +26,7 @@ import { exhibitionWeekLabel, isExhibitionWeek } from '@/lib/schedule/preseason'
 
 import { LiveRefresh } from '../live-refresh';
 import { MatchupDetail } from './matchup-detail';
+import { MatchupSwitcher } from './matchup-switcher';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -55,8 +56,20 @@ export default async function LiveMatchupPage({
   const index = await getLiveStatsForWeek(location.seasonId, location.week, data.games);
   const view = assembleLive(data.matchups, data.snapshots, index);
 
-  const matchup = view.matchups.find((m) => m.id === id);
+  const position = view.matchups.findIndex((m) => m.id === id);
+  const matchup = position >= 0 ? view.matchups[position] : undefined;
   if (!matchup) notFound();
+
+  // Step through the week's matchups without going back to the list. Wraps at both ends, so
+  // there is never a dead arrow — with 16 matchups, hitting a disabled control is more
+  // annoying than looping.
+  const count = view.matchups.length;
+  const prev = view.matchups[(position - 1 + count) % count];
+  const next = view.matchups[(position + 1) % count];
+  const options = view.matchups.map((m) => ({
+    id: m.id,
+    label: `${m.home.ownerName} vs ${m.away.ownerName}`,
+  }));
 
   return (
     <Container width="wide" as="div" className="flex flex-col gap-6 py-10">
@@ -69,6 +82,34 @@ export default async function LiveMatchupPage({
           All {weekLabel(location.week)} matchups
         </Link>
         <LiveRefresh fetchedAt={view.fetchedAt} />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Plain links, so stepping works with no JavaScript. */}
+        <Link
+          href={`/live/${prev.id}`}
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
+          aria-label={`Previous matchup: ${prev.home.ownerName} vs ${prev.away.ownerName}`}
+        >
+          <ChevronLeft className="size-3.5" aria-hidden="true" />
+          <span className="max-w-[9rem] truncate">{prev.home.ownerName}</span>
+        </Link>
+
+        <div className="flex items-center gap-2">
+          <MatchupSwitcher matchups={options} currentId={id} />
+          <span className="text-xs text-muted">
+            {position + 1} of {count}
+          </span>
+        </div>
+
+        <Link
+          href={`/live/${next.id}`}
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
+          aria-label={`Next matchup: ${next.home.ownerName} vs ${next.away.ownerName}`}
+        >
+          <span className="max-w-[9rem] truncate">{next.home.ownerName}</span>
+          <ChevronRight className="size-3.5" aria-hidden="true" />
+        </Link>
       </div>
 
       <PageHeader

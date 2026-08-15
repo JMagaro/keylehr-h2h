@@ -1,36 +1,20 @@
 /**
- * Read model for the preseason (exhibition) view.
+ * Read model for exhibition (preseason) results.
  *
  * Exhibition matchups/scores live under the `isExhibition` flag at the preseason week
  * namespace (see src/lib/schedule/preseason.ts) and are excluded from every standings/stats
- * query. This module is the ONE place that deliberately reads them, to render the `/preseason`
- * page + the Admin → Preseason results. Server-only.
+ * query. This module is the ONE place that deliberately reads them.
+ *
+ * Its only consumer is Admin → Preseason, which shows what a sync produced. The public view
+ * of exhibition weeks is /live, which renders them like any other week — there is no separate
+ * public preseason page.
+ *
+ * Server-only.
  */
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 
-import { db, matchups, nflTeams, owners, ownerSeasons, scores, seasons } from '@/db';
+import { db, matchups, nflTeams, owners, ownerSeasons, scores } from '@/db';
 import { exhibitionWeekLabel, fromExhibitionWeek } from '@/lib/schedule/preseason';
-
-export interface PreseasonSeasonOption {
-  id: number;
-  year: number;
-  name: string;
-}
-
-/** Seasons that have at least one exhibition matchup, most recent (year) first. */
-export async function getPreseasonSeasonOptions(): Promise<PreseasonSeasonOption[]> {
-  const ids = await db
-    .selectDistinct({ seasonId: matchups.seasonId })
-    .from(matchups)
-    .where(eq(matchups.isExhibition, true));
-  if (ids.length === 0) return [];
-  const rows = await db
-    .select({ id: seasons.id, year: seasons.year, name: seasons.name })
-    .from(seasons)
-    .where(inArray(seasons.id, ids.map((r) => r.seasonId)))
-    .orderBy(desc(seasons.year));
-  return rows;
-}
 
 export interface PreseasonParticipant {
   ownerSeasonId: number;

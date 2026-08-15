@@ -12,13 +12,23 @@
  * the exhibition namespace (101–103). That single number is all the server needs — it flags the
  * scores `isExhibition`, so they show on /preseason but never touch standings or payouts.
  *
- * Sync still POSTs normalized `entries` to <AppBaseURL>/api/ingest/draftkings with the bearer
- * token (POST shape unchanged). Two paths:
- *   (a) Sync (PRIMARY) — parse the contestId from the active DK contest tab URL, ask the content
- *       script to run a MAIN-world authenticated fetch of the DK embed leaderboard endpoint,
- *       receive ALL extracted entries, and POST them.
+ * ONE button does both halves of a week's data, because both come from a single DraftKings
+ * read and there is no case where you want one without the other:
+ *
+ *   SCORES  → POST `entries` to <AppBaseURL>/api/ingest/draftkings   (official, settles the week)
+ *   LINEUPS → POST `rawLineups` to <AppBaseURL>/api/ingest/lineups   (feeds the /live estimate)
+ *
+ * `captureRosters` in page-hook.js fetches the leaderboard to get entry keys, so it hands
+ * those rows back and the score sync reuses them rather than fetching the same page twice.
+ *
+ * Scores go first and lineups are BEST EFFORT: a roster failure must never block or cast doubt
+ * on a score sync, so lineups report into their own card and a failure there leaves the score
+ * result standing. If roster capture fails outright, the flow falls back to the plain
+ * leaderboard read — the path that existed before lineups did.
+ *
+ *   (a) Sync (PRIMARY) — the above, from the active DK contest tab.
  *   (b) Paste manually (fallback) — user pastes the DK leaderboard JSON; the same robust
- *       extractor runs locally and the entries are POSTed.
+ *       extractor runs locally and the entries are POSTed. Scores only.
  */
 
 /**
@@ -73,10 +83,7 @@ const els = {
   lastSynced: document.getElementById('lastSynced'),
   pasteJson: document.getElementById('pasteJson'),
   pasteBtn: document.getElementById('pasteBtn'),
-  // lineup capture (live scoring)
-  lineupsBtn: document.getElementById('lineupsBtn'),
-  lineupsSpinner: document.getElementById('lineupsSpinner'),
-  lineupsLabel: document.getElementById('lineupsLabel'),
+  // lineup capture (live scoring) — status only; the Sync button drives it
   lineupsStatus: document.getElementById('lineupsStatus'),
   lastCaptured: document.getElementById('lastCaptured'),
   // live sync
@@ -534,11 +541,8 @@ function weekLabel(week) {
 function updateSyncButton() {
   const week = currentWeek();
   els.syncLabel.textContent = week ? `Sync ${weekLabel(week)}` : 'Sync';
-  // Both actions need the same four things: config, a detected contest, a season and a week.
   const ready = !state.busy && isConfigured() && state.contest && selectedSeason() && week != null;
   els.syncBtn.disabled = !ready;
-  els.lineupsBtn.disabled = !ready;
-  els.lineupsLabel.textContent = week ? `Capture lineups — ${weekLabel(week)}` : 'Capture lineups';
 }
 
 function setBusy(busy) {
@@ -853,9 +857,19 @@ async function onSync() {
 
   const contestId = state.contest.id;
   setBusy(true);
-  setBanner(`Fetching the full leaderboard for contest ${contestId}…`, 'info');
+  setBanner(`Reading contest ${contestId} — leaderboard and lineups…`, 'info');
 
-  const cap = await requestCapture(tab.id, contestId);
+  // ONE leaderboard read serves both halves. `captureRosters` has to fetch the leaderboard
+  // anyway to get entry keys, so it hands those rows back and the score sync reuses them
+  // instead of asking DraftKings for the same page twice.
+  const rosterCap = await requestRosterCapture(tab.id, contestId);
+
+  // Roster capture is BEST EFFORT; the score sync is not. Scores are the official number that
+  // settles the week, so a lineup failure must never block them — fall back to the plain
+  // leaderboard read, which is the path that worked before lineups existed.
+  const cap = rosterCap.ok
+    ? { ok: true, contestId: rosterCap.contestId, entries: rosterCap.entries || [] }
+    : await requestCapture(tab.id, contestId);
 
   if (!cap.ok) {
     setBusy(false);
@@ -910,6 +924,18 @@ async function onSync() {
   } finally {
     setBusy(false);
   }
+
+  // Lineups go up AFTER scores, and their outcome is reported separately in the Lineups card.
+  // Deliberate: scores settle the week, lineups only feed an estimate, so a roster problem
+  // must be visible without casting doubt on a score sync that succeeded.
+  if (rosterCap.ok) {
+    await saveCapturedLineups(rosterCap, season, week, contestId);
+  } else {
+    setLineupsStatus(
+      `Lineups not captured — ${rosterCap.error || 'unknown error'}\nScores were synced anyway.`,
+      'err',
+    );
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -946,15 +972,6 @@ function setLineupsStatus(text, kind) {
   els.lineupsStatus.textContent = text;
 }
 
-function setLineupsBusy(busy) {
-  state.busy = busy;
-  els.lineupsSpinner.hidden = !busy;
-  els.seasonSelect.disabled = busy;
-  els.week.disabled = busy;
-  els.pasteBtn.disabled = busy;
-  updateSyncButton();
-}
-
 function renderLastCaptured() {
   const lc = state.settings.lastLineupCapture;
   if (!lc || !lc.week) {
@@ -970,45 +987,14 @@ function renderLastCaptured() {
     `${lc.matched}/${lc.expected} lineups · ${lc.revealed}/${lc.slots} players revealed`;
 }
 
-async function onCaptureLineups() {
-  if (state.busy) return;
-
-  if (!isConfigured()) {
-    return setLineupsStatus('Open Settings and set the App Base URL + Ingest Token.', 'err');
-  }
-  const season = selectedSeason();
-  const week = currentWeek();
-  if (!season) return setLineupsStatus('Pick a season.', 'err');
-  if (week == null) return setLineupsStatus(`Week must be 1–${maxWeekForMode()}.`, 'err');
-  if (!state.contest) {
-    return setLineupsStatus(
-      'No contest detected. Open your league’s DraftKings contest tab and reopen this popup.',
-      'err',
-    );
-  }
-
-  // Inside the click's user gesture, so chrome.permissions.request can prompt.
-  const perm = await ensureOriginPermission(appBase());
-  if (!perm.ok) return setLineupsStatus(perm.error, 'err');
-
-  const tab = await getActiveTab();
-  if (!tab || !tab.id) return setLineupsStatus('No active tab.', 'err');
-
-  const contestId = state.contest.id;
-  setLineupsBusy(true);
-  setLineupsStatus(`Reading the leaderboard, then one lineup per entry…`);
-
-  const cap = await requestRosterCapture(tab.id, contestId);
-
-  if (!cap.ok) {
-    setLineupsBusy(false);
-    const prefix =
-      cap.status === 401 || cap.status === 403
-        ? `DraftKings ${cap.status} — log in to DraftKings in this tab and retry. `
-        : '';
-    return setLineupsStatus(prefix + (cap.error || 'Capture failed.'), 'err');
-  }
-
+/**
+ * POST an already-fetched roster capture and report the outcome.
+ *
+ * Split from the fetching half so the one Sync button can do both halves off a single
+ * DraftKings read: `captureRosters` returns the leaderboard rows AND the rosters, the scores
+ * go up first, and this reports the lineup half separately.
+ */
+async function saveCapturedLineups(cap, season, week, contestId) {
   const captured = cap.lineups || [];
   const failures = cap.failures || [];
   const slots = captured.reduce((n, l) => n + (l.slotCount || 0), 0);
@@ -1078,9 +1064,9 @@ async function onCaptureLineups() {
         `(captured ${captured.length} lineups before the post — the DraftKings half worked)`,
       'err',
     );
-  } finally {
-    setLineupsBusy(false);
   }
+  // No busy handling here: the Sync flow owns it and has already cleared it. Lineups report
+  // into their own card so their outcome never overwrites the score result.
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1474,7 +1460,6 @@ els.gearBtn.addEventListener('click', showSettings);
 els.testBtn.addEventListener('click', onTest);
 els.saveBtn.addEventListener('click', onSave);
 els.syncBtn.addEventListener('click', onSync);
-els.lineupsBtn.addEventListener('click', onCaptureLineups);
 els.pasteBtn.addEventListener('click', onPaste);
 els.liveToggle.addEventListener('change', onLiveToggle);
 els.liveStopBtn.addEventListener('click', onLiveStop);
