@@ -153,3 +153,43 @@ describe('formatWinProbability', () => {
     expect(formatWinProbability(0, true)).toBe('Lost');
   });
 });
+
+describe('regression: a snapshot written before dkProjection existed', () => {
+  // `slots` is jsonb, so the field needed no migration — and every row written before it has
+  // no such key at all. `undefined` slips past an `=== null` guard and turns the arithmetic
+  // into NaN, which then propagates to the team total, renders as "NaN%", and poisons a sort
+  // comparator. This is the shape that actually sat in the database.
+  const legacySlot = {
+    slot: 'WR',
+    name: 'Old Capture',
+    teamKey: 'LAR',
+    position: 'WR',
+    status: 'scored',
+    points: 12.3,
+    components: [],
+    gameDetail: null,
+    dkScore: null,
+    dkStats: null,
+    // dkProjection deliberately ABSENT
+  } as unknown as LiveSlot;
+
+  it('projects a real number, never NaN', () => {
+    const p = projectSlot(legacySlot, { state: 'in', period: 3, displayClock: '8:30' });
+    expect(p).toBe(12.3);
+    expect(Number.isNaN(p)).toBe(false);
+  });
+
+  it('keeps a lineup total finite', () => {
+    const t = team([legacySlot], 12.3);
+    const p = projectLineup(t, { LAR: { state: 'in', period: 3, displayClock: '8:30' } });
+    expect(Number.isFinite(p.projected)).toBe(true);
+    expect(p.projected).toBe(12.3);
+  });
+
+  it('keeps win probability finite, so the closeness sort still orders', () => {
+    const t = team([legacySlot], 12.3);
+    const p = projectLineup(t, { LAR: { state: 'in', period: 3, displayClock: '8:30' } });
+    const odds = winProbability(p.projected, 10, 200);
+    expect(Number.isNaN(odds.home)).toBe(false);
+  });
+});

@@ -494,7 +494,7 @@ One owner's captured DraftKings lineup for one week. **Append-only, versioned by
 | `dkDraftGroupId`  | varchar(64)   | Nullable. The DK slate the lineup was drafted from.                  |
 | `dkEntryKey`      | varchar(64)   | Nullable. DK entry key, when the payload carried one.                |
 | `capturedAt`      | timestamptz   | NOT NULL. **When DraftKings was READ**, not when the row was written. Late-swap resolution compares this against each player's kickoff, so a wrong value silently mislabels slots as locked. |
-| `slots`           | jsonb         | NOT NULL. The drafted players: `[{ slot, dkPlayerId, draftableId, name, teamKey, position, revealed, dkScore, dkStats }]` — normally the nine DK Classic slots, in the order the payload yielded them (every field except `revealed` is nullable, and Admin → Lineups flags a capture with fewer than 9 as **incomplete**). `LineupSlotInput` in `src/lib/lineups/normalize.ts` is the authoritative shape. `slot` is the roster position (`QB`/`RB`/`WR`/`TE`/`FLEX`/`DST`, with `DEF`/`D` collapsed to `DST`); `position` is the player's actual position, which differs for a FLEX. `revealed` is `false` for a player DraftKings is still **concealing** from opponents — see below. `dkScore` (DK's own points) and `dkStats` (DK's own per-stat breakdown, `{ key, value, points }[]` keyed by DK's abbreviations like `RecYds`) are **reconciliation checkpoints, never scoring inputs** — see below. |
+| `slots`           | jsonb         | NOT NULL. The drafted players: `[{ slot, dkPlayerId, draftableId, name, teamKey, position, revealed, dkScore, dkStats, dkProjection }]` — normally the nine DK Classic slots, in the order the payload yielded them (every field except `revealed` is nullable, and Admin → Lineups flags a capture with fewer than 9 as **incomplete**). `LineupSlotInput` in `src/lib/lineups/normalize.ts` is the authoritative shape. `slot` is the roster position (`QB`/`RB`/`WR`/`TE`/`FLEX`/`DST`, with `DEF`/`D` collapsed to `DST`); `position` is the player's actual position, which differs for a FLEX. `revealed` is `false` for a player DraftKings is still **concealing** from opponents — see below. `dkScore` (DK's own points) and `dkStats` (DK's own per-stat breakdown, `{ key, value, points }[]` keyed by DK's abbreviations like `RecYds`) are **reconciliation checkpoints, never scoring inputs** — see below. |
 | `captureRunId`    | integer FK    | Nullable → `lineup_capture_runs.id` (which run produced this snapshot). |
 | `createdAt`       | timestamptz   | NOT NULL, default `now()`.                                           |
 
@@ -534,6 +534,25 @@ One owner's captured DraftKings lineup for one week. **Append-only, versioned by
 > `dkStats` is a per-stat diff, which catches compensating errors that a matching total would hide.
 > `dkStats` is `null` when the payload had no breakdown at all and `[]` when DK said "nothing yet" —
 > the distinction is deliberate. Both are null for a concealed slot.
+
+> **`dkProjection` is stored for the same "only exists at capture time" reason, but it is not a
+> checkpoint — it is an input.** It holds DK's **pregame** projection (from the nested `projection`
+> object; the *live* one is deliberately not stored), and it drives the projected finals on `/live`
+> via DraftKings' own formula, `score + pregameProjection × (minutesRemaining / 60)`. The live
+> figure is recomputed from ESPN's clock on every render, so it keeps moving between captures.
+> It is `null` for a concealed slot, and a `null` slot contributes only what it has banked, never
+> an invented future. See
+> [`SCORING.md` §15](SCORING.md#projections--win-probability--draftkings-own-formula).
+
+> 🐞 **OPEN DEFECT — snapshots written before `dkProjection` existed have no such key at all.**
+> `slots` is `jsonb`, so adding the field needed no migration and no backfill: an older row simply
+> lacks it, and `src/lib/lineups/query.ts` casts the JSON straight to `LineupSlotInput[]` without
+> per-field defaulting. The projection code tests `slot.dkProjection === null`, which is **false**
+> for `undefined`, so an old slot evaluates `banked + undefined × (minutesLeft / 60)` → **`NaN`**.
+> Reproduced: a pre-`dkProjection` slot yields `projected: NaN`, renders **"proj NaN"** and
+> **"NaN%"**, and poisons `/live`'s closeness sort. **Every snapshot currently in the database
+> predates the field** (week 102). Needs a code decision — a `?? null` on read, a `!= null` test,
+> or a backfill — so it is recorded here rather than worked around in prose.
 
 ## Migration history
 

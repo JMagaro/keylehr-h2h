@@ -42,7 +42,9 @@ export function projectSlot(
 
   // No pregame projection captured (a concealed player, or an older capture) — we can report
   // what they have but must not invent what they will get.
-  if (slot.dkProjection === null) return slot.points === null ? null : banked;
+  // `== null` catches undefined too: a snapshot written before this field existed has
+  // no key at all, and `=== null` would let it through to poison the arithmetic with NaN.
+  if (slot.dkProjection == null) return slot.points == null ? null : banked;
 
   const minutesLeft = clock ? minutesLeftInGame(clock) : REGULATION_MINUTES;
   return banked + slot.dkProjection * (minutesLeft / REGULATION_MINUTES);
@@ -66,7 +68,7 @@ export function projectLineup(
       slot.status === 'concealed' ? REGULATION_MINUTES : clock ? minutesLeftInGame(clock) : 0;
     if (minutesLeft > 0) anyTimeLeft = true;
 
-    if (slot.dkProjection === null) {
+    if (slot.dkProjection == null) {
       projected += slot.points ?? 0;
       if (minutesLeft > 0) unprojectedSlots += 1;
       continue;

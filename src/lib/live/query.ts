@@ -22,7 +22,7 @@ import {
   seasons,
 } from '@/db';
 import type { GameState } from '@/lib/dfs/sources/espn-boxscore';
-import type { LineupSlotInput } from '@/lib/lineups/normalize';
+import { hydrateStoredSlots, type LineupSlotInput } from '@/lib/lineups/normalize';
 import { isExhibitionWeek } from '@/lib/schedule/preseason';
 
 import type { AssembleMatchup, AssembleSnapshot } from './assemble';
@@ -242,7 +242,7 @@ export async function getLiveWeekData(seasonId: number, week: number): Promise<L
     snapshots: snapshotRows.map((s) => ({
       ownerSeasonId: s.ownerSeasonId,
       capturedAt: s.capturedAt,
-      slots: (s.slots as LineupSlotInput[]) ?? [],
+      slots: hydrateStoredSlots(s.slots),
     })),
     games: gameRows
       .filter((g) => Boolean(g.espnEventId))

@@ -21,6 +21,10 @@
 > **Which DK endpoints are actually reachable — and which need a session — is
 > [§11](#11-endpoint-inventory--what-is-public-and-what-needs-auth).** Read it before designing
 > anything that talks to DraftKings.
+>
+> A third endpoint on the same bearer token, **`GET /api/current-week`** ([§13](#13-the-week-detection-endpoint-implemented)),
+> writes nothing: it tells the extension which week the NFL schedule says it is, so a contest is
+> never synced against the wrong one.
 
 > ⚠️ **Terms-of-Service caveat (read this).** DraftKings does **not** publish a public API. The
 > endpoints this design relies on are **unofficial, undocumented, and using them is against
@@ -275,6 +279,13 @@ Every accepted call runs `ingestLeaderboard` with `source = 'auto'` and
 `triggeredBy = 'extension'`, so it lands in the `score_import_runs` audit log (§6) like any other
 run. Re-posting the same week is safe — scores upsert on `(ownerSeasonId, week)`.
 
+> ⚠️ **Re-posting a DIFFERENT week is not.** The upsert key is `(ownerSeasonId, week)` alone, so a
+> contest POSTed against the wrong week **silently overwrites that week's real scores** — HTTP 200,
+> no warning. It is recoverable (re-sync the right contest; §6 keeps every run's raw payload) but
+> nothing surfaces that it happened, which is why the extension confirms the week against the
+> schedule *before* syncing — [§13](#13-the-week-detection-endpoint-implemented) and
+> [`SCORING.md` §4](SCORING.md#-the-wrong-week-silently-overwrites-a-real-one).
+
 ## 11. Endpoint inventory — what is public and what needs auth
 
 Written during **Phase 0 of live scoring** ([`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score)),
@@ -468,7 +479,7 @@ with no `INGEST_TOKEN` set all return `401 Unauthorized`.
 | `week`              | int                                           | yes      | Same two disjoint namespaces as §10 — `1`–`25` or `101`–`103`, validated by the shared `weekSchema`. |
 | `rawRosters`        | whatever DraftKings returned                  | one of   | A **bulk** payload (e.g. a leaderboard with embedded rosters). Normalized server-side, **structurally** — see below. |
 | `rawLineups`        | `{ entryName, entryKey?, roster }[]`          | one of   | **The shape the extension sends.** One element per entry: DK's per-entry roster response verbatim, paired with whose entry it is. |
-| `lineups`           | `{ entryName, entryKey?, slots[] }[]`         | one of   | Already normalized. Each `slots` entry: `{ slot?, dkPlayerId?, draftableId?, name?, teamKey?, position?, revealed?, dkScore?, dkStats? }`, all nullable, at least one slot required. `revealed` defaults to "did you send any identity at all"; `dkStats` is `{ key, value, points }[]`. |
+| `lineups`           | `{ entryName, entryKey?, slots[] }[]`         | one of   | Already normalized. Each `slots` entry: `{ slot?, dkPlayerId?, draftableId?, name?, teamKey?, position?, revealed?, dkScore?, dkStats?, dkProjection? }`, all nullable, at least one slot required. `revealed` defaults to "did you send any identity at all"; `dkStats` is `{ key, value, points }[]`; `dkProjection` is DK's **pregame** projection — see below. |
 | `entryName`         | string                                        | no       | Attributes a **bare** `rawRosters` payload (a per-entry response carries no entry name of its own). |
 | `capturedAt`        | ISO 8601 datetime with offset                 | no       | **When DK was read.** Defaults to the server's now. Pass the real read time — late-swap resolution depends on it. |
 | `contestId`         | string                                        | no       | Stored on the snapshots + audit row.                                  |
@@ -496,6 +507,14 @@ abbreviation and no player position. When `draftGroupId` is supplied, `ingestLin
 `draftableId` and fills in `name` / `teamKey` / `position` before the snapshot is written. Values
 already present in DK's own payload always win. This runs on capture rather than on read because DK
 expires draftables for old draft groups — a snapshot has to stand alone months later.
+
+**`dkProjection` is captured for the same reason.** DK's roster payload nests a `projection` object
+carrying both a `pregameProjection` and a `realTimeProjection`; `normalizeSlotObject` keeps the
+**pregame** one on revealed slots. It is stored rather than fetched later because, like draftables,
+it exists only while the contest is live — and it is the *pregame* figure, not the live one, because
+the live figure is recomputed from ESPN's clock on every render, so it keeps moving with no machine
+on. The formula is DraftKings' own, reverse-engineered exactly; see
+[`SCORING.md` §15](SCORING.md#projections--win-probability--draftkings-own-formula).
 
 **Response (200).**
 
@@ -539,3 +558,64 @@ Every accepted call writes a `lineup_capture_runs` row with `triggeredBy = 'exte
 snapshots; a **new** `capturedAt` adds a version, which is how late swap is handled. The extension
 stamps `capturedAt` **once, before the first roster request**, so all 32 lineups in a batch share one
 honest "as of" time.
+
+## 13. The week-detection endpoint (implemented)
+
+`GET /api/current-week` (`src/app/api/current-week/route.ts`) is **read-only** — it writes nothing
+and exists to stop the extension guessing which week it is. Why guessing was not good enough, and
+how the week is derived from `nfl_games`, is in
+[`SCORING.md` §4](SCORING.md#which-week-is-it--detecting-it-from-the-schedule).
+
+**Auth and CORS are identical to `/api/seasons`** — `Authorization: Bearer <INGEST_TOKEN>` via the
+same `isAuthorized`, plus `Access-Control-Allow-Origin: *` and an `OPTIONS` preflight — so the
+extension reuses the one token it already stores.
+
+**Query parameters.**
+
+| Param    | Required | Notes                                                                       |
+| -------- | -------- | ---------------------------------------------------------------------------- |
+| `season` | yes      | `seasons.id`. A non-integer or non-positive value is `400 Pass ?season=<id>`. |
+| `week`   | no       | A **stored** week (`1`–`25` or `101`–`103`). Asks "what dates does this week cover?" so the popup can confirm the week actually selected. Anything non-positive is ignored and `requested` comes back `null`. |
+
+**Response (200).**
+
+```json
+{
+  "detected": {
+    "week": 102,
+    "inputWeek": 2,
+    "isExhibition": true,
+    "label": "Preseason Week 2",
+    "firstKickoff": "2026-08-13T23:00:00.000Z",
+    "lastKickoff": "2026-08-16T21:00:00.000Z",
+    "gameCount": 16,
+    "basis": "in-progress"
+  },
+  "requested": {
+    "week": 103,
+    "inputWeek": 3,
+    "isExhibition": true,
+    "label": "Preseason Week 3",
+    "firstKickoff": "2026-08-20T23:00:00.000Z",
+    "lastKickoff": "2026-08-23T21:00:00.000Z",
+    "gameCount": 16
+  }
+}
+```
+
+- **`week` is the STORED value** (101–103 for exhibition); **`inputWeek` is what a human types**
+  (1–3 with the Preseason box ticked). Both are sent so the extension never has to reimplement the
+  `100 +` offset — duplicated arithmetic is exactly the thing that drifts.
+- `basis` (`'in-progress' | 'upcoming' | 'last'`) appears on `detected` only, and says which rule
+  chose the week.
+- `firstKickoff` / `lastKickoff` are ISO strings, or `null` for a week whose games carry no kickoff
+  time yet.
+
+> **`detected: null` means "unknown", not "week 1".** It is what a season with no synced schedule
+> returns, and the caller must leave the week alone. `requested: null` means that specific week has
+> no `nfl_games` rows at all — a typo, or a schedule that has not been pulled.
+
+**Errors.** `401 Unauthorized` · `400 Pass ?season=<id>`.
+
+The route sets `runtime = 'nodejs'` (the Neon driver) and `dynamic = 'force-dynamic'`, because an
+answer about what time it is now must never be served from a cache.

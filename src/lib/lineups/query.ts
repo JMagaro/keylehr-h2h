@@ -16,7 +16,7 @@ import {
   ownerSeasons,
 } from '@/db';
 
-import type { LineupSlotInput } from './normalize';
+import { hydrateStoredSlots, type LineupSlotInput } from './normalize';
 
 export interface CapturedLineup {
   ownerSeasonId: number;
@@ -110,7 +110,7 @@ export async function getCaptureStatus(seasonId: number, week: number): Promise<
       teamKey: r.teamKey ?? null,
       dkEntryName: r.dkEntryName,
       capturedAt: r.capturedAt,
-      slots: (r.slots as LineupSlotInput[]) ?? [],
+      slots: hydrateStoredSlots(r.slots),
       dkEntryKey: r.dkEntryKey,
     }))
     .sort((a, b) => b.capturedAt.getTime() - a.capturedAt.getTime());

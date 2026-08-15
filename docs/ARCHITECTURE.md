@@ -61,7 +61,11 @@ All four App Router surfaces ship today. See [§2](#2-request-flow) for the coun
 - **Route handlers (`src/app/api/.../route.ts`):** `POST /api/ingest/draftkings` (the extension's
   score ingest, bearer `INGEST_TOKEN`), `POST /api/ingest/lineups` (roster capture for the live
   estimate — same token, **never** writes a score; see [§9](#9-live-in-progress-scoring-built)),
-  `GET /api/seasons` (the extension's season picker / connection probe), and the Auth.js catch-all.
+  `GET /api/seasons` (the extension's season picker / connection probe),
+  `GET /api/current-week` (**read-only** week detection from `nfl_games`, so the extension never
+  syncs a contest against the wrong week — see
+  [`SCORING.md` §4](SCORING.md#which-week-is-it--detecting-it-from-the-schedule)), and the Auth.js
+  catch-all. All three GETs share the same bearer token and CORS headers.
   GET handlers are **not** cached by default in Next 16.
 - **`middleware.ts`:** gates `/admin/*` (except `/admin/login`) — see [§6](#6-auth--admin-model-implemented).
 - **CLI scripts (`scripts/`, `src/db/seed/`):** run via `tsx` outside the request lifecycle
@@ -372,6 +376,9 @@ lineup_capture_runs  (audit)                               │     extractGame  
         src/lib/dfs/score.ts     scorePlayer / scoreDst / scoreLineup      (pure)
         src/lib/dfs/rules.ts     DK_CLASSIC_NFL  (frozen rule data)
                          ▼
+        src/lib/live/minutes.ts    minutes left, from ESPN's period + clock (pure)
+        src/lib/live/projection.ts projected finals + win probability       (pure)
+                         ▼
         /live  and  /live/[matchupId]
             an ESTIMATE — displayed only, never written to `scores`
 ```
@@ -382,6 +389,16 @@ collides on real players league-wide. DK's roster payload names nobody and no te
 `draftableId`, so `enrich.ts` resolves that against the **public** draftables endpoint at capture
 time (DK expires draftables for old draft groups, so a snapshot must stand alone). That is what puts
 the `(name, teamKey)` pair on the snapshot the index matches against.
+
+**The projection layer is pure too, and derived rather than stored.** `minutes.ts` turns ESPN's
+`period` + `displayClock` (now carried through `extractGame` into `LiveStatIndex.teamState`) into
+regulation minutes remaining; `projection.ts` turns that plus DK's captured **pregame** projection
+into a projected final, using DraftKings' own formula — `score + pregame × (minutesLeft / 60)`,
+reverse-engineered exactly from captured samples. Only the pregame number is stored; the live
+figure is recomputed every render, which is why it keeps moving with no machine on. Win probability
+on top of it is explicitly a **model** (normal CDF over the projected margin, sd shrinking with the
+clock) with its one assumption isolated as `LINEUP_SD_FULL_SLATE`. Details and the reconciliation
+table: [`SCORING.md` §15](SCORING.md#projections--win-probability--draftkings-own-formula).
 
 `assembleLive` is **pure** — no DB, no network, no clock — which is what makes the display rules
 unit-testable. The rule that matters: **a slot we could not score is never rendered as `0.00`.**

@@ -5,8 +5,14 @@
  *   • Settings screen — App Base URL + Ingest Token + "Test connection" (GET /api/seasons) + Save.
  *     Shown first-run (when unconfigured) or via the gear icon.
  *   • Main screen — a connection chip, the detected DK contest, a Season dropdown (from
- *     /api/seasons), an auto-filled Week, a "Preseason" toggle, a big "Sync Week N" button,
- *     the result banner, a persistent "Last synced" line, and a "Paste manually" fallback.
+ *     /api/seasons), an auto-filled Week + the dates it covers (from /api/current-week), a
+ *     "Preseason" toggle, a big "Sync Week N" button, the result banner, a persistent
+ *     "Last synced" line, and a "Paste manually" fallback.
+ *
+ * The Week and the Preseason toggle are DETECTED from the app's synced NFL schedule, not guessed
+ * from the contest name — and the selected week's date range is shown before you sync, because
+ * `scores` upserts on (owner, week) and the wrong week silently overwrites a real one. See
+ * fetchWeekInfo / renderWeekInfo.
  *
  * Preseason mode: the Week input means "preseason week 1–3" and the POSTed week is offset into
  * the exhibition namespace (101–103). That single number is all the server needs — it flags the
@@ -510,10 +516,16 @@ function renderContestCard() {
 }
 
 /**
- * Auto-fill the Week input. Priority:
- *   1. trailing "#N" parsed from the detected contest name,
- *   2. the selected season's currentWeek,
- * but only when the user has not already typed a week this session (we treat an empty input or
+ * Auto-fill the Week input (and the Preseason toggle). Priority:
+ *   1. the app's answer from /api/current-week — derived from the synced NFL schedule, and the
+ *      only source that knows BOTH the week and whether it is an exhibition one;
+ *   2. a trailing "#N" parsed from the detected contest name;
+ *   3. the selected season's currentWeek.
+ *
+ * 2 and 3 are fallbacks for when the app cannot answer, and both are known-unreliable — see
+ * fetchWeekInfo. They can still offer a wrong week; renderWeekInfo is what surfaces that.
+ *
+ * Only runs when the user has not already typed a week this session (we treat an empty input or
  * the persisted value as "not user-touched"; user edits set a flag).
  */
 function maybeAutofillWeek() {

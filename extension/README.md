@@ -7,6 +7,12 @@ capture; 1.1.0 added the endpoint probe, now relabelled
 [Troubleshooting](#troubleshooting--draftkings-endpoints). The POST contracts are unchanged and
 **no new permissions** were added.
 
+> **Since 1.3.0 shipped, without a version bump:** the week and the **Preseason** toggle are now
+> **detected** from the app's synced NFL schedule
+> ([`/api/current-week`](#the-apicurrent-week-endpoint-week-detection)) instead of guessed from the
+> contest name, and the popup shows the dates the selected week covers before you sync. `manifest.json`
+> still reads `1.3.0`. No new permissions; the endpoint is a GET on the token the popup already holds.
+
 > **Why one button.** Both halves come from the same leaderboard read — `captureRosters` has to
 > fetch it anyway to get entry keys — and there is no case where you want one without the other.
 > **Scores go first and lineups are best-effort:** scores are the official number that settles a
@@ -164,8 +170,14 @@ auto-fills (see below) — no manual Contest ID needed.
   the content script could read it, the **contest name**. Otherwise it shows a friendly prompt to
   open your league's DraftKings contest → Standings tab.
 - A **Season** dropdown (populated from `/api/seasons`, defaulting to the app's current season).
-- A **Week** input, **auto-filled** by parsing a trailing `#<number>` from the contest name
-  (e.g. "…#18" → 18), falling back to the selected season's `currentWeek`. Editable.
+- A **Week** input, **auto-filled from the NFL schedule** via
+  [`/api/current-week`](#the-apicurrent-week-endpoint-week-detection) — which also decides the
+  **Preseason** checkbox. Editable; the old contest-name / `currentWeek` guesses survive only as a
+  fallback for when the app cannot answer.
+- A **week-info line** under the Week box: the dates the selected week covers and its game count
+  ("Preseason Week 2 · Aug 13 – Aug 16 · 16 games"), turning **amber** with a warning when the
+  selected week is not the week the schedule says it is. **Read it before syncing** — see
+  [Confirm the week before you sync](#-confirm-the-week-before-you-sync).
 - A **Preseason** checkbox — see [Preseason (exhibition) syncs](#preseason-exhibition-syncs).
 - A big **Sync Week N** button (disabled until a contest is detected and a season is selected).
   This is the only button you need: it does **scores and lineups**.
@@ -179,6 +191,34 @@ auto-fills (see below) — no manual Contest ID needed.
   [below](#troubleshooting--draftkings-endpoints).
 - A **Paste manually** expander for the JSON fallback (scores only).
 
+### ⚠️ Confirm the week before you sync
+
+**Syncing a contest against the wrong week silently destroys that week's scores.** The app upserts
+on `(owner, week)`, so the wrong number in that box replaces a real week's results with this
+contest's — HTTP 200, no error, nothing to notice. It is recoverable (re-sync the right contest;
+the app keeps every run's raw payload) but only if you realise it happened.
+
+That is what the week-info line is for. It comes from the synced NFL schedule, so it describes the
+week that would *actually* be written:
+
+```text
+Preseason Week 2 · Aug 13 – Aug 16 · 16 games
+```
+
+Two amber states, both meaning **stop and check**:
+
+- `⚠ The schedule says it is Preseason Week 3 (Aug 20 – Aug 23). Syncing the wrong week overwrites
+  that week’s scores.` — the week you typed is not the week the schedule places today in. Fine if
+  you are deliberately re-scoring an older week; otherwise fix it.
+- `Week 5 — no NFL games found for this week.` — that week has no games at all: a typo, or the
+  season's schedule was never pulled.
+
+**Why this exists.** The week used to be guessed, and both guesses failed: a contest name need not
+contain a `#N` at all ("DraftKings - Test 2 by Colts0094" doesn't), and `seasons.currentWeek` is a
+hand-maintained column nobody remembers to advance. Worse, **the Preseason toggle was never
+detected** — it just remembered its last state, which is how one capture landed in week 102 while
+that day's scores went to 103.
+
 ### Preseason (exhibition) syncs
 
 > **The app can no longer create an exhibition week.** Admin → Preseason and `syncPreseasonWeek`
@@ -190,9 +230,11 @@ auto-fills (see below) — no manual Contest ID needed.
 
 (Byes are not a hazard here: exhibition weeks never produce one.)
 
-Then tick **Preseason** in the popup. The Week input now means *preseason week* and accepts
-**1–3**; the extension POSTs it offset into the exhibition namespace (`100 + week` →
-101/102/103), and the labels switch to "Sync Preseason Wk 2".
+**The toggle now ticks itself** when the schedule says the current week is an exhibition one —
+`nfl_games` stores `isExhibition` per row, so `/api/current-week` reports it and the popup applies
+it. You can still set it by hand. The Week input then means *preseason week* and accepts **1–3**;
+the extension POSTs it offset into the exhibition namespace (`100 + week` → 101/102/103), and the
+labels switch to "Sync Preseason Wk 2".
 
 That offset week is the *only* signal the server needs: `ingestLeaderboard` derives
 `isExhibition` from it, so the scores appear on **/live** — which renders exhibition weeks like any
@@ -208,8 +250,9 @@ Two guards worth knowing:
   silently land a preseason score in a real week — the API rejects anything in between with
   *"Week must be 1–25 (regular/playoff) or 101–103 (preseason exhibition)."*
 - Switching the checkbox **re-derives the week** rather than carrying the number across; a
-  regular week 7 is not preseason week 7. Contest-name and `currentWeek` auto-fill hints are
-  ignored in preseason mode, since both are regular-season numbers.
+  regular week 7 is not preseason week 7. The *fallback* hints (contest name, `currentWeek`) are
+  ignored in preseason mode, since both are regular-season numbers — but when `/api/current-week`
+  answers, its `inputWeek` is already in the right namespace and is used directly.
 
 > `popup.js` **mirrors** `PRESEASON_WEEK_BASE` / `MAX_PRESEASON_WEEK` from
 > `src/lib/schedule/preseason.ts` (and `MAX_REGULAR_WEEK` from `src/lib/ingest/week-schema.ts`,
@@ -232,6 +275,50 @@ ingest route) returns:
 
 Seasons are ordered active → upcoming → completed, then by year. The popup uses it both to
 populate the Season dropdown and as the **Test connection** probe.
+
+---
+
+## The `/api/current-week` endpoint (week detection)
+
+`GET <App Base URL>/api/current-week?season=<id>[&week=<n>]` — same bearer token, same CORS as
+`/api/seasons`, so nothing new to configure. **Read-only.** It answers two questions from the synced
+NFL schedule: *which week is it*, and *what dates does the week I have selected cover*.
+
+```json
+{
+  "detected": {
+    "week": 102,
+    "inputWeek": 2,
+    "isExhibition": true,
+    "label": "Preseason Week 2",
+    "firstKickoff": "2026-08-13T23:00:00.000Z",
+    "lastKickoff": "2026-08-16T21:00:00.000Z",
+    "gameCount": 16,
+    "basis": "in-progress"
+  },
+  "requested": null
+}
+```
+
+- **`week` vs `inputWeek`:** `week` is what gets POSTed (101–103 for exhibition); `inputWeek` is
+  what goes in the Week box (1–3 with **Preseason** ticked). The popup uses `inputWeek` for the
+  input and `isExhibition` for the checkbox, so it never has to reimplement the `100 +` offset.
+- **`basis`** — `in-progress` (a week already under way), `upcoming` (the next one to start), or
+  `last` (the season is over). `detected` only.
+- **`requested`** is the same shape for the `&week=` you passed, and is what fills the date line
+  under the Week box. `null` means that week has no NFL games stored.
+- **`detected: null`** means the season has no synced schedule, so the app declines to answer
+  rather than guessing. The popup then falls back to its **old** hints (contest-name `#N`, then
+  `seasons.currentWeek`; in preseason mode, the saved week, else 2) — so **the week it offers in
+  that state is still a guess**. The week-info line reports "no NFL games found for this week",
+  which is the tell.
+
+The popup calls it on connect, on season change, on typing in the Week box and on toggling
+Preseason — `fetchWeekInfo` / `refreshWeekInfo` / `renderWeekInfo` in `popup.js`, held in
+`state.weekInfo` (in memory only, never persisted). **It never throws:** week detection is a
+convenience, and losing it must not block a sync.
+
+Full contract: [`../docs/DRAFTKINGS.md` §13](../docs/DRAFTKINGS.md#13-the-week-detection-endpoint-implemented).
 
 ---
 
@@ -535,7 +622,7 @@ The app matches each `entryName` (case-insensitive, trimmed) to `owner_seasons.d
 | File                | Role                                                                       |
 | ------------------- | -------------------------------------------------------------------------- |
 | `manifest.json`     | MV3 manifest (permissions, content script, popup, background service worker). **Version lives here** — currently `1.3.0`. |
-| `popup.html/.css/.js` | The popup UI + the two sync paths + the **Lineups** status card + the Live Sync card + the **Troubleshooting** panel + result banners. `onSync()` drives both halves; `saveCapturedLineups(cap, season, week, contestId)` POSTs the already-fetched rosters and reports into the Lineups card. `postIngestTo(path, payload)` is the shared poster for both ingest endpoints and **always** produces an error message. |
+| `popup.html/.css/.js` | The popup UI + the two sync paths + the **Lineups** status card + the Live Sync card + the **Troubleshooting** panel + result banners. `onSync()` drives both halves; `saveCapturedLineups(cap, season, week, contestId)` POSTs the already-fetched rosters and reports into the Lineups card. `postIngestTo(path, payload)` is the shared poster for both ingest endpoints and **always** produces an error message. **Week detection** lives here too: `fetchWeekInfo` / `refreshWeekInfo` / `renderWeekInfo` / `formatDateRange` fill the `#weekInfo` line from [`/api/current-week`](#the-apicurrent-week-endpoint-week-detection). |
 | `background.js`     | MV3 service worker. Drives **Live Sync**: a `chrome.alarms` poll that runs the credentialed capture in an open DK tab's MAIN world (`chrome.scripting.executeScript`), POSTs to ingest, and auto-stops when the contest is completed. Reflects state via `chrome.storage` + badge. |
 | `content-script.js` | Injects the page hook; bridges popup ⇄ hook through a generic tagged round-trip (`askPage`), used by `CAPTURE_LEADERBOARD`, `PROBE_ROSTER_ENDPOINT` (45s — it hits several DK URLs in sequence) and `CAPTURE_ROSTERS` (180s — one request per entry, so it is the longest round-trip the popup makes); reads the contest name from the gamecenter DOM (`DETECT_CONTEST`). |
 | `page-hook.js`      | Runs in the page's MAIN world. Authenticated fetch of the embed endpoint + robust entry extraction; the passive `api.draftkings.com` **request recorder** and `probeRosterEndpoint()` (v1.1.0); and (v1.2.0) `captureRosters()` / `fetchRoster()` / `slotIsRevealed()` behind `ROSTER_URL_TEMPLATE`. **v1.3.0:** `captureRosters()` returns the leaderboard `entries` alongside `lineups`, which is what lets one read serve both halves of Sync. |

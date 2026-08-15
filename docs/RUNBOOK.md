@@ -47,10 +47,18 @@ counts toward Points For and repairs itself on the next sync (see
 3. **Sync scores with the DK Sync extension**, ideally right after Monday night's game:
    - Log in to DraftKings, open the shared contest's `/contest/gamecenter/{contestId}`
      **Standings** tab.
-   - Open the extension popup → pick the **Season**, confirm the auto-filled **Week** → click
+   - Open the extension popup → pick the **Season**, **read the line under the Week box** ("Preseason
+     Week 2 · Aug 13 – Aug 16 · 16 games") and confirm those dates are the week you mean → click
      **Sync Week N**.
    - The **Paste manually** expander is the guaranteed fallback if the leaderboard read fails
      (scores only — it does not capture rosters).
+
+   > **The week and the Preseason toggle are now detected, not guessed.** The popup asks the app
+   > (`GET /api/current-week`), which derives both from the synced NFL schedule. The old hints —
+   > a trailing `#N` in the contest name, then `seasons.currentWeek` — survive **only** as a
+   > fallback for when the app cannot answer (no synced schedule, or the app is unreachable). In
+   > that case the popup can still offer a wrong week, but the week-info line reads
+   > **"no NFL games found for this week"**, which is your signal to check it by hand.
 
    > **One button does both halves.** Since v1.3.0, **Sync** posts the official scores *and*
    > captures every owner's roster from the same DraftKings read. Scores go first; the roster half
@@ -87,6 +95,32 @@ counts toward Points For and repairs itself on the next sync (see
    "Missed lineup — auto-loss · FF" row on `/my-team`, with the opponent's Points Against equal
    to that week's league median (2026 rule).
 
+### ⚠️ The wrong week overwrites a real one
+
+**This is the most destructive mistake available in the weekly loop, and it is completely silent.**
+
+`scores` upserts on `(ownerSeasonId, week)` and nothing else — not the contest id, not the time.
+So syncing a contest against the wrong week **replaces that week's real scores with this contest's
+numbers**. The sync reports success. `/admin/sync` shows the week as freshly imported. Nothing
+anywhere says the previous numbers are gone.
+
+It is recoverable: re-sync the correct contest against that week, and every run's raw payload is
+kept in `score_import_runs`
+([`DRAFTKINGS.md` §6](DRAFTKINGS.md#6-audit-log-score_import_runs)). But you have to *notice* first,
+so the real defence is before the sync:
+
+- **Read the date range under the Week box.** The popup shows the dates the selected week actually
+  covers, straight from `nfl_games`. If it says "Aug 13 – Aug 16" and you meant last Sunday, stop.
+- **Heed the mismatch warning.** When the week you have typed is not the week the schedule says it
+  is, the popup warns in amber and names the week it expected.
+- **"no NFL games found for this week"** means either a typo or an unsynced schedule — do not sync
+  through it.
+
+The historical version of this failure: the Preseason toggle was never detected, so it simply
+remembered its last state — and a roster capture landed in week 102 while that day's scores went to
+103. Both halves reported success. See
+[`SCORING.md` §4](SCORING.md#which-week-is-it--detecting-it-from-the-schedule).
+
 ### Preseason exhibition weeks — no longer created
 
 **The league does not run exhibitions any more, and the app can no longer set one up.** `ed6ef78`
@@ -105,6 +139,12 @@ every historical number. Existing exhibition weeks still render on `/live`, and 
 The regular (`1–25`) and exhibition (`101–103`) week ranges the ingest API accepts are
 **disjoint**, so a typo cannot land a preseason score in a real week. Byes are never derived for
 an exhibition week.
+
+**The Preseason toggle is now set for you.** `nfl_games` stores `isExhibition` per row, so
+`/api/current-week` reports whether the detected week is an exhibition one and the popup ticks the
+box accordingly. Previously the toggle was never detected at all — it just remembered its last
+state, which is how a capture and its scores ended up in two different weeks
+([above](#-the-wrong-week-overwrites-a-real-one)).
 
 ### Roster capture — what feeds `/live`
 
@@ -143,6 +183,13 @@ no capture rather than showing them as `0.00`. Players whose game is loaded but 
 score 0 (correctly — ESPN only lists players who recorded a stat); only players whose **game did not
 load** read as *unresolved*, and that is the one state worth chasing. See
 [`SCORING.md` §15](SCORING.md#the-five-slot-states--the-load-bearing-concept).
+
+**How to read it.** Matchup cards are ordered by **closeness**, so whatever could still go either
+way sits at the top and uncaptured matchups sit at the bottom. Each side shows its **minutes left**
+and a **projected final** (DraftKings' own formula, recomputed from ESPN's clock), and the centre
+shows a **win-probability estimate** — a model, not a measurement, so treat it as flavour and never
+as a result. The detail page also flags the **biggest single-slot gap** as the difference-maker.
+See [`SCORING.md` §15](SCORING.md#projections--win-probability--draftkings-own-formula).
 
 **Admin → Lineups** (`/admin/lineups?season=<id>&week=<n>`, defaulting to week 1) shows three
 things: how many DraftKings rosters have been captured for the week (`captured N/32` — the
@@ -304,6 +351,10 @@ code.
 | `/admin/sync` shows `partial` with unmatched entries | An owner submitted under a different DraftKings entry name | Fix `owner_seasons.dkEntryName` in Admin → Assignments, then re-sync. Unmatched entries are reported, never written. |
 | An owner should be marked as missing a lineup but is not | They scored above 0, or the week is not settled | Set `scores.isForfeit = true` for that owner-week directly. A stored flag is always honored as the commissioner's override and is never overwritten by the ingest path. |
 | Sync 401s | `INGEST_TOKEN` unset on the server, or the extension's token does not match | See [`DEPLOYMENT.md` §2](DEPLOYMENT.md#2-environment-variables) |
+| **A week's scores changed to a different contest's numbers** | That contest was synced against the wrong week — `scores` upserts on `(ownerSeasonId, week)` and overwrites silently | Re-sync the **correct** contest against that week. The overwritten run's raw payload is still in `score_import_runs`. See [The wrong week overwrites a real one](#-the-wrong-week-overwrites-a-real-one). |
+| The popup warns **"The schedule says it is Week N"** | The typed week is not the week `nfl_games` places today in | Do not sync through it — fix the week first, or confirm you really are re-scoring an older week. |
+| The popup shows **"no NFL games found for this week"** | Either a typo, or the season's schedule was never pulled | Check the week; if the season genuinely has no schedule, run Admin → Schedule → **Pull / refresh NFL schedule**. |
+| The Week box fills, but with no date line under it | The app could not answer `/api/current-week` — no synced schedule for that season, or the app is unreachable — so the popup fell back to the old contest-name / `currentWeek` guesses | **Do not trust the number.** Pull the schedule (Admin → Schedule) so detection can work, or set the week by hand after checking which week you actually mean. |
 | **Admin → Lineups** errors on a missing relation (`lineup_snapshots` / `lineup_capture_runs`) | Migration `0010` has not been applied to *that* database (production has it) | `npm run db:migrate`. Nothing else depends on it; scoring is unaffected either way. |
 | A capture reads **32/32 owners but only a few players revealed** | Not a fault — DraftKings conceals each player until their game kicks off | Nothing to do. Re-capture after later kickoffs; no points are missing, only names. |
 | A capture reports **0 enriched slots** with revealed players | DK's public draftables lookup for that draft group failed, so no team keys were resolved — the snapshot is stored but not scorable | Re-run **Sync**. Confirm the draft group id resolves at `api.draftkings.com/contests/v1/contests/{contestId}?format=json`. |

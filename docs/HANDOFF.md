@@ -8,8 +8,11 @@ _Last updated: 2026-08-15 (**live in-progress scoring is DONE, Phases 0–5** �
 ESPN adapter, roster capture/storage with migration `0010` **applied**, the `draftableId` → identity
 bridge, `src/lib/live/` incl. **capture-staleness detection**, the **`/live`** +
 **`/live/[matchupId]`** pages, one-button Sync in **extension v1.3.0**, `liveTag` wired to the
-capture, and the removal of **all** exhibition tooling (public page *and* admin setup); **all seven
-commits are local — nothing pushed**. Prior: live-scoring *remediation* Phases 0–4 + the playoff
+capture, and the removal of **all** exhibition tooling (public page *and* admin setup). **Then, on
+top:** schedule-derived **week detection** (`GET /api/current-week`) closing the silent
+wrong-week-overwrite hazard, **minutes remaining** from ESPN's clock, and **projections +
+win probability** using DraftKings' own reverse-engineered formula. **Nothing is pushed —
+`git log origin/main..main` lists eleven commits.** Prior: live-scoring *remediation* Phases 0–4 + the playoff
 **3rd-place game**, preseason syncing from the DK Chrome extension, preseason exhibition games,
 tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model tracker)._
 
@@ -18,13 +21,17 @@ tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model
 ## Snapshot
 
 - **Live app:** Vercel (`keylehr-h2h.vercel.app`), auto-deploys from `main`. The live-scoring
-  session is the seven-commit run `6559f0f` … `4a697ca` (`git log -p 6559f0f^..HEAD`), on top of the
-  earlier 12-commit run `d0ba364` … `e2a3f1a`. **Those commit messages are the real design record**
-  — read them before touching the scoring, live or playoff paths; each one states the bug, the
-  decision and what was rejected.
-  > **Push check.** ⚠️ **All seven live-scoring commits are LOCAL.** Run `git log origin/main..main`
-  > — if it lists anything, push it, and note that Vercel has not deployed it yet. Nothing on
-  > production serves `/live` until you do.
+  session is the run `6559f0f` … `52c7d2b` (`git log -p 6559f0f^..HEAD`) — eleven commits, of which
+  the last three (`ce25c78` week detection, `ec16bde` minutes, `52c7d2b` projections) came after the
+  Phase 0–5 write-up — on top of the earlier 12-commit run `d0ba364` … `e2a3f1a`. **Those commit
+  messages are the real design record** — read them before touching the scoring, live or playoff
+  paths; each one states the bug, the decision and what was rejected.
+  > **Push check.** ⚠️ **Every commit of this session is LOCAL.** Run `git log origin/main..main`
+  > — it listed **eleven** on 2026-08-15, against an `origin/main` ref last fetched 2026-08-10, so
+  > `git fetch` first if the number matters. If it lists anything, push it, and note that Vercel has
+  > not deployed it yet. **Nothing on production serves `/live`, and nothing serves
+  > `/api/current-week`, until you do** — which also means the extension's week detection silently
+  > falls back to its old guesses against production.
   > **One caveat when reading the log:** `d3cc2e9`'s message says "Admin → Preseason STAYS". That was
   > true when written and was **superseded an hour later by `ed6ef78`**, which removed it. The
   > commits are still the design record; this is the one place a later commit reversed an earlier
@@ -32,14 +39,17 @@ tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model
 - **Stack:** Next.js 16.2.9 (App Router, Turbopack) · React 19 · Tailwind v4 (CSS `@theme`, no
   config file) · Drizzle + Neon Postgres (**HTTP driver** — every query is a network round-trip) ·
   NextAuth (commissioner login) · a Chrome extension for DraftKings sync.
-- **Verification:** `npm run verify` is **9/9 green** (typecheck · lint · **291 unit tests,
-  23 files** · production build · ESPN health · engine invariants · **historical snapshot
+- **Verification:** `npm run verify` is **9/9 green** (typecheck · lint · **330 unit tests,
+  26 files** · production build · ESPN health · engine invariants · **historical snapshot
   unchanged** · **engine no-op proofs** · 2025 ground-truth replay), with the frozen-history
   snapshot byte-identical. The two TRUTH checks are from the remediation session — see the
   freeze-gate part of that DONE section below. It was 144 tests / 16 files at `e2a3f1a`; the extra
-  **147 across 7 new files** are the live-scoring work — 63 engine (`score` 41 + `espn-extract` 22),
-  58 capture (`normalize` 30 + `no-write` 21 + `enrich` 7), 17 `live/assemble` and 8
-  `live/staleness`. Typecheck and lint are clean.
+  **186 across 10 new files** are the live-scoring work — 63 engine (`score` 41 + `espn-extract` 22),
+  61 capture (`normalize` 30 + `no-write` 24 + `enrich` 7), 17 `live/assemble`, 8 `live/staleness`,
+  11 `schedule/current-week`, 12 `live/minutes` and 14 `live/projection`. Typecheck and lint are
+  clean.
+  > `no-write.test.ts` **discovers** the modules it scans, so its count grows on its own as files
+  > land — 22 at `a3d919e` → **24** now, with no edit to the test itself.
 - **Migrations:** applied through **0010** — `0010_polite_nicolaos.sql` (the two live-scoring
   capture tables) is **applied to production**; `lineup_snapshots` and `lineup_capture_runs` exist
   with their unique + season/week indexes. It is purely additive (two new tables, no ALTERs), so it
@@ -443,6 +453,68 @@ Sleeper PPR as a free proxy).
 
 ## Recent work (newest first)
 
+- **Projections + win probability, closeness sort, difference-maker** (`52c7d2b`). Tests 315 →
+  **330**. New pure module `src/lib/live/projection.ts` (`projectSlot`, `projectLineup`,
+  `winProbability`, `formatWinProbability`; 14 tests). Written up in
+  [`SCORING.md` §15](SCORING.md#projections--win-probability--draftkings-own-formula).
+  - **The formula is DraftKings' own, reverse-engineered EXACTLY** — not a model we invented. DK's
+    roster payload carries both a `pregameProjection` and a `realTimeProjection`; three captured
+    samples pin the relationship to **nine decimal places**:
+    `projected = score + pregameProjection × (minutesRemaining / 60)`. Trammell 1.50 + 14.6667 ×
+    (34.35/60) = 9.896667 (DK: 9.896667); 3.80 + 14.6667 × (30.00/60) = 11.133333 (DK: same);
+    Williams 0.00 + 14.6667 × (60.00/60) = 14.666667 (DK: same). Those three cases are pinned in
+    `projection.test.ts`, so **if DK changes how it projects, the tests fail** rather than the page
+    drifting.
+  - **Only the PREGAME number is stored.** `LineupSlotInput.dkProjection` captures it (it exists
+    only at capture time, like draftables); the live figure is **recomputed from ESPN's clock every
+    render**, so it keeps moving with no machine on — the same property the whole live estimate runs
+    on. The `/api/ingest/lineups` schema accepts `dkProjection`.
+  - **Win probability is a MODEL, and is labelled as one.** Normal CDF over the projected margin,
+    sd shrinking with the minutes left. `LINEUP_SD_FULL_SLATE = 40` is a **rough industry figure,
+    never fitted** — isolated as one constant precisely so that fitting it, once a season of real
+    results exists, is a one-line change. It never renders 0%/100% mid-game, and it is only computed
+    when **both** lineups are captured.
+  - **`/live` now sorts by CLOSENESS** (`|winProbability − 0.5|`), uncaptured matchups last. The
+    detail page highlights the **largest single-slot gap** (≥ 5 pts, both sides scored) as the
+    difference-maker.
+- **Minutes remaining; less duplication on the matchup page** (`ec16bde`). Tests 302 → **315**. New
+  pure module `src/lib/live/minutes.ts` (`minutesLeftInGame`, `lineupMinutes`, `parseClockMinutes`,
+  `formatMinutes`; 12 tests). ESPN's `status.period` / `status.displayClock` now flow through
+  `extractGame` (new `period` / `displayClock` on `ExtractedGame`) into `LiveStatIndex.teamState`.
+  - **Why it matters:** 40 points with 300 minutes left is a completely different position from 40
+    with 12, and the page could not say which one you were looking at.
+  - **Concealed slots count as a full 60** — DK conceals exactly until kickoff, so a concealed slot
+    had a whole game ahead of it. **Overtime clamps to 0**, since the metric is denominated in 60.
+  - **✅ The PMR discrepancy is RESOLVED — do not re-open it.** An earlier note said DK's rule could
+    not be reproduced, because Mario Williams read 60 with his game at "15:00 3rd" where the formula
+    gives 30. His record carried **`eTag: "1"`** against Trammell's `137`/`193`: DraftKings only
+    refreshes a player's row when something changes, and Williams had recorded nothing all game, so
+    that 60 was **stale data, not a different rule**. Our clock-derived number is the fresher one.
+    The module is still named for our own computation, not "PMR", because that is what it is.
+  - **`/live/[matchupId]` lost its `PageHeader`** — the matchup was named three times and the week
+    twice, pushing the scores below the fold. `matchup-switcher.tsx` → **`matchup-nav.tsx`**, now
+    carrying both owners, logos, scores and minutes on prev/next.
+- **Week detection from the schedule** (`ce25c78`). Tests 291 → **302**. New pure module
+  `src/lib/schedule/current-week.ts` (`pickWeek`, `rangeForWeek`; types `WeekRange`, `DetectedWeek`,
+  `ScheduleGame`; 11 tests), its DB half `current-week-query.ts` (`detectCurrentWeek`,
+  `getWeekRange`), and `GET /api/current-week` — bearer `INGEST_TOKEN`, CORS like `/api/seasons`.
+  Contract in [`DRAFTKINGS.md` §13](DRAFTKINGS.md#13-the-week-detection-endpoint-implemented);
+  rationale in [`SCORING.md` §4](SCORING.md#which-week-is-it--detecting-it-from-the-schedule).
+  - **🛑 THE STAKES, and the reason this exists: `scores` upserts on `(ownerSeasonId, week)`, so
+    syncing a contest against the wrong week SILENTLY OVERWRITES that week's real scores.** No
+    error, HTTP 200, nothing to notice. Recoverable by re-syncing the right contest (and
+    `score_import_runs` keeps every raw payload), but only if someone realises.
+  - **Both old guesses were broken.** The extension parsed `#N` from the DK contest name — a real
+    contest, "DraftKings - Test 2 by Colts0094", has no `#N` — and fell back to the hand-maintained
+    `seasons.currentWeek`. **And the preseason toggle was never detected at all**: it just
+    remembered its last state, which is how a capture landed in week **102** while that day's scores
+    went to **103**.
+  - **`nfl_games` already knew both answers** — every kickoff, plus `isExhibition` per row. The
+    popup now shows the selected week's range ("Preseason Week 2 · Aug 13 – Aug 16 · 16 games") and
+    warns in amber on a mismatch.
+  - **Null means unknown, not week 1.** `pickWeek` returns null for a season with no synced
+    schedule, and the caller must leave the week alone. Defaulting would reintroduce exactly the
+    confident-wrong-week failure.
 - **Stale-capture detection + `liveTag` wired** (`4a697ca`). Tests 283 → **291**. New pure module
   `src/lib/live/staleness.ts` (`assessCaptureStaleness`, `countConcealedSlots`, 8 tests).
   - **The problem it solves is the estimate's biggest silent failure.** DK conceals a player until
@@ -701,6 +773,21 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
   carried — which for a real DK roster payload is *none*. That makes a pasted capture unscorable by
   design. Either thread a draft-group id through the form or accept the paste box as a
   store-the-evidence fallback only.
+- **🐞 `dkProjection` is `undefined`, not `null`, on every snapshot captured before it existed —
+  and that renders `NaN`.** `slots` is `jsonb` so the new field needed no migration, but
+  `src/lib/lineups/query.ts` casts the stored JSON straight to `LineupSlotInput[]` with no
+  per-field defaulting, and `src/lib/live/projection.ts` guards with `slot.dkProjection === null`,
+  which is **false** for `undefined`. The slot then evaluates `banked + undefined × (minutesLeft/60)`
+  → `NaN`, which propagates to the team's projected total, to `winProbability` (rendered **"NaN%"**)
+  and into `/live`'s closeness sort. **Reproduced against a pre-`dkProjection` slot shape; every
+  lineup snapshot in the database today predates the field** (week 102, 6 snapshots). A one-line
+  code decision — `?? null` on read, or `!= null` guards — but it is a logic change, so it needs a
+  human. **Not deployed yet**, so nothing is broken in production today.
+- **Win probability is calibrated by assumption.** `LINEUP_SD_FULL_SLATE = 40` in
+  `src/lib/live/projection.ts` is a rough industry figure for a Classic lineup's spread, never
+  fitted to this league. The *projection* it feeds is DraftKings' own formula and is exact; the
+  *probability* on top is a model. It is isolated as one constant so fitting it — after a season of
+  real weekly results — is a one-line change. Until then, keep it labelled an estimate in the UI.
 - **A resolved 3rd-place game does not reach the bracket UI.** `getPlayoffBracket` builds its
   `rounds` array as `PLAYOFF_ROUND_ORDER.filter(...)`, and `third_place` is deliberately not in
   that list, so the row is loaded into `byRound` and then dropped. The rendering branch added to
@@ -814,7 +901,13 @@ driver means one query = one round-trip, so batch writes.
   other week. Rows carry `isExhibition` (migration 0008) and are excluded
   from every stats query. Scores arrive through the normal ingest endpoint at the offset week —
   `POST /api/ingest/draftkings` accepts `1–25` **or** `101–103` — driven by the extension's
-  **Preseason** toggle (`extension/popup.js`, which mirrors the constants).
+  **Preseason** toggle (`extension/popup.js`, which mirrors the constants) and now **auto-set** from
+  the schedule, see below.
+- Which week is it: `src/lib/schedule/current-week.ts` (**pure**, `pickWeek` / `rangeForWeek`, 11
+  tests) + `current-week-query.ts` (reads `nfl_games`), exposed as `GET /api/current-week` for the
+  extension. It answers **both** the week number and whether that week is exhibition, so neither is
+  guessed. Guarding against the silent wrong-week overwrite of `scores` is the whole point —
+  [`SCORING.md` §4](SCORING.md#-the-wrong-week-silently-overwrites-a-real-one).
 - Player signals + lineup builder: `src/lib/players/{sleeper,espn-news,recommend,query}.ts`
   (`recommend.ts` is the pure engine; `query.ts` is the DB/schedule orchestration hub)
 - DraftKings salaries + cap optimizer: `src/lib/draftkings/{draftables,match}.ts`, `src/lib/players/optimize.ts`
@@ -852,10 +945,14 @@ driver means one query = one round-trip, so batch writes.
   index; `buildLiveStatIndex`, `getLiveStatsForWeek`, `playerStatKey`, `liveTag`,
   `LIVE_INDEX_REVALIDATE_SECONDS = 30`) · `assemble.ts` (**pure**, `assembleLive`, 17 tests, and the
   home of the five slot states) · `staleness.ts` (**pure**, `assessCaptureStaleness` /
-  `countConcealedSlots`, 8 tests — the "re-sync, your totals are low" detector) · `query.ts`
+  `countConcealedSlots`, 8 tests — the "re-sync, your totals are low" detector) · `minutes.ts`
+  (**pure**, `minutesLeftInGame` / `lineupMinutes`, 12 tests — how much football is left) ·
+  `projection.ts` (**pure**, `projectSlot` / `projectLineup` / `winProbability`, 14 tests —
+  DraftKings' own projection formula plus a labelled win-probability **model**) · `query.ts`
   (**reads only**: `getLiveWeekData`, `getDefaultLiveWeek`, `getMatchupLocation`). Routes:
-  `src/app/live/` (list) and `src/app/live/[matchupId]/` (head-to-head detail; `matchup-nav.tsx` =
-  prev/next + dropdown). **Neither route may set `dynamic = 'force-dynamic'`** — see
+  `src/app/live/` (list, ordered by **closeness**) and `src/app/live/[matchupId]/` (head-to-head
+  detail, no `PageHeader`; `matchup-nav.tsx` = prev/next + dropdown, carrying both owners, logos,
+  scores and minutes). **Neither route may set `dynamic = 'force-dynamic'`** — see
   [`SCORING.md` §15](SCORING.md#rendering-it--live-phases-45). `liveTag` is invalidated by
   `POST /api/ingest/lineups`.
 - Admin (commissioner): `src/app/admin/(panel)/` — Owners · Assignments · Schedule · **Preseason** ·

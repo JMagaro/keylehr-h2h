@@ -460,3 +460,43 @@ export function normalizeRosterPayload(
 
   return { lineups: out, skipped };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Reading stored slots back                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Hydrate a slot read back out of `lineup_snapshots.slots`.
+ *
+ * REQUIRED, not defensive politeness. `slots` is jsonb, so adding a field needs no migration
+ * — and every row written before that field simply has no such key. Casting the stored JSON
+ * straight to `LineupSlotInput` therefore produces `undefined` where the type promises
+ * `number | null`, and `undefined` slips past an `=== null` guard:
+ *
+ *     banked + undefined * (minutesLeft / 60)  ->  NaN
+ *
+ * which propagates into a team total, renders as "proj NaN" and "NaN%", and poisons a sort
+ * comparator. Normalising once at the read boundary is what keeps every consumer honest,
+ * rather than each of them remembering to guard.
+ */
+export function hydrateStoredSlot(raw: unknown): LineupSlotInput {
+  const o = isBag(raw) ? raw : {};
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return {
+    slot: toStr(o.slot),
+    dkPlayerId: toStr(o.dkPlayerId),
+    draftableId: toStr(o.draftableId),
+    name: toStr(o.name),
+    teamKey: toStr(o.teamKey),
+    position: toStr(o.position),
+    revealed: Boolean(o.revealed),
+    dkScore: num(o.dkScore),
+    dkStats: Array.isArray(o.dkStats) ? (o.dkStats as DkStat[]) : null,
+    dkProjection: num(o.dkProjection),
+  };
+}
+
+/** Hydrate a whole stored lineup. */
+export function hydrateStoredSlots(raw: unknown): LineupSlotInput[] {
+  return Array.isArray(raw) ? raw.map(hydrateStoredSlot) : [];
+}

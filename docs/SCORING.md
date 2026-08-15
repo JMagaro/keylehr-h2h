@@ -146,6 +146,59 @@ Both:
 
 Re-running converges: the upsert is idempotent on `(ownerSeasonId, week)`.
 
+### ⚠️ The wrong week silently overwrites a real one
+
+That same idempotence is the hazard. The upsert key is `(ownerSeasonId, week)` and nothing else —
+not the contest id, not the capture time — so **syncing a contest against the wrong week replaces
+that week's real scores with this contest's numbers, with no error and nothing to notice.** The
+week is just a number in a text box; a typo, or a stale toggle, is all it takes.
+
+It is recoverable — re-sync the correct contest against that week, and `score_import_runs` keeps
+the raw payload of every run ([`DRAFTKINGS.md` §6](DRAFTKINGS.md#6-audit-log-score_import_runs)) —
+but nothing tells you it happened, so the defence has to be *before* the sync. That is what
+`GET /api/current-week` is for: the app derives the week from the synced NFL schedule, and the
+extension shows the dates it covers ("Preseason Week 2 · Aug 13 – Aug 16 · 16 games") next to the
+week you picked, warning when the two disagree. See
+[Which week is it?](#which-week-is-it--detecting-it-from-the-schedule) below and
+[`RUNBOOK.md`](RUNBOOK.md#-the-wrong-week-overwrites-a-real-one).
+
+### Which week is it — detecting it from the schedule
+
+The extension used to **guess** the week two ways, and both failed in practice:
+
+- parse a trailing `#N` out of the DraftKings contest name — but a contest name need not contain
+  one. A real one, "DraftKings - Test 2 by Colts0094", did not, so the parse silently found
+  nothing;
+- fall back to `seasons.currentWeek` — a hand-maintained column nobody remembers to advance.
+
+**And the preseason toggle was never detected at all.** It simply remembered whatever it was last
+left on, which is how a capture landed in week 102 while that day's scores went to 103.
+
+`nfl_games` already holds every kickoff *and* an `isExhibition` flag per row, so the schedule can
+answer both questions without guessing:
+
+| Module | Role |
+| ------ | ---- |
+| `src/lib/schedule/current-week.ts` | **Pure**, no DB and no clock of its own: `pickWeek(games, now)` and `rangeForWeek(games, week)`. Types `ScheduleGame`, `WeekRange`, `DetectedWeek`. 11 unit tests. |
+| `src/lib/schedule/current-week-query.ts` | The DB half, **read-only**: `detectCurrentWeek(seasonId, now?)` and `getWeekRange(seasonId, week)`. |
+| `src/app/api/current-week/route.ts` | `GET /api/current-week` — what the extension calls. Bearer `INGEST_TOKEN`, CORS as `/api/seasons`. Contract in [`DRAFTKINGS.md` §13](DRAFTKINGS.md#13-the-week-detection-endpoint-implemented). |
+
+`pickWeek` tries three rules in order, and reports which one it used as `basis`:
+
+| `basis` | Rule |
+| ------- | ---- |
+| `in-progress` | A week already under way — its first kickoff is in the past and within the week's span. The **latest** such week wins, so a Thursday opener doesn't hand the answer back to the week just gone. |
+| `upcoming` | Otherwise, the next week to start. |
+| `last` | Otherwise, the last week of the season — everything has finished. |
+
+A week counts as "under way" for **5.5 days** after its first kickoff (`WEEK_SPAN_MS`), sized to
+cover Thursday night through the following Monday night so the answer doesn't flip the moment
+Sunday's games end.
+
+> **No games, no answer.** `pickWeek` returns `null` for a season with no synced schedule, and the
+> caller must treat that as *unknown* and leave the week alone. Defaulting to 1 would reintroduce
+> exactly the confident-wrong-week failure above.
+
 ## 5. Byes
 
 A bye is a property of **the NFL schedule**, so it is derived from `nfl_games` — never from
@@ -476,7 +529,8 @@ Two things hold the invariant up, and they are different in kind:
   or `nfl_games`, or calls `ingestLeaderboard` / `writeTeamScores`. **Every module in those
   directories is scanned — the list is discovered, not enumerated, so a new file is covered the
   moment it lands.** It also asserts it found something to scan, so a guard that silently checks
-  nothing fails loudly. 21 tests.
+  nothing fails loudly. 24 tests — a count that **grows on its own** as modules land, because the
+  list is discovered rather than written down.
 
 Reads are deliberately allowed — a live view is *supposed* to read `scores` and show DraftKings'
 authoritative number beside the estimate. Only writes are forbidden.
@@ -659,6 +713,8 @@ from `src/app/api/ingest/draftkings/route.ts` with no behaviour change.
 | `src/lib/live/assemble.ts` | `assembleLive(matchups, snapshots, index)` — **pure**: no DB, no network, no clock. Types: `LiveView`, `LiveMatchup`, `LiveTeam`, `LiveSlot`, `LiveSlotStatus`. 17 unit tests. |
 | `src/lib/live/query.ts` | The only DB module behind `/live`, and **read-only**: `getLiveWeekData(seasonId, week)`, `getDefaultLiveWeek(seasonId)`, `getMatchupLocation(matchupId)`, type `LiveTeamContext`. |
 | `src/lib/live/staleness.ts` | **Pure.** `assessCaptureStaleness(input)` and `countConcealedSlots(matchups)` — detects a capture that has been overtaken by kickoffs. 8 unit tests. See [below](#the-staleness-problem--one-capture-is-not-enough). |
+| `src/lib/live/minutes.ts` | **Pure.** How much football is left: `minutesLeftInGame(clock)`, `lineupMinutes(slots, clockByTeam)`, plus `parseClockMinutes` / `formatMinutes`. Types `GameClock`, `LineupMinutes`. 12 unit tests. See [below](#minutes-remaining--how-much-football-is-left). |
+| `src/lib/live/projection.ts` | **Pure.** Projected finals and who is winning: `projectSlot`, `projectLineup`, `winProbability`, `formatWinProbability`. Types `LineupProjection`, `WinProbability`. 14 unit tests. See [below](#projections--win-probability--draftkings-own-formula). |
 
 **The join is `(normalizeName, teamKey)`** — Phase 4, and it lives in `playerStatKey`. The team
 component is not optional: name alone collides on real players (Bijan vs Brian Robinson, Travis vs
@@ -722,6 +778,109 @@ have kicked off since the capture and how many roster spots are still unknown.
 > **Operationally: sync again after the last kickoff of the day**, or the late slate scores zero.
 > See [`RUNBOOK.md`](RUNBOOK.md#roster-capture--what-feeds-live).
 
+#### Minutes remaining — how much football is left
+
+A score on its own does not describe a live matchup. **40 points with 300 minutes left is a
+completely different position from 40 points with 12**, and the page had no way to say which one
+you were looking at.
+
+ESPN's `status.period` and `status.displayClock` are now carried through `extractGame`
+(`ExtractedGame.period` / `.displayClock`) into `LiveStatIndex.teamState`, which is what makes the
+remaining time computable per team, and therefore per roster slot:
+
+```text
+minutesLeftInGame = (4 − period) × 15 + minutes left in the current quarter
+```
+
+Three rules are worth knowing, because each one encodes a judgement:
+
+- **Overtime clamps to 0.** It is extra football beyond the 60 this metric is denominated in;
+  counting it negative would make a lineup total misleading.
+- **A missing clock mid-game means the quarter is over** (halftime, or between quarters), so only
+  the whole quarters ahead are counted.
+- **A concealed slot counts as a full 60.** DraftKings conceals a player *exactly* until their game
+  kicks off, so a concealed slot at capture time had a whole game ahead of it. That inference is
+  only as fresh as the capture — which is precisely what
+  [staleness detection](#the-staleness-problem--one-capture-is-not-enough) flags.
+
+Slots we cannot place at all are counted as `unknownSlots` and **excluded** from `minutesLeft`
+rather than assumed — the same "never invent a number" rule as the [five slot
+states](#the-five-slot-states--the-load-bearing-concept).
+
+> **This is our computation, not DraftKings' PMR.** DK shows its own "Points Minutes Remaining",
+> and its `maxTimeRemaining: 540` (9 slots × 60) confirms the same model. One captured sample
+> looked like a *different* rule — Mario Williams reading 60 with his game at "15:00 3rd", where
+> the formula gives 30 — but his record carried `eTag: "1"` against another player's `137`/`193`.
+> DraftKings only refreshes a player's row when something changes, and he had recorded nothing all
+> game, so that 60 was **stale data, not a different rule**. Ours is derived from ESPN's clock, so
+> it is the fresher number and it keeps moving between captures.
+
+#### Projections + win probability — DraftKings' own formula
+
+**The projection formula is DraftKings', reverse-engineered exactly — not an invention.** DK's
+roster payload carries both a `pregameProjection` and a `realTimeProjection`, and the relationship
+between them was pinned from three captured samples, matching to **nine decimal places**:
+
+```text
+projected = score + pregameProjection × (minutesRemaining / 60)
+```
+
+| Player | Banked | Pregame | Minutes left | Computed | DraftKings |
+| ------ | ------ | ------- | ------------ | -------- | ---------- |
+| Trammell | 1.50 | 14.6667 | 34.35 | 9.896667 | 9.896667 |
+| Trammell | 3.80 | 14.6667 | 30.00 | 11.133333 | 11.133333 |
+| Williams | 0.00 | 14.6667 | 60.00 | 14.666667 | 14.666667 |
+
+In words: **a player is expected to keep earning at their pregame rate for whatever game time is
+left.** Those three cases are pinned in `src/lib/live/projection.test.ts`, so if DraftKings ever
+changes how it projects, the tests fail rather than the page quietly drifting.
+
+**Why the pregame number is captured and the live one is not.** `dkProjection` on
+`LineupSlotInput` holds DK's *pregame* projection, stored at capture time because it only exists
+while the contest is live ([`DRAFTKINGS.md` §12](DRAFTKINGS.md#12-the-roster-ingest-endpoint-implemented)).
+The live figure is **recomputed** from ESPN's clock on every render rather than stored, so it moves
+with no machine on — the same property that makes the whole live estimate work.
+
+A slot whose `dkProjection` is `null` — a concealed player — contributes **what it has banked and
+nothing more**, and is counted in `unprojectedSlots`. We report what a player has; we do not invent
+what they will get.
+
+> 🐞 **Known defect: a snapshot captured *before* `dkProjection` existed is not `null`, it is
+> `undefined`** — the key is simply absent from the stored `slots` jsonb, and nothing defaults it on
+> read. The `=== null` tests in `projection.ts` miss it, and the slot projects to **`NaN`**, which
+> propagates to the team total, the win probability ("NaN%") and `/live`'s closeness sort.
+> **Every snapshot in the database today predates the field.** Flagged, not worked around — the fix
+> is a code decision. See [`DATA_MODEL.md`](DATA_MODEL.md#live-scoring-lineup_capture_runs--lineup_snapshots).
+
+##### Win probability is a MODEL, not a measurement
+
+`winProbability(homeProjected, awayProjected, minutesLeftTotal)` runs a normal CDF over the
+projected margin, with a standard deviation that **shrinks as the clock runs down** — with a full
+slate ahead almost anything can happen; at zero minutes the margin *is* the result.
+
+The one number that makes it a model rather than a fact is isolated deliberately:
+
+```ts
+// src/lib/live/projection.ts
+const LINEUP_SD_FULL_SLATE = 40;
+```
+
+That is a **rough industry figure** for a Classic NFL lineup, not something measured from this
+league. The margin between two independent lineups therefore has sd ≈ 40 × √2 ≈ 57 with a full
+slate ahead. It is a single tunable constant on purpose: **once a season of real results exists,
+fit it and the whole model improves without touching anything else.**
+
+Two display rules follow from being a model:
+
+- **It must be labelled an estimate wherever it appears.** It sits next to a score that is itself
+  already an estimate; presenting a modelled probability as a measurement would compound that.
+- **It never renders 0% or 100% mid-game.** `formatWinProbability` clamps to 1–99 while any time
+  remains, and only switches to `Won` / `Lost` once `settled` is true (no minutes left). A live
+  page claiming certainty it does not have is worse than no number.
+
+Win probability is also only computed when **both** lineups are captured — a probability against an
+unknown roster is not a probability.
+
 #### Caching, and the one thing not to do
 
 `getLiveStatsForWeek` wraps the whole ESPN fan-out in `unstable_cache`
@@ -751,12 +910,27 @@ did not load become `unresolved`, never 0.
 - **`/live`** — the week's matchups as cards; the whole card is a `<Link>` to the detail page.
   Shows `N/M games loaded`, "lineups as of …", and names any owner with **no capture** rather than
   showing them as `0.00`. `?season=` and `?week=` override the defaults.
+  > **Cards are ordered by CLOSENESS, not by matchup id** — by each matchup's distance from a coin
+  > flip (`|winProbability − 0.5|`), so a dead heat sorts first and a decided blowout last. On a
+  > Sunday afternoon the interesting cards are the ones that could still go either way, and burying
+  > them below settled ones wastes the top of the page. **Matchups where either side has no capture
+  > sort last** — there is nothing to be close about.
 - **`/live/[matchupId]`** — the head-to-head: both rosters mirrored around a centre slot rail,
   each row carrying the player's points, a plain-English stat line, and their game state (or their
-  opponent and kickoff time if it hasn't started). Prev/next are real `<Link>`s that wrap at both
-  ends, plus a dropdown switcher. It resolves the matchup's week and then goes through the **same**
-  `getLiveWeekData` + `getLiveStatsForWeek` path as the list, so clicking in costs **no extra ESPN
-  traffic** however many people do it.
+  opponent and kickoff time if it hasn't started). Each side's header carries its **minutes left**
+  and, under the score, its **projected final**; the centre shows the **win-probability estimate**.
+  The **largest single-slot gap** is highlighted as the difference-maker (≥ 5 points, and only where
+  both sides are actually scored — a gap against an unknown is not a gap). It resolves the matchup's
+  week and then goes through the **same** `getLiveWeekData` + `getLiveStatsForWeek` path as the
+  list, so clicking in costs **no extra ESPN traffic** however many people do it.
+  - **Navigation is `matchup-nav.tsx`** (renamed from `matchup-switcher.tsx`): prev/next are real
+    `<Link>`s that wrap at both ends, each showing **both owners with team logos, their running
+    scores and the minutes left** — enough to tell what you are stepping into. The dropdown carries
+    the scores as text, since a native `<select>` cannot render logos.
+  - **The page deliberately has no `PageHeader`.** The matchup was named three more times below (nav
+    bar, dropdown, scoreboard) and the week twice, and removing the duplication is what pulls the
+    actual scores back above the fold. The "live estimate, DraftKings is official" line moved to the
+    footnote beside `N/M games loaded`.
 
 Exhibition weeks render like any other week — `getLiveWeekData` derives `isExhibition` from the week
 and applies it as a **required** filter ([§2](#2-the-three-week-namespaces)). `/live` opens on the
@@ -810,6 +984,13 @@ Real, specific, and none of them blocking:
   this is the first thing to look at.
 - **A pasted capture is never enriched**, so it is not scorable. Admin → Lineups sends no `draftGroupId`.
 - **2-pt conversions, safeties and blocked kicks stay best-effort**, by nature of the source ([exact vs best-effort](#exact-vs-best-effort)).
+- **`LINEUP_SD_FULL_SLATE = 40` has never been fitted** — it is a rough industry figure, so win
+  probability is calibrated by assumption, not by evidence. One season of real weekly results is
+  enough to fit it; it is isolated as one constant precisely so that day is a one-line change. See
+  [Projections + win probability](#projections--win-probability--draftkings-own-formula).
+- **The projection assumes a constant scoring rate.** DraftKings' own formula does too, which is why
+  ours reproduces theirs exactly — but it means a player who is being blown out, benched, or
+  injured still projects at their pregame rate until the clock says otherwise.
 
 **The DraftKings roster endpoint is now known** —
 `scores/v2/entries/{draftGroupId}/{entryKey}?format=json&embed=roster`, credentialed, one request

@@ -6,12 +6,17 @@
  * ("Points Minutes Remaining"), and its `maxTimeRemaining: 540` confirms the model — nine
  * roster slots × 60 minutes of regulation.
  *
- * WHY OURS IS NOT CALLED PMR. DraftKings' exact rule could not be confirmed. Two captured
- * samples disagree: Austin Trammell showed 30 with his game at halftime, which matches
- * (4 − 2) × 15 + 0 exactly — but Mario Williams showed 60 with his game at "15:00 3rd",
- * where the same rule gives 30. Rather than claim to reproduce a number we cannot verify, this
- * computes a plainly-defined "minutes left" of our own and labels it as such. If DK's rule is
- * ever pinned down, this is the one place to change.
+ * THE ONE SAMPLE THAT LOOKED LIKE A DIFFERENT RULE WAS STALE DATA. Austin Trammell showed 30
+ * with his game at halftime, matching (4 − 2) × 15 + 0 exactly. Mario Williams showed 60 with
+ * his game at "15:00 3rd", where the same rule gives 30 — but his record carried `eTag: "1"`
+ * against Trammell's `137`/`193`. DraftKings only refreshes a player's row when something about
+ * it changes, and Williams had recorded nothing all game, so his row still held its pregame
+ * value. The rule is the same; his number was old. Ours, derived from ESPN's clock, is the
+ * fresher one.
+ *
+ * WHY OURS IS STILL NOT CALLED PMR. It is our own computation from ESPN's clock, not a figure
+ * read back from DraftKings, so it is named for what it is. It also moves between captures,
+ * which DK's stored number cannot.
  *
  * Pure — no clock of its own, no network. The game state comes from ESPN.
  */
