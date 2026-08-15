@@ -9,6 +9,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
+  Activity,
   ArrowRight,
   CalendarDays,
   Clock,
@@ -114,6 +115,13 @@ export default async function DashboardPage() {
                 >
                   View standings
                   <ArrowRight className="size-4" aria-hidden="true" />
+                </Link>
+                <Link
+                  href="/live"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border-strong bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface"
+                >
+                  <Activity className="size-4 text-accent" aria-hidden="true" />
+                  Live scoring
                 </Link>
                 <Link
                   href="/my-team/builder"
@@ -341,6 +349,26 @@ export default async function DashboardPage() {
               </CardDescription>
             </CardHeader>
             <CardBody className="flex flex-col gap-3">
+              <Link
+                href="/live"
+                className="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-border-strong hover:bg-surface"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-accent/10 text-accent">
+                    <Activity className="size-5" aria-hidden="true" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="font-semibold text-foreground">Live</span>
+                    <span className="text-sm text-muted">
+                      Running estimates while games are being played.
+                    </span>
+                  </span>
+                </span>
+                <ArrowRight
+                  className="size-4 text-muted transition-transform group-hover:translate-x-0.5"
+                  aria-hidden="true"
+                />
+              </Link>
               <Link
                 href="/my-team"
                 className="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-border-strong hover:bg-surface"

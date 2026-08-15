@@ -15,18 +15,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 import { Container } from '@/components/container';
 import { PageHeader } from '@/components/page-header';
-import { assembleLive } from '@/lib/live/assemble';
+import { assembleLive, type LiveMatchup } from '@/lib/live/assemble';
 import { getLiveWeekData, getMatchupLocation } from '@/lib/live/query';
 import { getLiveStatsForWeek } from '@/lib/live/stats';
 import { exhibitionWeekLabel, isExhibitionWeek } from '@/lib/schedule/preseason';
 
 import { LiveRefresh } from '../live-refresh';
 import { MatchupDetail } from './matchup-detail';
-import { MatchupSwitcher } from './matchup-switcher';
+import { MatchupNav, type MatchupNavItem } from './matchup-nav';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -38,6 +38,11 @@ export const metadata: Metadata = {
 
 function weekLabel(week: number): string {
   return isExhibitionWeek(week) ? exhibitionWeekLabel(week) : `Week ${week}`;
+}
+
+/** A matchup is identified by BOTH owners — one name doesn't say which pairing it is. */
+function toNavItem(m: LiveMatchup): MatchupNavItem {
+  return { id: m.id, home: m.home.ownerName, away: m.away.ownerName };
 }
 
 export default async function LiveMatchupPage({
@@ -66,10 +71,7 @@ export default async function LiveMatchupPage({
   const count = view.matchups.length;
   const prev = view.matchups[(position - 1 + count) % count];
   const next = view.matchups[(position + 1) % count];
-  const options = view.matchups.map((m) => ({
-    id: m.id,
-    label: `${m.home.ownerName} vs ${m.away.ownerName}`,
-  }));
+  const options = view.matchups.map(toNavItem);
 
   return (
     <Container width="wide" as="div" className="flex flex-col gap-6 py-10">
@@ -84,33 +86,13 @@ export default async function LiveMatchupPage({
         <LiveRefresh fetchedAt={view.fetchedAt} />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Plain links, so stepping works with no JavaScript. */}
-        <Link
-          href={`/live/${prev.id}`}
-          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
-          aria-label={`Previous matchup: ${prev.home.ownerName} vs ${prev.away.ownerName}`}
-        >
-          <ChevronLeft className="size-3.5" aria-hidden="true" />
-          <span className="max-w-[9rem] truncate">{prev.home.ownerName}</span>
-        </Link>
-
-        <div className="flex items-center gap-2">
-          <MatchupSwitcher matchups={options} currentId={id} />
-          <span className="text-xs text-muted">
-            {position + 1} of {count}
-          </span>
-        </div>
-
-        <Link
-          href={`/live/${next.id}`}
-          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
-          aria-label={`Next matchup: ${next.home.ownerName} vs ${next.away.ownerName}`}
-        >
-          <span className="max-w-[9rem] truncate">{next.home.ownerName}</span>
-          <ChevronRight className="size-3.5" aria-hidden="true" />
-        </Link>
-      </div>
+      <MatchupNav
+        matchups={options}
+        currentId={id}
+        position={position + 1}
+        prev={toNavItem(prev)}
+        next={toNavItem(next)}
+      />
 
       <PageHeader
         eyebrow={weekLabel(location.week)}

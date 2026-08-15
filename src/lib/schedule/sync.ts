@@ -14,13 +14,7 @@
 import { sql } from 'drizzle-orm';
 
 import { db, nflTeams, nflGames, type NewNflGame } from '@/db';
-import {
-  DEFAULT_REGULAR_SEASON_WEEKS,
-  fetchSeasonSchedule,
-  fetchWeekGames,
-  SEASON_TYPE_PRESEASON,
-} from '@/lib/espn/client';
-import { toExhibitionWeek } from './preseason';
+import { DEFAULT_REGULAR_SEASON_WEEKS, fetchSeasonSchedule } from '@/lib/espn/client';
 
 /** Summary returned by {@link syncSeasonSchedule}. */
 export interface SyncSummary {
@@ -123,73 +117,3 @@ export async function syncSeasonSchedule(
   };
 }
 
-/**
- * Synchronize ONE NFL preseason week (ESPN seasontype=1) into `nfl_games` as EXHIBITION
- * games. They are stored at the preseason week namespace (`toExhibitionWeek`, e.g. 102)
- * and flagged `isExhibition: true`, so they never collide with — or count toward — the
- * regular season. Idempotent (same conflict key + set as the regular sync).
- *
- * @param preseasonWeek The NFL preseason week (1 = HOF, 2, 3).
- */
-export async function syncPreseasonWeek(
-  seasonId: number,
-  year: number,
-  preseasonWeek: number,
-): Promise<SyncSummary> {
-  const teams = await db.select({ id: nflTeams.id, espnId: nflTeams.espnId }).from(nflTeams);
-  const espnToLocalId = new Map<string, number>();
-  for (const team of teams) {
-    if (team.espnId) espnToLocalId.set(team.espnId, team.id);
-  }
-
-  const games = await fetchWeekGames(year, preseasonWeek, SEASON_TYPE_PRESEASON);
-  const storedWeek = toExhibitionWeek(preseasonWeek);
-
-  const rows: NewNflGame[] = [];
-  const unmapped = new Set<string>();
-  for (const game of games) {
-    const homeTeamId = espnToLocalId.get(game.homeEspnId);
-    const awayTeamId = espnToLocalId.get(game.awayEspnId);
-    if (homeTeamId === undefined) unmapped.add(game.homeEspnId);
-    if (awayTeamId === undefined) unmapped.add(game.awayEspnId);
-    if (homeTeamId === undefined || awayTeamId === undefined) continue;
-    rows.push({
-      seasonId,
-      week: storedWeek,
-      homeTeamId,
-      awayTeamId,
-      kickoff: game.kickoff,
-      espnEventId: game.espnEventId,
-      status: game.status,
-      isExhibition: true,
-    });
-  }
-
-  const byKey = new Map<string, NewNflGame>();
-  for (const row of rows) byKey.set(`${row.seasonId}-${row.week}-${row.homeTeamId}`, row);
-  const deduped = [...byKey.values()];
-
-  const UPSERT_BATCH = 100;
-  for (let i = 0; i < deduped.length; i += UPSERT_BATCH) {
-    const batch = deduped.slice(i, i + UPSERT_BATCH);
-    await db
-      .insert(nflGames)
-      .values(batch)
-      .onConflictDoUpdate({
-        target: [nflGames.seasonId, nflGames.week, nflGames.homeTeamId],
-        set: {
-          awayTeamId: sql`excluded.away_team_id`,
-          kickoff: sql`excluded.kickoff`,
-          espnEventId: sql`excluded.espn_event_id`,
-          status: sql`excluded.status`,
-          isExhibition: sql`excluded.is_exhibition`,
-        },
-      });
-  }
-
-  return {
-    weeksProcessed: deduped.length > 0 ? 1 : 0,
-    gamesUpserted: deduped.length,
-    unmappedEspnTeamIds: [...unmapped],
-  };
-}

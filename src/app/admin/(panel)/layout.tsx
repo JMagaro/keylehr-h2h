@@ -14,7 +14,6 @@ const ADMIN_NAV = [
   { href: '/admin/owners', label: 'Owners' },
   { href: '/admin/assignments', label: 'Assignments' },
   { href: '/admin/schedule', label: 'Schedule' },
-  { href: '/admin/preseason', label: 'Preseason' },
   { href: '/admin/sync', label: 'Sync' },
   { href: '/admin/lineups', label: 'Lineups' },
   { href: '/admin/playoffs', label: 'Playoffs' },

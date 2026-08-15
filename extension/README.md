@@ -1,10 +1,19 @@
 # KeyLehr H2H — DraftKings Sync (Chrome extension)
 
-**Current version: 1.2.0** (`manifest.json`). 1.2.0 adds
-[**Capture lineups**](#capture-lineups-roster-capture-for-live-scoring) — every owner's DraftKings
-roster, for the live estimate — on top of 1.1.0's
-[Diagnose roster endpoint](#diagnose-roster-endpoint-phase-0-of-live-scoring) panel. The weekly
-score-sync paths are unchanged, and **no new permissions** were added.
+**Current version: 1.3.0** (`manifest.json`). 1.3.0 is **one button**: **Sync** now posts the week's
+scores *and* captures every owner's roster from a single DraftKings read — the separate "Capture
+lineups" button is gone. See [Lineups](#lineups-captured-automatically-by-sync). 1.2.0 added roster
+capture; 1.1.0 added the endpoint probe, now relabelled
+[Troubleshooting](#troubleshooting--draftkings-endpoints). The POST contracts are unchanged and
+**no new permissions** were added.
+
+> **Why one button.** Both halves come from the same leaderboard read — `captureRosters` has to
+> fetch it anyway to get entry keys — and there is no case where you want one without the other.
+> **Scores go first and lineups are best-effort:** scores are the official number that settles a
+> week, lineups only feed an estimate, so a roster failure must never block a score sync or cast
+> doubt on one that succeeded. Lineups report into their own card, and if roster capture fails
+> outright the flow falls back to the plain leaderboard read — the path that existed before
+> lineups did.
 
 A Manifest V3 Chrome extension that reads the shared **private** DraftKings contest
 leaderboard from the commissioner's **already-logged-in** DraftKings session and posts it to
@@ -39,7 +48,7 @@ capture, which posts to `POST /api/ingest/lineups` and **never writes a score**.
   single top `leader` entry — that was the original "captured 1 of 32" bug. Do **not** use the
   no-`embed` `scores/v1/...` path for the leaderboard.
 
-- **The roster endpoint (used only by Capture lineups):**
+- **The roster endpoint (used by the lineup half of Sync):**
 
   ```
   https://api.draftkings.com/scores/v2/entries/{draftGroupId}/{entryKey}?format=json&embed=roster
@@ -47,8 +56,9 @@ capture, which posts to `POST /api/ingest/lineups` and **never writes a score**.
 
   The first path segment is the **draft group** id, not the contest id — that distinction is why
   every contest-id-based guess failed. There is **no bulk equivalent**: the plausible
-  `…/leaderboards/{contestId}?embed=leaderboard,roster` answers `200` with an empty entry map. See
-  [Capture lineups](#capture-lineups-roster-capture-for-live-scoring).
+  `…/leaderboards/{contestId}?embed=leaderboard,roster` answers `200` with an empty entry map
+  (`entryByEntryKey: {}`), confirmed again on a live contest. See
+  [Lineups](#lineups-captured-automatically-by-sync).
 
 - **Why the fetch runs in the DK page (not the popup):** this endpoint requires the user's
   authenticated DK session. The extension injects `page-hook.js` into the DK page's **MAIN
@@ -158,28 +168,33 @@ auto-fills (see below) — no manual Contest ID needed.
   (e.g. "…#18" → 18), falling back to the selected season's `currentWeek`. Editable.
 - A **Preseason** checkbox — see [Preseason (exhibition) syncs](#preseason-exhibition-syncs).
 - A big **Sync Week N** button (disabled until a contest is detected and a season is selected).
+  This is the only button you need: it does **scores and lineups**.
 - The result banner, plus a persistent **Last synced: Week N · HH:MM · matched Y/Z** line.
-- A **Lineups** card with a **Capture lineups** button — every owner's roster, for live scoring.
-  See [below](#capture-lineups-roster-capture-for-live-scoring). It shows a persistent
-  **Last capture: Week N · HH:MM · Y/Z lineups · R/S players revealed** line.
-- A **Diagnose roster endpoint** expander — a developer tool, not part of the weekly loop. See
-  [below](#diagnose-roster-endpoint-phase-0-of-live-scoring).
-- A **Paste manually** expander for the JSON fallback.
+- A **Lineups — for live scoring** card. **No button** — Sync drives it; the card reports the
+  lineup half's outcome on its own so it can never be confused with the score result. It shows a
+  persistent **Last capture: Week N · HH:MM · Y/Z lineups · R/S players revealed** line. See
+  [below](#lineups-captured-automatically-by-sync).
+- A **Live Sync** card — **optional**; `/live` does not need it (see the Live Sync section below).
+- A **Troubleshooting — DraftKings endpoints** expander — not part of normal use. See
+  [below](#troubleshooting--draftkings-endpoints).
+- A **Paste manually** expander for the JSON fallback (scores only).
 
 ### Preseason (exhibition) syncs
 
 **First**, sync the schedule in **Admin → Preseason** so the exhibition matchups exist — otherwise
-the scores land with nothing to score them against and `/preseason` shows no games. (Byes are not
-a hazard here: exhibition weeks never produce one.) The paste form on that page remains as a
-fallback.
+the scores land with nothing to score them against and `/live` shows no games for the week. (Byes
+are not a hazard here: exhibition weeks never produce one.) The paste form on that page remains as
+a fallback.
 
 Then tick **Preseason** in the popup. The Week input now means *preseason week* and accepts
 **1–3**; the extension POSTs it offset into the exhibition namespace (`100 + week` →
 101/102/103), and the labels switch to "Sync Preseason Wk 2".
 
 That offset week is the *only* signal the server needs: `ingestLeaderboard` derives
-`isExhibition` from it, so the scores appear on **/preseason** but never reach standings,
-seeding, playoffs, payouts, or all-time records. Live Sync works unchanged in this mode — it
+`isExhibition` from it, so the scores appear on **/live** — which renders exhibition weeks like any
+other — but never reach standings, seeding, playoffs, payouts, or all-time records. The lineup half
+of Sync carries the same offset week, so exhibition rosters stay in the same isolated namespace.
+Live Sync works unchanged in this mode — it
 carries the offset week through, and its auto-stop reads the contest's completion state
 (status field / no time-or-points remaining), which is week-agnostic.
 
@@ -219,9 +234,10 @@ populate the Season dropdown and as the **Test connection** probe.
 ## Use — two sync paths
 
 Both POST normalized `entries` to `<App Base URL>/api/ingest/draftkings` with
-`Authorization: Bearer <Ingest Token>` and show a prominent result banner.
+`Authorization: Bearer <Ingest Token>` and show a prominent result banner. **Sync additionally**
+POSTs rosters to `/api/ingest/lineups`; the paste path does not.
 
-### 1. Sync  *(primary — one click)*
+### 1. Sync  *(primary — one click, both halves)*
 
 1. In the same browser, log in to DraftKings and open the shared contest's
    **`/contest/gamecenter/{contestId}`** page. **This tab must be the active tab** — the
@@ -233,8 +249,13 @@ Both POST normalized `entries` to `<App Base URL>/api/ingest/draftkings` with
    - runs an authenticated `fetch` of
      `…/scores/v1/leaderboards/{contestId}?format=json&embed=leaderboard` **from the DK page**
      (so your DK session cookies are sent),
+   - fetches one roster per entry off the entry keys that same read returned,
    - robustly extracts **all** entries from the response, and
-   - POSTs them to the app.
+   - POSTs the scores to `/api/ingest/draftkings`, **then** the rosters to `/api/ingest/lineups`.
+
+   The single leaderboard read serves both halves — DraftKings is not asked for the same page
+   twice. If the roster fan-out fails, the flow falls back to the plain leaderboard read and the
+   score sync proceeds regardless.
 
 ### 2. Paste manually  *(guaranteed fallback)*
 
@@ -256,7 +277,12 @@ Use this if Sync can't reach the endpoint (not logged in, DK changed something, 
 
 ---
 
-### 3. Live Sync  *(keep scores updating during games)*
+### 3. Live Sync  *(optional — keep DraftKings' own totals fresh)*
+
+> **You probably don't need this.** The app's **`/live`** page computes its own running estimate
+> from public NFL stats and keeps moving with this computer switched off — that is the entire point
+> of capturing rosters. Turn Live Sync on only when you want DraftKings' **official** totals
+> refreshed during games too, and accept that it needs the machine awake and Chrome open.
 
 The one-click **Sync** above is a single snapshot. **Live Sync** re-runs that same capture+POST
 automatically every few minutes so the leaderboard keeps updating while games are in progress —
@@ -309,31 +335,28 @@ the accepted tradeoff for the **no-stored-credentials** model: the credentialed 
 unattended 24/7 polling you'd need a stored-credentials server pull, which this project
 deliberately avoids. Keep the machine awake / Chrome open during the window you want covered.
 
-## Capture lineups (roster capture for live scoring)
+## Lineups (captured automatically by Sync)
 
-> **New in v1.2.0.** This does **not** write a score. It records *who each owner started* so the app
-> can compute a running estimate from public NFL stats all week — see
+> **Since v1.3.0 there is no separate button** — **Sync** does this. This does **not** write a
+> score. It records *who each owner started* so the app can compute a running estimate from public
+> NFL stats all week — see
 > [`../docs/SCORING.md` §15](../docs/SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
 > The DraftKings leaderboard remains the only source of `scores`.
 
-**Why it exists.** The leaderboard sync needs your live DK session, so the numbers only move when
-someone syncs. Rosters are the one thing only DraftKings knows — capture them **once** (authenticated,
-from your browser), and everything after that is computed from ESPN's free, keyless boxscore. No
-stored credentials, no cron, machine can be off in between.
+**Why it exists.** The leaderboard sync needs your live DK session, so the official numbers only
+move when someone syncs. Rosters are the one thing only DraftKings knows — capture them **once**
+(authenticated, from your browser), and everything after that is computed from ESPN's free, keyless
+boxscore. No stored credentials, no cron, machine can be off in between. That is why **`/live`
+keeps updating when this extension is closed** and your computer is asleep.
 
-**How to run it:**
-
-1. Log in to DraftKings and open the contest's **`/contest/gamecenter/{contestId}`** page — the same
-   tab the weekly **Sync** uses.
-2. Open the popup, confirm the contest is detected and the **Season** + **Week** are right (the
-   **Preseason** toggle applies here too).
-3. In the **Lineups — for live scoring** card, click **Capture lineups — Week N** (the button
-   carries the same week the Sync button does, so a mis-set week is visible before you click).
+**How to run it:** click **Sync**. That's it — same tab, same Season/Week, same **Preseason** toggle.
+The lineup half runs off the same leaderboard read and reports into the **Lineups** card.
 
 The extension then, all inside the DK page's MAIN world so your session cookies are attached:
 
 1. resolves the contest's **draft group id** from `contests/v1/contests/{contestId}`,
-2. fetches the leaderboard — the same call **Sync** makes — to get every **entry key**,
+2. fetches the leaderboard **once** to get every **entry key** — the score half reuses these very
+   rows, so DraftKings is not asked for the same page twice,
 3. fetches one roster per entry from
    `scores/v2/entries/{draftGroupId}/{entryKey}?format=json&embed=roster`, at **concurrency 4** with
    150–300 ms of jitter, and
@@ -373,6 +396,10 @@ is stored as a new version keyed by its capture time, and the newest one wins.
 
 ### Result messages (Lineups card)
 
+These appear in the **Lineups** card, never in the score banner — deliberately, so a roster problem
+is visible without casting doubt on a score sync that worked. If roster capture failed outright you
+get `Lineups not captured — <reason>` followed by **"Scores were synced anyway."**
+
 - `✅ Week N lineups saved — Y/Z owners.` plus the revealed count, and, when relevant:
   - `Unmatched DK names: …` — fix the owner's DK entry name in Admin → Assignments and re-capture.
   - `Failed to read N: …` — those entries' roster requests errored; the rest still saved.
@@ -383,15 +410,16 @@ is stored as a new version keyed by its capture time, and the newest one wins.
 - `❌ Saving failed — <detail>` — the app rejected the post; the message reports how many lineups
   were captured first.
 
-## Diagnose roster endpoint (Phase 0 of live scoring)
+## Troubleshooting — DraftKings endpoints
 
-> **A developer tool, added in v1.1.0. It is not part of the weekly scoring loop** — it reads
-> nothing into the app and posts nothing anywhere. Skip this section unless you are working on
-> live scoring.
+> **Not part of normal use — Sync does everything.** In the popup this is the
+> **"Troubleshooting — DraftKings endpoints"** expander (called *Diagnose roster endpoint* before
+> v1.3.0; it was clicked by mistake in place of the real button, which is a UI problem, not a user
+> one). It reads nothing into the app and posts nothing anywhere.
 >
-> **This is how the roster endpoint above was found.** It has done its job; it is kept for the day
-> DraftKings moves the endpoint. For the everyday path, use
-> [**Capture lineups**](#capture-lineups-roster-capture-for-live-scoring) instead.
+> **Use it for exactly one situation:** lineup capture starts failing, which would mean DraftKings
+> changed its API. Run it and send the output to whoever maintains the app. **This is how the
+> roster endpoint above was found** in the first place.
 
 **The problem it exists to solve.** Live in-progress scoring needs each owner's DK **roster**, not
 just their total. DraftKings' roster endpoint is undocumented, and the entire `scores/*` namespace
@@ -466,6 +494,12 @@ post**, so a "1 of 32" situation is obvious at a glance.
   - `❌ Server <status>` / `❌ Sync failed` — other server/network errors (the message includes
     how many entries were captured before the post).
 
+> **A failure always says something.** `postIngestTo` used to render **"Saving failed —"** with
+> nothing after the dash: an error page (a 404 from a deployment predating the endpoint, say) is
+> HTML, so `res.json()` fails, and `statusText` is an empty string over HTTP/2 — which is what most
+> hosts serve. It now always falls back to the status code, and a `404` additionally names the URL
+> and suggests the App Base URL may point at an older deployment.
+
 The app matches each `entryName` (case-insensitive, trimmed) to `owner_seasons.dkEntryName`
 (falling back to `owners.dkUsername`).
 
@@ -477,9 +511,11 @@ The app matches each `entryName` (case-insensitive, trimmed) to `owner_seasons.d
 - The **request recorder** added in v1.1.0 keeps `api.draftkings.com` **URLs only**, in memory, in
   the DK tab you opened — never headers, bodies, or cookies, and it is never sent anywhere. It is
   read only when you click **Probe roster endpoint**, and it dies with the tab.
-- **Capture lineups** (v1.2.0) added **no new permissions**: it reuses the same DraftKings host
-  access and the same MAIN-world fetch the leaderboard sync already uses. It reads league members'
-  rosters from a contest you are in and sends them only to your own app.
+- **Roster capture** (v1.2.0, folded into **Sync** at v1.3.0) added **no new permissions**: it
+  reuses the same DraftKings host access and the same MAIN-world fetch the leaderboard sync already
+  uses. It reads league members' rosters from a contest you are in and sends them only to your own
+  app. Note that it stores only what DraftKings already revealed — concealed players are recorded
+  without an identity, so the app cannot expose a lineup DK was still hiding.
 - Beyond DraftKings + `localhost:3000` (the only pre-granted hosts), the extension holds host
   access **only** to the deployed origin you explicitly approve at the one-time Chrome permission
   prompt — nothing else.
@@ -494,11 +530,11 @@ The app matches each `entryName` (case-insensitive, trimmed) to `owner_seasons.d
 
 | File                | Role                                                                       |
 | ------------------- | -------------------------------------------------------------------------- |
-| `manifest.json`     | MV3 manifest (permissions, content script, popup, background service worker). **Version lives here** — currently `1.2.0`. |
-| `popup.html/.css/.js` | The popup UI + the two sync paths + the **Lineups** card (`Capture lineups`) + the Live Sync card + the **Diagnose roster endpoint** panel + result banners. `postIngestTo(path, payload)` is the shared poster for both ingest endpoints. |
+| `manifest.json`     | MV3 manifest (permissions, content script, popup, background service worker). **Version lives here** — currently `1.3.0`. |
+| `popup.html/.css/.js` | The popup UI + the two sync paths + the **Lineups** status card + the Live Sync card + the **Troubleshooting** panel + result banners. `onSync()` drives both halves; `saveCapturedLineups(cap, season, week, contestId)` POSTs the already-fetched rosters and reports into the Lineups card. `postIngestTo(path, payload)` is the shared poster for both ingest endpoints and **always** produces an error message. |
 | `background.js`     | MV3 service worker. Drives **Live Sync**: a `chrome.alarms` poll that runs the credentialed capture in an open DK tab's MAIN world (`chrome.scripting.executeScript`), POSTs to ingest, and auto-stops when the contest is completed. Reflects state via `chrome.storage` + badge. |
 | `content-script.js` | Injects the page hook; bridges popup ⇄ hook through a generic tagged round-trip (`askPage`), used by `CAPTURE_LEADERBOARD`, `PROBE_ROSTER_ENDPOINT` (45s — it hits several DK URLs in sequence) and `CAPTURE_ROSTERS` (180s — one request per entry, so it is the longest round-trip the popup makes); reads the contest name from the gamecenter DOM (`DETECT_CONTEST`). |
-| `page-hook.js`      | Runs in the page's MAIN world. Authenticated fetch of the embed endpoint + robust entry extraction; the passive `api.draftkings.com` **request recorder** and `probeRosterEndpoint()` (v1.1.0); and (v1.2.0) `captureRosters()` / `fetchRoster()` / `slotIsRevealed()` behind `ROSTER_URL_TEMPLATE`. |
+| `page-hook.js`      | Runs in the page's MAIN world. Authenticated fetch of the embed endpoint + robust entry extraction; the passive `api.draftkings.com` **request recorder** and `probeRosterEndpoint()` (v1.1.0); and (v1.2.0) `captureRosters()` / `fetchRoster()` / `slotIsRevealed()` behind `ROSTER_URL_TEMPLATE`. **v1.3.0:** `captureRosters()` returns the leaderboard `entries` alongside `lineups`, which is what lets one read serve both halves of Sync. |
 
 **Stored settings** (`chrome.storage.local`, `DEFAULTS` in `popup.js`): `appBaseUrl`,
 `ingestToken`, `seasonId`, `week`, `preseason`, `lastSync`, `lastEntryKeys` (v1.1.0 — up to five DK
