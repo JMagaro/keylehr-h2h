@@ -10,7 +10,8 @@
  *
  * Preseason mode: the Week input means "preseason week 1–3" and the POSTed week is offset into
  * the exhibition namespace (101–103). That single number is all the server needs — it flags the
- * scores `isExhibition`, so they show on /preseason but never touch standings or payouts.
+ * scores `isExhibition`, so they never touch standings or payouts. Exhibition weeks can no
+ * longer be CREATED — this remains for the data that already exists.
  *
  * ONE button does both halves of a week's data, because both come from a single DraftKings
  * read and there is no case where you want one without the other:
@@ -76,6 +77,7 @@ const els = {
   seasonSelect: document.getElementById('seasonSelect'),
   week: document.getElementById('week'),
   preseasonToggle: document.getElementById('preseasonToggle'),
+  weekInfo: document.getElementById('weekInfo'),
   syncBtn: document.getElementById('syncBtn'),
   syncSpinner: document.getElementById('syncSpinner'),
   syncLabel: document.getElementById('syncLabel'),
@@ -106,6 +108,9 @@ const state = {
   seasons: [], // [{ id, name, status, currentWeek, regularSeasonWeeks }]
   currentSeasonId: null,
   contest: null, // { id, name } when a DK contest is detected in the active tab
+  // { detected, requested } from /api/current-week — the schedule's answer for which week
+  // it is and what dates the selected week covers. null when the app can't say.
+  weekInfo: null,
   busy: false, // a sync is in flight
 };
 
@@ -305,6 +310,43 @@ async function fetchSeasons(base, token) {
   return json || { seasons: [], currentSeasonId: null };
 }
 
+/**
+ * Ask the app which week it is, and what dates a given week covers.
+ *
+ * The app derives both from the synced NFL schedule, which is the only source that actually
+ * knows. Guessing here was unreliable in two ways that both bit us: a contest name need not
+ * contain "#N", and the preseason toggle was never detected at all — it just remembered its
+ * last state, which put a capture in week 102 while the scores went to 103.
+ *
+ * Never throws: week detection is a convenience, and losing it must not stop a sync.
+ */
+async function fetchWeekInfo(seasonId, storedWeek) {
+  try {
+    const qs = storedWeek != null ? `&week=${encodeURIComponent(storedWeek)}` : '';
+    const res = await fetch(`${appBase()}/api/current-week?season=${seasonId}${qs}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${state.settings.ingestToken}`,
+        Accept: 'application/json',
+      },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/** "Sep 11 – Sep 15" — enough to confirm a week at a glance, without the noise of a year. */
+function formatDateRange(firstIso, lastIso) {
+  if (!firstIso) return '';
+  const opts = { month: 'short', day: 'numeric' };
+  const first = new Date(firstIso).toLocaleDateString('en-US', opts);
+  if (!lastIso) return first;
+  const last = new Date(lastIso).toLocaleDateString('en-US', opts);
+  return first === last ? first : `${first} – ${last}`;
+}
+
 /* -------------------------------------------------------------------------- */
 /* connection chip + season dropdown                                           */
 /* -------------------------------------------------------------------------- */
@@ -341,6 +383,9 @@ async function refreshChipAndSeasons() {
     state.currentSeasonId = data.currentSeasonId ?? null;
     populateSeasonDropdown();
     setChip('ok', `● Connected to ${hostLabel()}`);
+    // Now that a season is selected, ask the app which week it is. This drives BOTH the week
+    // number and the preseason toggle, so neither is a guess any more.
+    await refreshWeekInfo();
   } catch (e) {
     state.seasons = [];
     setChip('bad', e.status === 401 ? '● Token rejected — open Settings' : '● Not connected — open Settings');
@@ -474,6 +519,20 @@ function renderContestCard() {
 function maybeAutofillWeek() {
   if (weekUserEdited) return;
 
+  // The app's answer wins when we have one: it comes from the synced NFL schedule, which is
+  // the only source that actually knows what week it is AND whether that week is preseason.
+  const detected = state.weekInfo && state.weekInfo.detected;
+  if (detected) {
+    els.preseasonToggle.checked = Boolean(detected.isExhibition);
+    els.week.max = String(maxWeekForMode());
+    els.week.value = String(detected.inputWeek);
+    updateSyncButton();
+    renderWeekInfo();
+    return;
+  }
+
+  // ---- fallbacks, used only when the app cannot say (no synced schedule, app unreachable) --
+
   // In preseason mode both hints are meaningless: a contest's trailing "#18" and the
   // season's currentWeek are regular-season numbers, and either would land outside the
   // 1–3 preseason range. Fall back to the saved preseason week, else 2 (the usual one).
@@ -482,6 +541,7 @@ function maybeAutofillWeek() {
     const valid = Number.isInteger(saved) && saved >= 1 && saved <= MAX_PRESEASON_WEEK;
     els.week.value = String(valid ? saved : 2);
     updateSyncButton();
+    renderWeekInfo();
     return;
   }
 
@@ -493,6 +553,68 @@ function maybeAutofillWeek() {
     els.week.value = String(value);
   }
   updateSyncButton();
+  renderWeekInfo();
+}
+
+/**
+ * Load week info for the selected season and re-render.
+ *
+ * Called whenever the season or the typed week changes, so the date range always describes
+ * the week that would actually be synced.
+ */
+async function refreshWeekInfo() {
+  const season = selectedSeason();
+  if (!season || !isConfigured()) {
+    state.weekInfo = null;
+    renderWeekInfo();
+    return;
+  }
+  state.weekInfo = await fetchWeekInfo(season.id, currentWeek());
+  maybeAutofillWeek();
+  renderWeekInfo();
+}
+
+/**
+ * Show the dates the selected week covers, and warn when it is not the week the schedule
+ * says we are in.
+ *
+ * The warning exists because the failure is otherwise silent and destructive: `scores` upserts
+ * on (owner, week), so syncing a contest against the wrong week overwrites that week's real
+ * scores with no error at all.
+ */
+function renderWeekInfo() {
+  const info = state.weekInfo;
+  const week = currentWeek();
+  if (!info || week == null) {
+    els.weekInfo.textContent = '';
+    return;
+  }
+
+  const lines = [];
+  let warn = false;
+
+  const range = info.requested && info.requested.week === week ? info.requested : null;
+  if (range) {
+    const dates = formatDateRange(range.firstKickoff, range.lastKickoff);
+    lines.push(`${range.label}${dates ? ` · ${dates}` : ''} · ${range.gameCount} games`);
+  } else {
+    // No games stored for this week at all — either a typo, or the schedule isn't synced.
+    lines.push(`${weekLabel(week)} — no NFL games found for this week.`);
+    warn = true;
+  }
+
+  if (info.detected && info.detected.week !== week) {
+    const d = info.detected;
+    const dates = formatDateRange(d.firstKickoff, d.lastKickoff);
+    lines.push(
+      `⚠ The schedule says it is ${d.label}${dates ? ` (${dates})` : ''}. ` +
+        'Syncing the wrong week overwrites that week’s scores.',
+    );
+    warn = true;
+  }
+
+  els.weekInfo.className = warn ? 'week-info warn' : 'week-info';
+  els.weekInfo.textContent = lines.join('\n');
 }
 
 /** Apply preseason mode to the Week input + re-derive a sensible week for the new mode. */
@@ -1473,11 +1595,15 @@ els.seasonSelect.addEventListener('change', () => {
   const season = selectedSeason();
   if (season) persist({ seasonId: String(season.id) });
   maybeAutofillWeek();
+  refreshWeekInfo();
 });
 
 els.week.addEventListener('input', () => {
   weekUserEdited = true;
   updateSyncButton();
+  // Re-fetch so the dates describe the week actually typed — this is the moment a wrong
+  // week is most likely to be entered, so it is the moment to show what it covers.
+  refreshWeekInfo();
 });
 
 // Save the week on change so it survives reopen (until auto-fill overrides next open).
@@ -1490,6 +1616,7 @@ els.week.addEventListener('change', () => {
 els.preseasonToggle.addEventListener('change', () => {
   persist({ preseason: preseasonMode() });
   applyPreseasonMode();
+  refreshWeekInfo();
 });
 
 // ---- roster-endpoint diagnosis ----

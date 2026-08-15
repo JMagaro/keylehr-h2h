@@ -281,6 +281,23 @@ button.big {
 }
 
 /* ---- preseason (exhibition) mode toggle ---- */
+/* ---- week date range + mismatch warning ---- */
+.week-info {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.week-info:empty {
+  display: none;
+}
+
+.week-info.warn {
+  color: var(--amber);
+}
+
 .preseason-toggle {
   display: flex;
   align-items: center;

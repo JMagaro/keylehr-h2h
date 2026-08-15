@@ -59,6 +59,16 @@
         </label>
       </div>
 
+      <!--
+        The dates the selected week covers, straight from the synced NFL schedule.
+
+        This is a guard, not decoration. `scores` upserts on (owner, week), so syncing a
+        contest against the wrong week silently OVERWRITES that week's real scores with no
+        error. Seeing "Sep 11 – Sep 15" next to the week you picked is the cheap way to catch
+        it before it happens.
+      -->
+      <div id="weekInfo" class="week-info" role="status" aria-live="polite"></div>
+
       <label class="preseason-toggle">
         <input id="preseasonToggle" type="checkbox" />
         <span>Preseason <em>— exhibition, never counts</em></span>
