@@ -87,10 +87,12 @@ describe('assembleLive — scoring', () => {
     expect(s.gameDetail).toBe('8:30 - 3rd Quarter');
   });
 
-  it('sums only scored slots, so an unmatched player understates rather than invents', () => {
+  it('understates rather than invents when a player’s game could not be loaded', () => {
+    // MIA is absent from the index entirely — that game never loaded — so this player is
+    // unknown, contributes nothing, and the total is explicitly a floor.
     const view = assembleLive(
       [MATCHUP],
-      [snap(10, [slot(), slot({ name: 'Nobody Here', draftableId: '2' })])],
+      [snap(10, [slot(), slot({ name: 'Nobody Here', teamKey: 'MIA', draftableId: '2' })])],
       nacuaIndex(),
     );
     const team = view.matchups[0].home;
@@ -160,20 +162,54 @@ describe('assembleLive — the four non-scored states never become 0.00', () => 
     expect(view.matchups[0].home.concealed).toBe(1);
   });
 
-  it('marks a started player with no stat line as unresolved, never zero', () => {
+  it('marks a player whose game did NOT load as unresolved, never zero', () => {
+    // No teamState for MIA means we never loaded that game, so we genuinely cannot say.
     const view = assembleLive(
       [MATCHUP],
-      [snap(10, [slot({ name: 'Ghost Player' })])],
+      [snap(10, [slot({ name: 'Ghost Player', teamKey: 'MIA' })])],
       nacuaIndex(),
     );
     const s = view.matchups[0].home.slots[0];
     expect(s.status).toBe('unresolved');
     expect(s.points).toBeNull();
+    expect(view.matchups[0].home.unresolved).toBe(1);
   });
 
   it('marks a revealed player with no team as unresolved — enrichment failed', () => {
     const view = assembleLive([MATCHUP], [snap(10, [slot({ teamKey: null })])], nacuaIndex());
     expect(view.matchups[0].home.slots[0].status).toBe('unresolved');
+  });
+
+  it('scores a playing-but-statless player as a real 0, counted separately', () => {
+    // Measured against a live capture: ESPN lists only players who recorded a stat, so a
+    // receiver who has caught nothing is simply absent from a boxscore we DID load. DK pays
+    // 0 for exactly this. Calling it "unresolved" would paint `?` over half a roster.
+    const view = assembleLive(
+      [MATCHUP],
+      [snap(10, [slot(), slot({ name: 'Quiet Starter', draftableId: '2' })])],
+      nacuaIndex(),
+    );
+    const team = view.matchups[0].home;
+    const quiet = team.slots[1];
+    expect(quiet.status).toBe('noStats');
+    expect(quiet.points).toBe(0);
+    expect(team.noStats).toBe(1);
+    expect(team.unresolved).toBe(0);
+    // Their explicit zero does not disturb the total.
+    expect(team.points).toBe(27);
+  });
+
+  it('keeps a MISSING defense unresolved rather than zeroing it', () => {
+    // A defense always has a row in a loaded boxscore (points allowed alone guarantees one),
+    // so unlike a skill player, its absence is genuinely unexplained.
+    const view = assembleLive(
+      [MATCHUP],
+      [snap(10, [slot({ slot: 'DST', position: 'DST', name: 'Rams', teamKey: 'LAR' })])],
+      nacuaIndex(),
+    );
+    const s = view.matchups[0].home.slots[0];
+    expect(s.status).toBe('unresolved');
+    expect(s.points).toBeNull();
   });
 
   it('reports an owner with NO capture as hasSnapshot:false and names them', () => {

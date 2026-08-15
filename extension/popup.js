@@ -585,7 +585,17 @@ async function postIngestTo(path, payload) {
   }
 
   if (!res.ok) {
-    const msg = (json && (json.error || JSON.stringify(json.issues))) || res.statusText;
+    // ALWAYS produce a message. An error page (a 404 from a deployment that predates the
+    // endpoint, say) is HTML, so `res.json()` fails and `json` is null — and `statusText` is
+    // an empty string over HTTP/2, which is what most hosts serve. Falling through to those
+    // rendered "Saving failed —" with nothing after the dash: a failure that told the user
+    // nothing at all. The status code is the one thing always worth saying.
+    let msg = json && (json.error || (json.issues && JSON.stringify(json.issues)));
+    if (!msg) msg = res.statusText ? `${res.statusText} (HTTP ${res.status})` : `HTTP ${res.status}`;
+    if (res.status === 404) {
+      msg += ` — ${url} does not exist. If the App Base URL points at a deployment, that ` +
+        'version may predate this endpoint; try http://localhost:3000.';
+    }
     const err = new Error(msg);
     err.status = res.status;
     throw err;
@@ -1063,7 +1073,9 @@ async function onCaptureLineups() {
   } catch (e) {
     const detail = e.status === 401 ? 'Check the Ingest Token in Settings.' : e.message;
     setLineupsStatus(
-      `❌ Saving failed — ${detail}\n(captured ${captured.length} lineups before the post)`,
+      `❌ Saving failed — ${detail || 'no detail returned'}\n` +
+        `Posted to ${appBase()}.\n` +
+        `(captured ${captured.length} lineups before the post — the DraftKings half worked)`,
       'err',
     );
   } finally {

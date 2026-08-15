@@ -15,8 +15,18 @@
  *   pending     — their game has not kicked off. Contributes nothing YET, and says so.
  *   concealed   — DraftKings hid the player (their game hasn't started). Same as pending for
  *                 arithmetic, but we don't even know the name.
- *   unresolved  — we know who they are and their game has started, but no stat line matched.
- *                 This is the only genuinely bad state, and it must be loud.
+ *   noStats     — their game IS underway and we DID load its boxscore, but they have no row in
+ *                 it. ESPN lists only players who recorded a stat, so this is a player who has
+ *                 touched nothing yet. Worth 0 — which is what DraftKings pays — so it scores
+ *                 0, but stays counted separately so a name-match failure can still be seen.
+ *   unresolved  — we could not load that player's game at all, so we genuinely do not know.
+ *                 The only bad state, and it must be loud.
+ *
+ * WHY noStats IS SEPARATE FROM unresolved: collapsing them was measured wrong against live
+ * data. In a real preseason capture, 13 of 24 revealed players had no ESPN row — and every
+ * one was worth exactly 0.00 per DraftKings. Calling those "unresolved" would paint `?` over
+ * half of every roster and make the page read as broken; calling them "scored" would hide a
+ * genuine matching failure. They are a third thing.
  *
  * Nothing here is a score. See docs/SCORING.md §15.
  */
@@ -25,7 +35,7 @@ import type { LineupSlotInput } from '@/lib/lineups/normalize';
 
 import { playerStatKey, type LiveStatIndex } from './stats';
 
-export type LiveSlotStatus = 'scored' | 'pending' | 'concealed' | 'unresolved';
+export type LiveSlotStatus = 'scored' | 'pending' | 'concealed' | 'noStats' | 'unresolved';
 
 export interface LiveSlot {
   /** DK roster slot: QB | RB | WR | TE | FLEX | DST. */
@@ -34,7 +44,10 @@ export interface LiveSlot {
   teamKey: string | null;
   position: string | null;
   status: LiveSlotStatus;
-  /** null for every status except 'scored'. Never 0 as a stand-in for "unknown". */
+  /**
+   * A real number for 'scored' and 'noStats' (both mean "we know: it's this"), null for every
+   * other status. Never 0 as a stand-in for "unknown".
+   */
   points: number | null;
   /** Per-rule breakdown for the expanded view. Empty unless scored. */
   components: ScoreComponent[];
@@ -58,6 +71,8 @@ export interface LiveTeam {
   scored: number;
   pending: number;
   concealed: number;
+  /** Playing, but nothing recorded yet. Counted as 0 — see the header note. */
+  noStats: number;
   unresolved: number;
   /** When DraftKings was read. null when this owner has no capture at all. */
   capturedAt: Date | null;
@@ -138,9 +153,15 @@ function resolveSlot(slot: LineupSlotInput, index: LiveStatIndex): LiveSlot {
     return { ...base, status: 'pending', points: null, components: [], gameDetail };
   }
 
+  // Did we actually load this player's game? That is the difference between "they did
+  // nothing" and "we don't know" — and without it the two are indistinguishable.
+  const gameLoaded = teamState !== undefined;
+
   if (isDstSlot(slot)) {
     const dst = slot.teamKey ? index.defenses[slot.teamKey] : undefined;
     if (!dst) {
+      // A defense always appears in a loaded boxscore (points allowed alone guarantees a row),
+      // so a missing one really is unresolved rather than a quiet zero.
       return { ...base, status: 'unresolved', points: null, components: [], gameDetail };
     }
     const scored = scoreDst(dst.line);
@@ -161,9 +182,13 @@ function resolveSlot(slot: LineupSlotInput, index: LiveStatIndex): LiveSlot {
 
   const stat = index.players[playerStatKey(slot.name, slot.teamKey)];
   if (!stat) {
-    // The player's game has started but ESPN's boxscore has no line for them. Genuinely
-    // ambiguous — a healthy scratch and a name-match failure look identical here — so we
-    // refuse to guess and let the UI say so.
+    // Their game loaded and they are not in it: ESPN lists only players who recorded a stat,
+    // so this is someone who has done nothing yet. DraftKings pays 0 for exactly this, and
+    // measurement against a live capture confirmed it 13 times out of 13.
+    if (gameLoaded) {
+      return { ...base, status: 'noStats', points: 0, components: [], gameDetail };
+    }
+    // Their game did not load at all, so we genuinely cannot say. Never a zero.
     return { ...base, status: 'unresolved', points: null, components: [], gameDetail };
   }
 
@@ -189,6 +214,7 @@ function buildTeam(
     scored: 0,
     pending: 0,
     concealed: 0,
+    noStats: 0,
     unresolved: 0,
     capturedAt: null,
     hasSnapshot: false,
@@ -196,11 +222,12 @@ function buildTeam(
   if (!snapshot) return empty;
 
   const slots = snapshot.slots.map((s) => resolveSlot(s, index));
-  const counts = { scored: 0, pending: 0, concealed: 0, unresolved: 0 };
+  const counts = { scored: 0, pending: 0, concealed: 0, noStats: 0, unresolved: 0 };
   let total = 0;
   for (const s of slots) {
     counts[s.status] += 1;
-    if (s.status === 'scored' && s.points !== null) total += s.points;
+    // 'noStats' contributes its 0 explicitly: it is a known value, not a missing one.
+    if (s.points !== null) total += s.points;
   }
 
   return {

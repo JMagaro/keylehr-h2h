@@ -33,8 +33,12 @@ function slotDisplay(slot: LiveSlot): { value: string; note: string; muted: bool
       // DraftKings hides opponents' players until kickoff. Say that plainly rather than
       // letting a blank row read as a missing pick.
       return { value: '—', note: 'Hidden until kickoff', muted: true };
+    case 'noStats':
+      // A real 0.00 — they are playing and have not recorded anything. Shown muted so it
+      // reads differently from a scored 0, but it IS a number, not a gap.
+      return { value: formatPoints(0), note: 'No stats yet', muted: true };
     case 'unresolved':
-      return { value: '?', note: 'No stats found', muted: true };
+      return { value: '?', note: 'Game not loaded', muted: true };
   }
 }
 
@@ -70,7 +74,7 @@ function TeamSide({ team }: { team: LiveTeam }) {
         <div className="text-xs text-muted">
           {team.hasSnapshot ? (
             <>
-              {team.scored} scored
+              {team.scored + team.noStats} playing
               {team.pending + team.concealed > 0 ? ` · ${team.pending + team.concealed} to play` : ''}
               {team.unresolved > 0 ? ` · ${team.unresolved} unresolved` : ''}
             </>
