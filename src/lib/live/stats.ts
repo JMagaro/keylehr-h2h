@@ -61,8 +61,14 @@ export interface LiveStatIndex {
   players: Record<string, LivePlayerStat>;
   /** Keyed by `nfl_teams.key`. */
   defenses: Record<string, LiveDstStat>;
-  /** Per-team game state, so a roster slot can say "yet to play" without a second lookup. */
-  teamState: Record<string, { state: GameState; detail: string | null }>;
+  /**
+   * Per-team game state, so a roster slot can say "yet to play" without a second lookup.
+   * `period` and `displayClock` are what make time-remaining computable — see ./minutes.
+   */
+  teamState: Record<
+    string,
+    { state: GameState; detail: string | null; period: number | null; displayClock: string | null }
+  >;
   games: LiveGameSummary[];
   /** Games whose boxscore actually loaded, and how many were asked for. */
   gamesLoaded: number;
@@ -152,7 +158,12 @@ export async function buildLiveStatIndex(games: LiveGameRef[]): Promise<LiveStat
       teamKeys: game.teamKeys,
     });
     for (const teamKey of game.teamKeys) {
-      index.teamState[teamKey] = { state: game.state, detail: game.statusDetail };
+      index.teamState[teamKey] = {
+        state: game.state,
+        detail: game.statusDetail,
+        period: game.period,
+        displayClock: game.displayClock,
+      };
     }
     for (const p of game.players) {
       index.players[playerStatKey(p.name, p.teamKey)] = {

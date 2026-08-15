@@ -56,7 +56,7 @@ function nacuaIndex(): LiveStatIndex {
         line: { ...EMPTY_PLAYER_LINE, receptions: 8, recYards: 100, recTd: 1 },
       },
     },
-    teamState: { LAR: { state: 'in', detail: '8:30 - 3rd Quarter' } },
+    teamState: { LAR: { state: 'in', detail: '8:30 - 3rd Quarter', period: 3, displayClock: '8:30' } },
   });
 }
 
@@ -107,7 +107,7 @@ describe('assembleLive — scoring', () => {
       [snap(10, [slot({ slot: 'DST', position: 'DST', name: 'Rams', teamKey: 'LAR' })])],
       makeIndex({
         defenses: { LAR: { teamKey: 'LAR', line: { ...EMPTY_DST_LINE, sacks: 3, interceptions: 1, pointsAllowed: 10 } } },
-        teamState: { LAR: { state: 'in', detail: 'Halftime' } },
+        teamState: { LAR: { state: 'in', detail: 'Halftime', period: 2, displayClock: null } },
       }),
     );
     // 3 sacks (3) + 1 INT (2) + 10 points allowed, the 7–13 tier (4) = 9
@@ -128,7 +128,7 @@ describe('assembleLive — scoring', () => {
             line: EMPTY_PLAYER_LINE,
           },
         },
-        teamState: { LAR: { state: 'in', detail: 'Q2' } },
+        teamState: { LAR: { state: 'in', detail: 'Q2', period: 2, displayClock: '5:00' } },
       }),
     );
     const s = view.matchups[0].home.slots[0];
@@ -143,7 +143,7 @@ describe('assembleLive — the four non-scored states never become 0.00', () => 
     const view = assembleLive(
       [MATCHUP],
       [snap(10, [slot()])],
-      makeIndex({ teamState: { LAR: { state: 'pre', detail: '8:20 PM ET' } } }),
+      makeIndex({ teamState: { LAR: { state: 'pre', detail: '8:20 PM ET', period: null, displayClock: null } } }),
     );
     const s = view.matchups[0].home.slots[0];
     expect(s.status).toBe('pending');

@@ -100,6 +100,10 @@ export interface EspnHeaderCompetition {
   date?: string;
   competitors?: EspnHeaderCompetitor[];
   status?: {
+    /** Game clock as shown, e.g. "9:05". Absent before kickoff and after the final whistle. */
+    displayClock?: string;
+    /** Quarter number: 1–4, then 5+ for overtime. */
+    period?: number;
     type?: {
       /** "pre" | "in" | "post". */
       state?: string;

@@ -16,6 +16,7 @@ import { TeamLogo } from '@/components/team-logo';
 import type { LiveMatchup, LiveSlot, LiveTeam } from '@/lib/live/assemble';
 import type { LiveTeamContext } from '@/lib/live/query';
 import type { LiveStatIndex } from '@/lib/live/stats';
+import { formatMinutes, lineupMinutes, type LineupMinutes } from '@/lib/live/minutes';
 import { formatPoints, cn } from '@/lib/utils';
 
 /** Roster order, so both sides line up row for row. */
@@ -153,7 +154,15 @@ function PlayerCell({
   );
 }
 
-function TeamHeader({ team, align }: { team: LiveTeam; align: 'left' | 'right' }) {
+function TeamHeader({
+  team,
+  align,
+  minutes,
+}: {
+  team: LiveTeam;
+  align: 'left' | 'right';
+  minutes: LineupMinutes;
+}) {
   const right = align === 'right';
   return (
     <div className={cn('flex items-center gap-3', right && 'flex-row-reverse text-right')}>
@@ -161,9 +170,20 @@ function TeamHeader({ team, align }: { team: LiveTeam; align: 'left' | 'right' }
       <div className="min-w-0">
         <div className="truncate font-semibold">{team.ownerName}</div>
         <div className="text-xs text-muted">
-          {team.hasSnapshot
-            ? `${team.scored + team.noStats} playing · ${team.pending + team.concealed} to play`
-            : 'Lineup not captured'}
+          {team.hasSnapshot ? (
+            <>
+              {/* The number that makes a live matchup readable: 40 points with 300 minutes
+                  left is a completely different position from 40 with 12. */}
+              {formatMinutes(minutes.minutesLeft)} left
+              {' · '}
+              {team.scored + team.noStats} playing
+              {team.pending + team.concealed > 0
+                ? ` · ${team.pending + team.concealed} to play`
+                : ''}
+            </>
+          ) : (
+            'Lineup not captured'
+          )}
         </div>
       </div>
     </div>
@@ -190,19 +210,21 @@ export function MatchupDetail({
   const { home, away } = matchup;
   const rows = pairSlots(home.slots, away.slots);
   const bothCaptured = home.hasSnapshot && away.hasSnapshot;
+  const homeMinutes = lineupMinutes(home.slots, index.teamState);
+  const awayMinutes = lineupMinutes(away.slots, index.teamState);
 
   return (
     <div className="flex flex-col gap-4">
       <Card>
         <CardBody className="flex flex-col gap-4">
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-            <TeamHeader team={home} align="left" />
+            <TeamHeader team={home} align="left" minutes={homeMinutes} />
             <div className="flex items-center gap-3">
               <TeamScore team={home} />
               <span className="text-xs text-muted">vs</span>
               <TeamScore team={away} />
             </div>
-            <TeamHeader team={away} align="right" />
+            <TeamHeader team={away} align="right" minutes={awayMinutes} />
           </div>
 
           {!bothCaptured ? (

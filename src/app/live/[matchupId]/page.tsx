@@ -18,10 +18,10 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 
 import { Container } from '@/components/container';
-import { PageHeader } from '@/components/page-header';
 import { assembleLive, type LiveMatchup } from '@/lib/live/assemble';
 import { getLiveWeekData, getMatchupLocation } from '@/lib/live/query';
-import { getLiveStatsForWeek } from '@/lib/live/stats';
+import { getLiveStatsForWeek, type LiveStatIndex } from '@/lib/live/stats';
+import { lineupMinutes } from '@/lib/live/minutes';
 import { exhibitionWeekLabel, isExhibitionWeek } from '@/lib/schedule/preseason';
 
 import { LiveRefresh } from '../live-refresh';
@@ -40,9 +40,27 @@ function weekLabel(week: number): string {
   return isExhibitionWeek(week) ? exhibitionWeekLabel(week) : `Week ${week}`;
 }
 
-/** A matchup is identified by BOTH owners — one name doesn't say which pairing it is. */
-function toNavItem(m: LiveMatchup): MatchupNavItem {
-  return { id: m.id, home: m.home.ownerName, away: m.away.ownerName };
+/**
+ * A matchup is identified by BOTH owners — one name doesn't say which pairing it is — and a
+ * step target is far more useful carrying its score and how much football it has left.
+ */
+function toNavItem(m: LiveMatchup, index: LiveStatIndex): MatchupNavItem {
+  const clocks = index.teamState;
+  const side = (t: LiveMatchup['home']) => ({
+    ownerName: t.ownerName,
+    logoEspn: t.logoEspn,
+    teamKey: t.teamKey,
+    // null, not 0 — an uncaptured roster is unknown. Same rule as everywhere else.
+    points: t.hasSnapshot ? t.points : null,
+  });
+  return {
+    id: m.id,
+    home: side(m.home),
+    away: side(m.away),
+    minutesLeft:
+      lineupMinutes(m.home.slots, clocks).minutesLeft +
+      lineupMinutes(m.away.slots, clocks).minutesLeft,
+  };
 }
 
 export default async function LiveMatchupPage({
@@ -71,10 +89,15 @@ export default async function LiveMatchupPage({
   const count = view.matchups.length;
   const prev = view.matchups[(position - 1 + count) % count];
   const next = view.matchups[(position + 1) % count];
-  const options = view.matchups.map(toNavItem);
+  const options = view.matchups.map((m) => toNavItem(m, index));
 
   return (
-    <Container width="wide" as="div" className="flex flex-col gap-6 py-10">
+    <Container width="wide" as="div" className="flex flex-col gap-4 py-8">
+      {/*
+        Deliberately spare. The matchup is named three more times below — in the nav bar, the
+        dropdown and the scoreboard — and the week appears in the back link, so a PageHeader
+        repeating both was pure duplication pushing the actual scores below the fold.
+      */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href={`/live?season=${location.seasonId}&week=${location.week}`}
@@ -90,19 +113,15 @@ export default async function LiveMatchupPage({
         matchups={options}
         currentId={id}
         position={position + 1}
-        prev={toNavItem(prev)}
-        next={toNavItem(next)}
-      />
-
-      <PageHeader
-        eyebrow={weekLabel(location.week)}
-        title={`${matchup.home.ownerName} vs ${matchup.away.ownerName}`}
-        description="Live estimate from public NFL stats. The DraftKings leaderboard is the official score."
+        prev={toNavItem(prev, index)}
+        next={toNavItem(next, index)}
       />
 
       <MatchupDetail matchup={matchup} index={index} teamContext={data.teamContext} />
 
       <p className="text-xs text-muted">
+        Live estimate from public NFL stats — the DraftKings leaderboard is the official score.
+        {' · '}
         {view.gamesLoaded}/{view.gamesTotal} games loaded
         {matchup.home.capturedAt || matchup.away.capturedAt
           ? ` · lineups captured ${(matchup.home.capturedAt ?? matchup.away.capturedAt)!.toLocaleString(

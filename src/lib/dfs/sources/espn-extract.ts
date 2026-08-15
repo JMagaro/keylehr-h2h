@@ -50,6 +50,9 @@ export interface ExtractedGame {
   state: GameState;
   /** ESPN's human status, e.g. "Final" or "8:30 - 3rd Quarter". */
   statusDetail: string | null;
+  /** Quarter number (1-4, 5+ overtime) and clock, for computing time remaining. */
+  period: number | null;
+  displayClock: string | null;
   /** Both teams' `nfl_teams.key`, home first when known. */
   teamKeys: string[];
   players: ExtractedPlayer[];
@@ -233,6 +236,8 @@ export function extractGame(summary: EspnSummaryResponse): ExtractedGame {
   const statusType = competition?.status?.type;
   const state = readState(statusType?.state);
   const statusDetail = statusType?.detail ?? statusType?.shortDetail ?? null;
+  const period = competition?.status?.period ?? null;
+  const displayClock = competition?.status?.displayClock ?? null;
   const espnEventId = summary.header?.id ? String(summary.header.id) : null;
 
   // --- teams, scores, and the espnTeamId -> teamKey map ---------------------
@@ -423,6 +428,8 @@ export function extractGame(summary: EspnSummaryResponse): ExtractedGame {
     espnEventId,
     state,
     statusDetail,
+    period,
+    displayClock,
     teamKeys: orderedTeamKeys,
     players: [...players.values()].map((p) => ({
       espnAthleteId: p.espnAthleteId,
