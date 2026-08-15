@@ -30,7 +30,9 @@
     "import:playoffs": "tsx scripts/import-playoffs.ts",
     "import:awards": "tsx scripts/import-awards.ts",
     "models:snapshot": "tsx scripts/models.ts --action=snapshot",
-    "models:grade": "tsx scripts/models.ts --action=grade"
+    "models:grade": "tsx scripts/models.ts --action=grade",
+    "dfs:selftest": "tsx scripts/dfs-selftest.ts",
+    "live:check": "tsx scripts/live-check.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -60,5 +62,5 @@
     "typescript": "^5",
     "vitest": "^4.1.9"
   },
-  "description": "KeyLehr H2H Fantasy Football League — Vercel web app with automated DraftKings scoring"
+  "description": "KeyLehr H2H Fantasy Football League \u2014 Vercel web app with automated DraftKings scoring"
 }

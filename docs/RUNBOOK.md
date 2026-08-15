@@ -97,6 +97,48 @@ The regular (`1–25`) and exhibition (`101–103`) week ranges the ingest API a
 **disjoint**, so a typo cannot land a preseason score in a real week. Byes are never derived for
 an exhibition week.
 
+### Roster capture — not part of the weekly loop yet
+
+> **Skip this unless you are working on live scoring.** Capturing rosters changes nothing an owner
+> sees: there is no `/live` page, and captured lineups never touch standings, seeding, payouts or
+> `scores`. The weekly loop above is complete without it.
+
+**The normal path is the extension.** With the contest's gamecenter tab open, the popup's
+**Capture lineups** button (v1.2.0+) reads the leaderboard for entry keys and then fetches every
+owner's roster — one authenticated request each, because DraftKings has no bulk roster endpoint.
+See [`../extension/README.md`](../extension/README.md#capture-lineups-roster-capture-for-live-scoring).
+
+**Admin → Lineups** (`/admin/lineups?season=<id>&week=<n>`, defaulting to week 1) shows three
+things: how many DraftKings rosters have been captured for the week (`captured N/32` — the
+denominator is the season's owner count) alongside how many individual players are **revealed**, the
+newest capture per owner with anything under 9 **slots** flagged **incomplete**, and an audit table
+of recent capture runs including which DraftKings URL actually returned the rosters.
+
+> **"Revealed" is not "captured".** DraftKings hides a player from opponents until that player's game
+> kicks off, so a perfect 32/32 capture taken at the 1pm lock can show only a handful of the 288
+> players by name, with the rest listed as *N yet to play*. **That is not a partial capture** — a
+> concealed player has scored nothing, so no points are missing, only names. Re-capture later and
+> they fill in. Fewer than 9 **slots**, on the other hand, is a genuinely short payload.
+
+The **Paste rosters** box is the manual fallback: paste whatever a DraftKings roster response
+contains and it is parsed structurally, so the exact shape does not matter. Supply **Entry name**
+only when the payload is a single roster with nobody named in it, and fill in **Source URL** when
+you know which DraftKings URL produced it.
+
+Two things to know before trying it:
+
+- **Re-capturing later in the week is not a mistake.** DraftKings Classic allows late swap, every
+  capture is kept, and the newest one wins per owner-week.
+- **A paste is not enriched.** The extension sends the DK draft-group id, which is what lets the
+  server resolve each `draftableId` to a name and team; the paste form does not, so a pasted capture
+  keeps only whatever names and teams the payload itself carried.
+
+Unmatched DraftKings entry names are listed back to you rather than dropped — by the extension's
+result banner and by the paste form alike. Fix them the same way as a score mismatch: set the
+owner's **DK entry name** in Admin → Assignments, then capture again.
+
+See [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
+
 ### Playoff weeks
 
 Playoff rounds are scored at weeks 19–22 (`PLAYOFF_ROUND_WEEKS`). Generate and advance the
@@ -226,5 +268,8 @@ code.
 | `/admin/sync` shows `partial` with unmatched entries | An owner submitted under a different DraftKings entry name | Fix `owner_seasons.dkEntryName` in Admin → Assignments, then re-sync. Unmatched entries are reported, never written. |
 | An owner should be marked as missing a lineup but is not | They scored above 0, or the week is not settled | Set `scores.isForfeit = true` for that owner-week directly. A stored flag is always honored as the commissioner's override and is never overwritten by the ingest path. |
 | Sync 401s | `INGEST_TOKEN` unset on the server, or the extension's token does not match | See [`DEPLOYMENT.md` §2](DEPLOYMENT.md#2-environment-variables) |
+| **Admin → Lineups** errors on a missing relation (`lineup_snapshots` / `lineup_capture_runs`) | Migration `0010` has not been applied to *that* database (production has it) | `npm run db:migrate`. Nothing else depends on it; scoring is unaffected either way. |
+| A capture reads **32/32 owners but only a few players revealed** | Not a fault — DraftKings conceals each player until their game kicks off | Nothing to do. Re-capture after later kickoffs; no points are missing, only names. |
+| A capture reports **0 enriched slots** with revealed players | DK's public draftables lookup for that draft group failed, so no team keys were resolved — the snapshot is stored but not scorable | Re-run **Capture lineups**. Confirm the draft group id resolves at `api.draftkings.com/contests/v1/contests/{contestId}?format=json`. |
 | `verify` fails on **historical snapshot unchanged** | A change moved a frozen season | Stop. See [§6](#6-the-snapshot-gate). |
 | `verify` fails on **engine no-op proofs** | A precondition that makes the derivation model safe on history no longer holds | Stop — the corresponding change is not safe and needs a fresh look. The message names the season and the proof. |

@@ -21,6 +21,8 @@
  * trending lists go through the normal Next Data Cache with hourly revalidation.
  */
 
+import { normalizeTeamKey } from '@/lib/nfl/team-keys';
+
 const SLEEPER_BASE = 'https://api.sleeper.app/v1';
 
 /** Positions we care about for DFS. Sleeper's "DEF" is surfaced as "DST". */
@@ -62,25 +64,6 @@ interface RawSleeperPlayer {
   search_rank?: number | null;
   years_exp?: number | null;
   age?: number | null;
-}
-
-/**
- * Sleeper team abbreviations that differ from our nfl_teams.key. Sleeper uses "WAS"
- * for Washington where we use "WSH"; the rest match. The historical relocations are
- * mapped defensively in case an old player row still carries them.
- */
-const TEAM_KEY_FIX: Record<string, string> = {
-  WAS: 'WSH',
-  JAC: 'JAX',
-  LA: 'LAR',
-  OAK: 'LV',
-  SD: 'LAC',
-  STL: 'LAR',
-};
-
-function normalizeTeamKey(team: string): string {
-  const u = team.trim().toUpperCase();
-  return TEAM_KEY_FIX[u] ?? u;
 }
 
 function normalizePosition(pos: string | undefined): FantasyPosition | null {

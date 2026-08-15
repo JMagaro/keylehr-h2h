@@ -41,6 +41,11 @@ const DEFAULTS = {
   week: '',
   preseason: false, // exhibition mode — Week means "preseason week 1–3"
   lastSync: null, // { week, time (ms), matched, total }
+  // A few DK entry keys from the last sync. Used only by the roster-endpoint probe, which
+  // needs a real entry key to test the per-entry candidate URLs.
+  lastEntryKeys: null, // string[] | null
+  // Last LINEUP capture (live scoring) — a different thing from lastSync, which is scores.
+  lastLineupCapture: null, // { week, time (ms), matched, expected, revealed, slots }
 };
 
 const els = {
@@ -68,11 +73,24 @@ const els = {
   lastSynced: document.getElementById('lastSynced'),
   pasteJson: document.getElementById('pasteJson'),
   pasteBtn: document.getElementById('pasteBtn'),
+  // lineup capture (live scoring)
+  lineupsBtn: document.getElementById('lineupsBtn'),
+  lineupsSpinner: document.getElementById('lineupsSpinner'),
+  lineupsLabel: document.getElementById('lineupsLabel'),
+  lineupsStatus: document.getElementById('lineupsStatus'),
+  lastCaptured: document.getElementById('lastCaptured'),
   // live sync
   liveToggle: document.getElementById('liveToggle'),
   liveInterval: document.getElementById('liveInterval'),
   liveStatus: document.getElementById('liveStatus'),
   liveStopBtn: document.getElementById('liveStopBtn'),
+  // roster-endpoint diagnosis (Phase 0 of live scoring)
+  probeBtn: document.getElementById('probeBtn'),
+  probeSpinner: document.getElementById('probeSpinner'),
+  probeLabel: document.getElementById('probeLabel'),
+  probeResult: document.getElementById('probeResult'),
+  probeRaw: document.getElementById('probeRaw'),
+  probeCopyBtn: document.getElementById('probeCopyBtn'),
 };
 
 // In-memory popup state.
@@ -98,6 +116,8 @@ function loadSettings() {
         week: s.week || '',
         preseason: Boolean(s.preseason),
         lastSync: s.lastSync || null,
+        lastEntryKeys: Array.isArray(s.lastEntryKeys) ? s.lastEntryKeys : null,
+        lastLineupCapture: s.lastLineupCapture || null,
       };
       resolve(state.settings);
     });
@@ -219,6 +239,7 @@ function showMain() {
   els.preseasonToggle.checked = Boolean(state.settings.preseason);
   els.week.max = String(maxWeekForMode());
   renderLastSynced();
+  renderLastCaptured();
   refreshChipAndSeasons();
   detectContest();
   refreshLive();
@@ -513,8 +534,11 @@ function weekLabel(week) {
 function updateSyncButton() {
   const week = currentWeek();
   els.syncLabel.textContent = week ? `Sync ${weekLabel(week)}` : 'Sync';
+  // Both actions need the same four things: config, a detected contest, a season and a week.
   const ready = !state.busy && isConfigured() && state.contest && selectedSeason() && week != null;
   els.syncBtn.disabled = !ready;
+  els.lineupsBtn.disabled = !ready;
+  els.lineupsLabel.textContent = week ? `Capture lineups — ${weekLabel(week)}` : 'Capture lineups';
 }
 
 function setBusy(busy) {
@@ -530,8 +554,13 @@ function setBusy(busy) {
 /* POST to ingest (shape unchanged)                                            */
 /* -------------------------------------------------------------------------- */
 
-async function postIngest(payload) {
-  const url = `${appBase()}/api/ingest/draftkings`;
+/**
+ * POST JSON to an ingest endpoint with the bearer token.
+ * Shared by the score sync (`/api/ingest/draftkings`) and the lineup capture
+ * (`/api/ingest/lineups`), which authenticate identically.
+ */
+async function postIngestTo(path, payload) {
+  const url = `${appBase()}${path}`;
   let res;
   try {
     res = await fetch(url, {
@@ -562,6 +591,10 @@ async function postIngest(payload) {
     throw err;
   }
   return json;
+}
+
+function postIngest(payload) {
+  return postIngestTo('/api/ingest/draftkings', payload);
 }
 
 function renderSuccess(sent, json) {
@@ -628,6 +661,153 @@ function requestCapture(tabId, contestId) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* roster-endpoint diagnosis (Phase 0 of live scoring)                         */
+/* -------------------------------------------------------------------------- */
+
+function requestProbe(tabId, contestId, entryKey) {
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(
+      tabId,
+      { type: 'PROBE_ROSTER_ENDPOINT', contestId, entryKey },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({
+            ok: false,
+            error:
+              'Could not talk to the DraftKings page. Open a contest gamecenter tab and ' +
+              'reload it, then retry. Detail: ' + chrome.runtime.lastError.message,
+          });
+          return;
+        }
+        resolve(response || { ok: false, error: 'No response from the DraftKings page.' });
+      },
+    );
+  });
+}
+
+/**
+ * Probe DK for a roster endpoint.
+ *
+ * Two ways this succeeds: a candidate template returns a parseable roster, OR every template
+ * fails but the recorder shows what DK's own gamecenter requested. The second is the reliable
+ * path — DK's UI has to call the real endpoint to draw a lineup.
+ */
+async function onProbe() {
+  if (state.busy) return;
+
+  const tab = await getActiveTab();
+  const contestId = parseContestId((tab && tab.url) || '');
+  if (!contestId) {
+    els.probeResult.className = 'probe-result err';
+    els.probeResult.textContent =
+      'Open your league’s DraftKings contest gamecenter tab first, then retry.';
+    return;
+  }
+
+  // An entry key makes the per-entry templates testable. The last sync stored them; without
+  // one we still probe the bulk template and always collect recorder output.
+  let entryKey = '';
+  try {
+    const keys = state.settings.lastEntryKeys;
+    if (Array.isArray(keys) && keys.length) entryKey = String(keys[0]);
+  } catch {
+    // ignore — probing without an entry key is still useful
+  }
+
+  state.busy = true;
+  els.probeBtn.disabled = true;
+  els.probeSpinner.hidden = false;
+  els.probeLabel.textContent = 'Probing…';
+  els.probeResult.className = 'probe-result';
+  els.probeResult.textContent = 'Trying candidate endpoints…';
+  els.probeRaw.hidden = true;
+  els.probeCopyBtn.hidden = true;
+
+  const result = await requestProbe(tab.id, contestId, entryKey);
+
+  state.busy = false;
+  els.probeBtn.disabled = false;
+  els.probeSpinner.hidden = true;
+  els.probeLabel.textContent = 'Probe roster endpoint';
+
+  renderProbeResult(result);
+}
+
+function renderProbeResult(result) {
+  const lines = [];
+
+  if (!result || result.ok === false) {
+    els.probeResult.className = 'probe-result err';
+    els.probeResult.textContent = (result && result.error) || 'Probe failed.';
+  } else if (result.winner) {
+    els.probeResult.className = 'probe-result ok';
+    els.probeResult.innerHTML =
+      '<strong>Found it.</strong> ' +
+      escapeHtml(String(result.winner.rosterSlotCount)) +
+      ' roster rows from:<br><code>' +
+      escapeHtml(result.winner.template) +
+      '</code>';
+  } else {
+    els.probeResult.className = 'probe-result warn';
+    els.probeResult.innerHTML =
+      '<strong>No template worked.</strong> Check the recorded DraftKings URLs below — ' +
+      'click an entry in the gamecenter to load a lineup, then probe again.';
+  }
+
+  // Build a copy-pasteable report for docs/DRAFTKINGS.md.
+  if (result && result.contestId) {
+    lines.push('=== IDS ===');
+    lines.push(`contestId    ${result.contestId}`);
+    lines.push(`draftGroupId ${result.draftGroupId ?? '(unresolved)'}`);
+    lines.push(`entryKey     ${result.entryKey ?? '(none — run a Sync first)'}`);
+    lines.push('');
+  }
+  if (result && result.results) {
+    lines.push('=== CANDIDATE TEMPLATES ===');
+    for (const r of result.results) {
+      if (r.skipped) {
+        lines.push(`SKIP  ${r.template}\n      ${r.note}`);
+      } else if (r.ok) {
+        lines.push(`OK    HTTP ${r.status}  rosterRows=${r.rosterSlotCount}\n      ${r.template}`);
+      } else {
+        lines.push(
+          `FAIL  HTTP ${r.status || '-'}  ${r.error || ''}\n      ${r.template}` +
+            (r.body ? `\n      body: ${r.body}` : ''),
+        );
+      }
+    }
+  }
+  if (result && result.winner) {
+    lines.push('', '=== SAMPLE ROSTER ROWS ===', JSON.stringify(result.winner.sample, null, 2));
+  }
+  // Dump the raw payload of EVERY 200, not just a winner. A 200 that yielded zero roster rows
+  // is the interesting case — it means the endpoint answered but our structural detector did
+  // not recognise the shape, and only the payload can tell us why.
+  if (result && result.results) {
+    for (const r of result.results) {
+      if (!r.ok || !r.rawPreview) continue;
+      lines.push(
+        '',
+        `=== RAW PAYLOAD (truncated) — rosterRows=${r.rosterSlotCount} ===`,
+        r.template,
+        r.rawPreview,
+      );
+    }
+  }
+  if (result && result.recordedUrls && result.recordedUrls.length) {
+    lines.push('', '=== api.draftkings.com URLs THIS PAGE REQUESTED ===');
+    for (const r of result.recordedUrls) lines.push(`${r.method}  ${r.url}`);
+  } else {
+    lines.push('', '(no api.draftkings.com requests recorded — reload the gamecenter tab so the');
+    lines.push('recorder is installed before the page loads, then click an entry and re-probe)');
+  }
+
+  els.probeRaw.value = lines.join('\n');
+  els.probeRaw.hidden = false;
+  els.probeCopyBtn.hidden = false;
+}
+
+/* -------------------------------------------------------------------------- */
 /* (a) Sync (PRIMARY)                                                          */
 /* -------------------------------------------------------------------------- */
 
@@ -677,6 +857,16 @@ async function onSync() {
   }
 
   const entries = cap.entries || [];
+
+  // Stash a few entry keys. The roster-endpoint probe needs one to test the per-entry
+  // templates, and DK's leaderboard is the only place they come from.
+  try {
+    const keys = entries.map((e) => e.entryKey).filter(Boolean).slice(0, 5);
+    if (keys.length) persist({ lastEntryKeys: keys });
+  } catch {
+    // non-fatal — probing still works against the bulk template
+  }
+
   if (!entries.length) {
     setBusy(false);
     return setResultBanner(
@@ -709,6 +899,175 @@ async function onSync() {
     failBanner(e, entries.length);
   } finally {
     setBusy(false);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* (a2) Capture lineups (live scoring)                                         */
+/* -------------------------------------------------------------------------- */
+/*
+ * The one authenticated step in live scoring. It records WHO each owner started; the running
+ * score is computed server-side all week from public NFL stats, so nothing has to stay on.
+ *
+ * DraftKings has no bulk roster endpoint, so the page hook fans out one request per entry
+ * (leaderboard → entry keys → N rosters, concurrency 4). Rosters are POSTed RAW — the server
+ * owns the one tested normalizer.
+ */
+
+function requestRosterCapture(tabId, contestId) {
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, { type: 'CAPTURE_ROSTERS', contestId }, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve({
+          ok: false,
+          error:
+            'Could not talk to the DraftKings page. Open a draftkings.com contest page and ' +
+            'reload it, then retry. Detail: ' + chrome.runtime.lastError.message,
+        });
+        return;
+      }
+      resolve(response || { ok: false, error: 'No response from the DraftKings page.' });
+    });
+  });
+}
+
+function setLineupsStatus(text, kind) {
+  els.lineupsStatus.className = 'live-status' + (kind ? ` ${kind}` : '');
+  els.lineupsStatus.textContent = text;
+}
+
+function setLineupsBusy(busy) {
+  state.busy = busy;
+  els.lineupsSpinner.hidden = !busy;
+  els.seasonSelect.disabled = busy;
+  els.week.disabled = busy;
+  els.pasteBtn.disabled = busy;
+  updateSyncButton();
+}
+
+function renderLastCaptured() {
+  const lc = state.settings.lastLineupCapture;
+  if (!lc || !lc.week) {
+    els.lastCaptured.hidden = true;
+    return;
+  }
+  const time = new Date(lc.time);
+  const hh = String(time.getHours()).padStart(2, '0');
+  const mm = String(time.getMinutes()).padStart(2, '0');
+  els.lastCaptured.hidden = false;
+  els.lastCaptured.textContent =
+    `Last capture: ${weekLabel(lc.week)} · ${hh}:${mm} · ` +
+    `${lc.matched}/${lc.expected} lineups · ${lc.revealed}/${lc.slots} players revealed`;
+}
+
+async function onCaptureLineups() {
+  if (state.busy) return;
+
+  if (!isConfigured()) {
+    return setLineupsStatus('Open Settings and set the App Base URL + Ingest Token.', 'err');
+  }
+  const season = selectedSeason();
+  const week = currentWeek();
+  if (!season) return setLineupsStatus('Pick a season.', 'err');
+  if (week == null) return setLineupsStatus(`Week must be 1–${maxWeekForMode()}.`, 'err');
+  if (!state.contest) {
+    return setLineupsStatus(
+      'No contest detected. Open your league’s DraftKings contest tab and reopen this popup.',
+      'err',
+    );
+  }
+
+  // Inside the click's user gesture, so chrome.permissions.request can prompt.
+  const perm = await ensureOriginPermission(appBase());
+  if (!perm.ok) return setLineupsStatus(perm.error, 'err');
+
+  const tab = await getActiveTab();
+  if (!tab || !tab.id) return setLineupsStatus('No active tab.', 'err');
+
+  const contestId = state.contest.id;
+  setLineupsBusy(true);
+  setLineupsStatus(`Reading the leaderboard, then one lineup per entry…`);
+
+  const cap = await requestRosterCapture(tab.id, contestId);
+
+  if (!cap.ok) {
+    setLineupsBusy(false);
+    const prefix =
+      cap.status === 401 || cap.status === 403
+        ? `DraftKings ${cap.status} — log in to DraftKings in this tab and retry. `
+        : '';
+    return setLineupsStatus(prefix + (cap.error || 'Capture failed.'), 'err');
+  }
+
+  const captured = cap.lineups || [];
+  const failures = cap.failures || [];
+  const slots = captured.reduce((n, l) => n + (l.slotCount || 0), 0);
+  const revealed = captured.reduce((n, l) => n + (l.revealedCount || 0), 0);
+
+  setLineupsStatus(
+    `Captured ${captured.length}/${cap.expected} lineups (${revealed}/${slots} players revealed). Saving…`,
+  );
+
+  const payload = {
+    seasonId: season.id,
+    week,
+    contestId: cap.contestId || contestId,
+    draftGroupId: cap.draftGroupId,
+    capturedAt: cap.capturedAt,
+    sourceUrlTemplate: cap.sourceUrlTemplate,
+    rawLineups: captured.map((l) => ({
+      entryName: l.entryName,
+      entryKey: l.entryKey,
+      roster: l.roster,
+    })),
+  };
+
+  try {
+    const json = await postIngestTo('/api/ingest/lineups', payload);
+    const unmatched = json.unmatched || [];
+    const lines = [
+      `✅ ${weekLabel(week)} lineups saved — ${json.matched}/${cap.expected} owners.`,
+      // Concealed players are EXPECTED before kickoff, not a failure: DK hides them from
+      // opponents, and a player who has not played has scored nothing. Say so plainly so
+      // "18/288 revealed" doesn't read as a broken capture.
+      `${revealed} of ${slots} players revealed — the rest are still concealed until their game starts.`,
+    ];
+    if (json.enrichedSlots === 0 && revealed > 0) {
+      lines.push('⚠ Teams could not be resolved from DraftKings’ public slate — re-run later.');
+    }
+    if (unmatched.length) lines.push(`Unmatched DK names: ${unmatched.join(', ')}`);
+    if (failures.length) {
+      lines.push(`Failed to read ${failures.length}: ${failures.map((f) => f.entryName).join(', ')}`);
+    }
+    if (cap.missingKeys && cap.missingKeys.length) {
+      lines.push(`No entry key on the leaderboard for: ${cap.missingKeys.join(', ')}`);
+    }
+    setLineupsStatus(
+      lines.join('\n'),
+      unmatched.length || failures.length ? 'paused' : 'done',
+    );
+
+    await persist({
+      lastLineupCapture: {
+        week,
+        time: Date.now(),
+        matched: json.matched,
+        expected: cap.expected,
+        revealed,
+        slots,
+      },
+      seasonId: String(season.id),
+      week: String(week),
+    });
+    renderLastCaptured();
+  } catch (e) {
+    const detail = e.status === 401 ? 'Check the Ingest Token in Settings.' : e.message;
+    setLineupsStatus(
+      `❌ Saving failed — ${detail}\n(captured ${captured.length} lineups before the post)`,
+      'err',
+    );
+  } finally {
+    setLineupsBusy(false);
   }
 }
 
@@ -1103,6 +1462,7 @@ els.gearBtn.addEventListener('click', showSettings);
 els.testBtn.addEventListener('click', onTest);
 els.saveBtn.addEventListener('click', onSave);
 els.syncBtn.addEventListener('click', onSync);
+els.lineupsBtn.addEventListener('click', onCaptureLineups);
 els.pasteBtn.addEventListener('click', onPaste);
 els.liveToggle.addEventListener('change', onLiveToggle);
 els.liveStopBtn.addEventListener('click', onLiveStop);
@@ -1133,6 +1493,22 @@ els.week.addEventListener('change', () => {
 els.preseasonToggle.addEventListener('change', () => {
   persist({ preseason: preseasonMode() });
   applyPreseasonMode();
+});
+
+// ---- roster-endpoint diagnosis ----
+els.probeBtn.addEventListener('click', onProbe);
+
+els.probeCopyBtn.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(els.probeRaw.value);
+    els.probeCopyBtn.textContent = 'Copied ✓';
+    setTimeout(() => {
+      els.probeCopyBtn.textContent = 'Copy full result';
+    }, 1500);
+  } catch {
+    // Clipboard can be blocked; the textarea is selectable as a fallback.
+    els.probeRaw.select();
+  }
 });
 
 // ---- init ----

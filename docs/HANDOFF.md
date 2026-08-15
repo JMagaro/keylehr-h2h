@@ -4,9 +4,12 @@ A running "where things stand" doc so a fresh Claude/context window (or contribu
 without re-deriving everything. Update the **Snapshot**, **Recent work** and **Known open items**
 sections as you go; **[Start here](#start-here-fresh-session)** is the entry point.
 
-_Last updated: 2026-08-14 (live-scoring remediation Phases 0–4 + the playoff **3rd-place game**;
-prior: preseason syncing from the DK Chrome extension, preseason exhibition games, tiebreaker fix
-+ 2023/2024 playoffs + per-season owner names + DK salary + model tracker)._
+_Last updated: 2026-08-15 (**live in-progress scoring, Phases 0–3** — the pure DK engine + ESPN
+adapter, roster capture/storage with migration `0010` now **applied**, the `draftableId` → identity
+bridge, and one-click roster capture in **extension v1.2.0**, all uncommitted; prior: live-scoring
+*remediation* Phases 0–4 + the playoff **3rd-place game**, preseason syncing from the DK Chrome
+extension, preseason exhibition games, tiebreaker fix + 2023/2024 playoffs + per-season owner names
++ DK salary + model tracker)._
 
 ---
 
@@ -22,12 +25,19 @@ prior: preseason syncing from the DK Chrome extension, preseason exhibition game
 - **Stack:** Next.js 16.2.9 (App Router, Turbopack) · React 19 · Tailwind v4 (CSS `@theme`, no
   config file) · Drizzle + Neon Postgres (**HTTP driver** — every query is a network round-trip) ·
   NextAuth (commissioner login) · a Chrome extension for DraftKings sync.
-- **Verification:** `npm run verify` is **9/9 green** at `e2a3f1a` (typecheck · lint · **144 unit
-  tests**, 16 files · production build · ESPN health · engine invariants · **historical snapshot
-  unchanged** · **engine no-op proofs** · 2025 ground-truth replay). The two TRUTH checks are from
-  this session — see the freeze-gate part of the remediation DONE section below.
-- **Migrations:** through **0009** (`third_place` added to the `playoff_round` enum), applied to
-  the production DB.
+- **Verification:** `npm run verify` is **9/9 green** (typecheck · lint · **255 unit tests**,
+  21 files · production build · ESPN health · engine invariants · **historical snapshot
+  unchanged** · **engine no-op proofs** · 2025 ground-truth replay), with the frozen-history
+  snapshot byte-identical. The two TRUTH checks are from the remediation session — see the
+  freeze-gate part of that DONE section below. It was 144 tests / 16 files at `e2a3f1a`; the extra
+  111 are the **uncommitted** live-scoring work in the working tree — 63 engine (Phase 1) + 48
+  capture/enrichment (Phases 2–3) — see Recent work. (Counted mid-session while Phase 5 was
+  actively landing under `src/lib/live/`, so expect it to have grown; re-run rather than trust it.)
+- **Migrations:** applied through **0010** — `0010_polite_nicolaos.sql` (the two live-scoring
+  capture tables) is **applied to production**; `lineup_snapshots` and `lineup_capture_runs` exist
+  with their unique + season/week indexes. It is purely additive (two new tables, no ALTERs), so it
+  moved no score, no standing, and not the frozen snapshot. Both tables are still empty — no
+  capture has been posted to production yet.
 - **Seasons in DB:** 2023, 2024, 2025 fully imported (regular season **and** playoffs, validated
   against the sheets) and now **frozen behind a snapshot gate** + 2026 (upcoming; schedule synced,
   **all 32 owners assigned**, `missedLineup.opponentScores = league_median` — set by the user in
@@ -400,9 +410,10 @@ Sleeper PPR as a free proxy).
   raw `wins` back to the key — that splits genuinely-tied owners whenever games played is uneven,
   which is the normal state of a season from about week 5 on.
 - **DB migrations:** edit `src/db/schema.ts`, then `npm run db:generate` (writes SQL to `drizzle/`) and
-  `npm run db:migrate` (applies to `DATABASE_URL`). Latest: 0007 `owner_seasons.displayName`, 0008
-  `isExhibition` on `nfl_games`/`matchups`/`scores`, 0009 `third_place` on the `playoff_round`
-  enum. Every one is documented in [`docs/DATA_MODEL.md`](DATA_MODEL.md#migration-history).
+  `npm run db:migrate` (applies to `DATABASE_URL`). Latest: 0008 `isExhibition` on
+  `nfl_games`/`matchups`/`scores`, 0009 `third_place` on the `playoff_round` enum, 0010
+  `lineup_capture_runs` + `lineup_snapshots`. Every one is documented in
+  [`docs/DATA_MODEL.md`](DATA_MODEL.md#migration-history).
 - **Owner names are per-season** via `coalesce(owner_seasons.displayName, owners.name)`; only all-time
   per-person views + the global owner-management pages use the bare `owners.name`. See the DONE section.
 - **Local `.next/* 2.*` files** are an iCloud/Finder duplication artifact on this machine; they make
@@ -412,6 +423,74 @@ Sleeper PPR as a free proxy).
 
 ## Recent work (newest first)
 
+- **Live in-progress scoring — Phase 3: one-click roster capture** (⚠️ **uncommitted**). The DK
+  roster endpoint was found, the extension went **1.1.0 → 1.2.0**, and captures are now enriched at
+  write time. Tests 234 → **255**. Six things to carry forward:
+  - **The endpoint is
+    `scores/v2/entries/{draftGroupId}/{entryKey}?format=json&embed=roster`** — credentialed. The
+    first path segment is the **draft group** id, not the contest id, which is why every
+    contestId-shaped guess failed. Real payload frozen at `scripts/fixtures/dk-roster-entry.json`.
+  - **There is NO bulk roster endpoint.** `scores/v1/leaderboards/{contestId}?embed=leaderboard,roster`
+    returns **200 with an empty `entryByEntryKey` map** — a silent nothing, not an error. Hence one
+    authenticated request per entry (concurrency 4, 150–300 ms jitter) in `page-hook.js`
+    `captureRosters()`. Entry keys come from the leaderboard the score sync already fetches; nobody
+    has to click into a lineup.
+  - **Concealment is not a partial capture.** DK hides a player from opponents until that player's
+    game kicks off (`draftableId: 0`, no name, `yetToPlay: true`). So 32/32 owners with 18/288
+    players revealed is *correct*. A concealed player has scored nothing, so only names are ever
+    missing — never points — and because concealment tracks swappability, anything visible is
+    already locked and cannot go stale. `revealed` is stored per slot; never render one as `0.00`.
+  - **`draftableId` → identity, at capture time.** DK's roster payload has no team and no position,
+    and scoring joins ESPN on `(normalizeName, teamKey)`. `src/lib/lineups/enrich.ts` resolves ids
+    against the **public** draftables endpoint before the snapshot is written, because DK expires
+    draftables for old draft groups. `POST /api/ingest/lineups` reports `enrichedSlots` +
+    `unresolvedDraftableIds`; **0 enriched with revealed players means the capture is not scorable.**
+    Admin → Lineups sends no `draftGroupId`, so a *pasted* capture is never enriched.
+  - **`/api/ingest/lineups` accepts a third body shape**, `rawLineups: [{ entryName, entryKey?,
+    roster }]` — the per-entry fan-out. Merge order is `rawRosters` → `rawLineups` → `lineups`,
+    later wins on a duplicate entry name.
+  - **DK's own `score` and `stats[]` are captured but never scored from** (`slots[].dkScore` /
+    `slots[].dkStats`). They exist ONLY at capture time — the authenticated roster endpoint is the
+    only source and it ages out with the contest — and they are the reconciliation checkpoint for
+    the ESPN estimate. `dkStats` is the sharp one: a matching total can hide two compensating
+    errors, a per-stat diff cannot, and it is how `pointsAllowedMode` gets settled empirically.
+    `null` = no breakdown in the payload; `[]` = DK says nothing has happened yet. Not the same
+    thing.
+- **Live in-progress scoring — Phase 2: roster capture + storage** (⚠️ **uncommitted**, on top of
+  the Phase 0–1 tree below). Two new tables (`lineup_capture_runs`, `lineup_snapshots`; migration
+  `0010_polite_nicolaos.sql`, **now applied to production**), `src/lib/lineups/`
+  (`normalize.ts` → `ingest.ts` → `query.ts`), `POST /api/ingest/lineups`, and **Admin → Lineups**
+  (capture status `N/32` owners *and* `R/S` players revealed, a paste fallback, a capture-run audit
+  table showing which DK URL worked). Tests 207 → **234**. Three things to carry forward:
+  - **`lineup_snapshots` is append-only, versioned by `capturedAt`.** DK Classic sets
+    `allowLateSwap: true`, so the roster in effect is the *newest* row per `(ownerSeason, week)`
+    (`DISTINCT ON`). Do not "simplify" it to one row per owner-week.
+  - **`no-write.test.ts` is the safety invariant made mechanical** — it scans every module under
+    `src/lib/dfs`, `src/lib/lineups`, `src/lib/live` (discovered, not enumerated, so new files are
+    covered automatically) and fails on any write to
+    `scores`/`matchups`/`playoff_matchups`/`season_awards`/`nfl_games` or any call to
+    `ingestLeaderboard`/`writeTeamScores`. Reads are fine. If it fires, you want a new table.
+  - **Three modules were extracted, behaviour unchanged:** `src/lib/ingest/auth.ts` and
+    `src/lib/ingest/week-schema.ts` out of the DK route, and `src/lib/scores/owner-match.ts` out of
+    `scores/ingest.ts` (both ingests MUST match entry names identically).
+- **Live in-progress scoring — Phases 0 and 1 only** (⚠️ **uncommitted working tree** at the time
+  of writing: `src/lib/dfs/`, `src/lib/nfl/`, `scripts/dfs-selftest.ts`, two ESPN fixtures, and the
+  extension at v1.1.0). A pure DraftKings Classic scoring engine fed by ESPN's public boxscore API,
+  so in-progress points can be computed **server-side** without a DK session or a machine left on.
+  **It is an ESTIMATE and must never enter the scoring chain** — nothing in `src/lib/dfs/` imports
+  the DB or `src/lib/standings/`, and nothing there writes a row. (Phase 2, above, added the
+  capture path, which does use the DB — hence the no-write guard. **Phases 4–5 — DK→ESPN player
+  matching and a `/live` page — are still not built.**) Also extracted
+  `normalizeTeamKey()` out of three private
+  copies into `src/lib/nfl/team-keys.ts`, and moved `DK_CLASSIC_SALARY_CAP` into
+  `src/lib/dfs/rules.ts` (still re-exported from `draftkings/draftables.ts`, so every existing
+  import is unchanged). Tests 144 → **207**. Written up in
+  [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score) and the
+  probed endpoint inventory in
+  [`DRAFTKINGS.md` §11](DRAFTKINGS.md#11-endpoint-inventory--what-is-public-and-what-needs-auth).
+  > **Naming clash, read this:** this is **not** the "live-scoring remediation Phases 0–4" DONE
+  > section below. That was a fix to the *existing* chain; this is a new, separate feature with its
+  > own phase numbering that sits outside the chain.
 - **The playoff 3rd-place game** (`e2a3f1a`) — `third_place` round (migration 0009) generated from
   the conference-round losers alongside the championship, scored from the same week-22 contest;
   3rd/4th now come off a real game instead of `--third`. It is a **leaf**, kept out of
@@ -514,6 +593,20 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
 
 **Needs a decision or a fix**
 
+- **`src/lib/live/` is undocumented.** Phase 5 (`stats.ts`, `assemble.ts`, `query.ts`) was being
+  written *while* this docs pass ran, so nothing in it is described anywhere — not here, not in
+  [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). There is
+  still no `/live` route. Run docs again once its shape settles; do not assume the modules do what
+  their names suggest.
+- **No capture has ever run against production.** Migration `0010` is applied and both tables are
+  **empty**. The whole path — extension → `/api/ingest/lineups` → enrichment → Admin → Lineups — has
+  not yet been exercised on a real Sunday, so its first live run is still a test. A dev database may
+  still be on `0009`; run `npm run db:migrate` there.
+- **A pasted capture is never enriched.** Admin → Lineups sends no `draftGroupId`, so
+  `ingestLineups` skips `enrichLineups` and the snapshot keeps only whatever names/teams DK's payload
+  carried — which for a real DK roster payload is *none*. That makes a pasted capture unscorable by
+  design. Either thread a draft-group id through the form or accept the paste box as a
+  store-the-evidence fallback only.
 - **A resolved 3rd-place game does not reach the bracket UI.** `getPlayoffBracket` builds its
   `rounds` array as `PLAYOFF_ROUND_ORDER.filter(...)`, and `third_place` is deliberately not in
   that list, so the row is loaded into `byRound` and then dropped. The rendering branch added to
@@ -540,12 +633,12 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
 
 **Stale docs / unpolished tooling**
 
-- `docs/DRAFTKINGS.md` **§5 and §7 describe things that do not exist**: a Vercel-Cron pull runbook
-  (the cron approach was rejected; there is no `vercel.json` cron entry and no `/api/cron/pull`)
-  and a `'manual-paste'` `triggeredBy` plus a hand-entry grid (the real values are `extension`,
-  `admin:preseason`, `backfill`; the schema comment on `scoreImportRuns.triggeredBy` was corrected
-  in `a7ce23e`, the doc was not). `docs/DEPLOYMENT.md` §6 already states the cron design was
-  **rejected** — DRAFTKINGS.md contradicts it. Rewrite or delete both sections.
+- ~~`docs/DRAFTKINGS.md` §5 and §7 describe things that do not exist~~ — **fixed.** §5 is now
+  explicitly labelled *designed, then rejected, never built* and points at
+  `DEPLOYMENT.md` §6; §7 lists the real `triggeredBy` values (`extension`, `admin:preseason`,
+  `backfill` — there is no `'manual-paste'`) and marks the hand-entry grid as not built. The two
+  sketches are kept, clearly fenced, because they remain the shape any future unattended pull
+  would take.
 - `scripts/validate-dk-matcher.ts` has **no npm alias and no documentation** — it is invisible
   unless you list the directory.
 - Dashboard **"Top of the standings"** mini-table (`getTopStandings`) still uses a simple
@@ -566,11 +659,20 @@ Do these three things, in this order:
 3. **Check the repo state:** `git status` and `git log origin/main..main`. `e2a3f1a` may still be
    unpushed (see the push check in Snapshot).
 
-The rebuild is **feature-complete** vs the old Google-Sheets workflow and **there is no task
-queued.** Importers are idempotent; 2023–2025 (regular season + playoffs) are in, validated, and
-gated against moving.
+The rebuild is **feature-complete** vs the old Google-Sheets workflow. Importers are idempotent;
+2023–2025 (regular season + playoffs) are in, validated, and gated against moving.
 
-Most likely next asks: **2026 in-season operations** (the season is `upcoming` and fully
+**The one task in flight is live in-progress scoring, and Phases 0–3 exist** (the pure engine + the
+ESPN adapter, roster capture/storage — `src/lib/lineups/`, `POST /api/ingest/lineups`,
+Admin → Lineups — and the extension's one-click **Capture lineups** at v1.2.0, with `draftableId`
+resolved to name/team at capture time). Migration `0010` is applied. **Phases 4–5 — matching DK
+players to ESPN athletes, and a `/live` page — are not built.** The next move is Phase 4:
+`(normalizeName, teamKey)` → ESPN athlete, which the enriched snapshots now supply the inputs for.
+Read [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score) before
+touching it; the safety invariant there is not optional, and
+`src/lib/lineups/no-write.test.ts` will fail the build if you cross it.
+
+Other likely asks: **2026 in-season operations** (the season is `upcoming` and fully
 assigned — [`docs/RUNBOOK.md`](RUNBOOK.md) is the weekly loop, plus the scheduled `keylehr-verify`
 routine); the bracket-rendering gap for the 3rd-place game (first item under "Known open items");
 training the lineup models into ML `v1.0` once 2026 produces graded weeks; or the My Team
@@ -626,7 +728,21 @@ driver means one query = one round-trip, so batch writes.
   [`docs/RULES.md`](RULES.md).
 - DraftKings *scoring* ingest (leaderboard): `src/lib/scores/`, `src/app/api/ingest/draftkings/` · Chrome
   ext: `extension/` — distinct from DK *salaries* (`src/lib/draftkings/`, server-side, keyless)
+- Live in-progress **estimate** (a third, separate thing): `src/lib/dfs/` — `rules.ts` (DK Classic
+  as frozen data) · `stat-line.ts` (the provider-agnostic input contract) · `score.ts` (the pure
+  engine) · `sources/espn-{boxscore,extract,types}.ts` (the public ESPN adapter). Checked by
+  `npm run dfs:selftest`. **It must never write to `scores` or reach `src/lib/standings/`** —
+  [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). Shared
+  helper: `src/lib/nfl/team-keys.ts` (`normalizeTeamKey`, one copy for DK + Sleeper + ESPN)
+- Roster **capture** for that estimate: `src/lib/lineups/` — `normalize.ts` (pure, structural,
+  30 tests) · `enrich.ts` (`draftableId` → name/team/position, 7 tests) · `ingest.ts`
+  (`ingestLineups`) · `query.ts` (`getCaptureStatus`, `DISTINCT ON`) ·
+  **`no-write.test.ts` (the invariant, enforced)**. Routes: `src/app/api/ingest/lineups/` +
+  `src/app/admin/(panel)/lineups/`. Tables `lineup_snapshots` / `lineup_capture_runs`
+  (migration 0010, applied). Shared with the score ingest:
+  `src/lib/ingest/{auth,week-schema}.ts` + `src/lib/scores/owner-match.ts`. The capture side of the
+  extension is `page-hook.js` `captureRosters()`.
 - Admin (commissioner): `src/app/admin/(panel)/` — Owners · Assignments · Schedule · **Preseason** ·
-  Sync · Playoffs · **Slates** · **Models** · Settings · Users (all auth-gated)
+  Sync · **Lineups** · Playoffs · **Slates** · **Models** · Settings · Users (all auth-gated)
 - Season importers (idempotent): `scripts/import-season{,3}.ts` (regular season; `import-season3.ts` is
   the 2025 verify anchor — do NOT modify), `scripts/import-playoffs{,-2025}.ts` (brackets)

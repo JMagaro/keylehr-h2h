@@ -506,6 +506,111 @@ export const modelSnapshots = pgTable(
 );
 
 /* -------------------------------------------------------------------------- */
+/* Live scoring (ESTIMATES — never a score)                                    */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * These two tables back the in-progress /live view. They exist so the app can show a
+ * running estimate during games WITHOUT leaving a machine polling DraftKings all week:
+ * capture each owner's roster once (authenticated), then recompute points from ESPN's
+ * public boxscore on demand.
+ *
+ * SAFETY INVARIANT — read this before wiring anything to them:
+ *   Nothing here is a score. No code path may copy these values into `scores`, feed them to
+ *   `computeStandings`, or let them influence `weekIsFinal` / bye / forfeit derivation. A
+ *   mid-Sunday state where every owner sits near zero must never be readable as 32 forfeits.
+ *   The authoritative weekly number remains the DraftKings leaderboard, ingested by
+ *   src/lib/scores/ingest.ts. See docs/SCORING.md §15.
+ */
+
+/** Audit log: one row per roster capture. Deliberately mirrors `scoreImportRuns`. */
+export const lineupCaptureRuns = pgTable('lineup_capture_runs', {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  seasonId: integer()
+    .notNull()
+    .references(() => seasons.id, { onDelete: 'cascade' }),
+  week: integer().notNull(),
+  dkContestId: varchar({ length: 64 }),
+  status: importStatus().notNull(),
+  entriesTotal: integer().notNull().default(0),
+  entriesMatched: integer().notNull().default(0),
+  entriesUnmatched: integer().notNull().default(0),
+  /** Free-form provenance. Today: 'extension' | 'admin:paste'. */
+  triggeredBy: varchar({ length: 64 }),
+  /**
+   * The DraftKings URL TEMPLATE that actually returned rosters.
+   *
+   * DK's roster endpoint is undocumented and auth-gated, so it can only be found from a
+   * logged-in browser. Recording the winning template here documents it in the database
+   * rather than in someone's memory. See docs/DRAFTKINGS.md §11.
+   */
+  sourceUrlTemplate: text(),
+  error: text(),
+  /** Raw roster payload retained for debugging/replay. */
+  rawPayload: jsonb(),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * A captured DraftKings lineup for one owner-week.
+ *
+ * APPEND-ONLY, versioned by `capturedAt`. DK Classic allows late swap (confirmed via DK's
+ * public gametype rules endpoint: `allowLateSwap: true`), so a player can be replaced right
+ * up until *his own* game kicks off — a single lock-time snapshot goes stale for later games.
+ * Keeping every capture means the roster "in effect" is the newest row per (ownerSeason,
+ * week), and each slot can be classified as locked vs provisional by comparing `capturedAt`
+ * against that player's kickoff.
+ */
+export const lineupSnapshots = pgTable(
+  'lineup_snapshots',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    seasonId: integer()
+      .notNull()
+      .references(() => seasons.id, { onDelete: 'cascade' }),
+    ownerSeasonId: integer()
+      .notNull()
+      .references(() => ownerSeasons.id, { onDelete: 'cascade' }),
+    /** Same three namespaces as `scores`: 1–18 regular, 19–22 playoff, 101–103 exhibition. */
+    week: integer().notNull(),
+    /** Mirrors scores.isExhibition. DERIVED from the week by the ingest, never supplied. */
+    isExhibition: boolean().notNull().default(false),
+    dkContestId: varchar({ length: 64 }),
+    dkDraftGroupId: varchar({ length: 64 }),
+    dkEntryKey: varchar({ length: 64 }),
+    /**
+     * When DraftKings' roster was READ — not when this row was written. This drives
+     * late-swap resolution, so it must reflect the upstream read time.
+     */
+    capturedAt: timestamp({ withTimezone: true }).notNull(),
+    /**
+     * The nine slots, in DK `lineupTemplate` order (`LineupSlotInput` in
+     * src/lib/lineups/normalize.ts is the authoritative shape):
+     *   [{ slot, dkPlayerId, draftableId, name, teamKey, position, revealed, dkScore, dkStats }]
+     *
+     * Names and teams are DENORMALIZED on purpose: DK's draftables for a past draft group
+     * expire, so a snapshot must stay self-sufficient without a live DraftKings read. DK's
+     * roster payload carries none of them, so they are resolved from `draftableId` at capture
+     * time (src/lib/lineups/enrich.ts).
+     *
+     * `revealed: false` marks a player DK is still CONCEALING from opponents (it hides one
+     * until his game kicks off). Never render a concealed slot as 0.00 — he has not played.
+     */
+    slots: jsonb().notNull(),
+    captureRunId: integer().references(() => lineupCaptureRuns.id),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('lineup_snapshots_owner_week_captured_uq').on(
+      t.ownerSeasonId,
+      t.week,
+      t.capturedAt,
+    ),
+    index('lineup_snapshots_season_week_idx').on(t.seasonId, t.week),
+  ],
+);
+
+/* -------------------------------------------------------------------------- */
 /* Relations (for the Drizzle relational query API)                            */
 /* -------------------------------------------------------------------------- */
 
@@ -519,6 +624,18 @@ export const seasonsRelations = relations(seasons, ({ many }) => ({
 
 export const ownersRelations = relations(owners, ({ many }) => ({
   ownerSeasons: many(ownerSeasons),
+}));
+
+export const lineupSnapshotsRelations = relations(lineupSnapshots, ({ one }) => ({
+  season: one(seasons, { fields: [lineupSnapshots.seasonId], references: [seasons.id] }),
+  ownerSeason: one(ownerSeasons, {
+    fields: [lineupSnapshots.ownerSeasonId],
+    references: [ownerSeasons.id],
+  }),
+  captureRun: one(lineupCaptureRuns, {
+    fields: [lineupSnapshots.captureRunId],
+    references: [lineupCaptureRuns.id],
+  }),
 }));
 
 export const ownerSeasonsRelations = relations(ownerSeasons, ({ one, many }) => ({
@@ -601,3 +718,7 @@ export type PlayoffOddsSnapshot = typeof playoffOddsSnapshots.$inferSelect;
 export type NewPlayoffOddsSnapshot = typeof playoffOddsSnapshots.$inferInsert;
 export type ModelSnapshot = typeof modelSnapshots.$inferSelect;
 export type NewModelSnapshot = typeof modelSnapshots.$inferInsert;
+export type LineupCaptureRun = typeof lineupCaptureRuns.$inferSelect;
+export type NewLineupCaptureRun = typeof lineupCaptureRuns.$inferInsert;
+export type LineupSnapshot = typeof lineupSnapshots.$inferSelect;
+export type NewLineupSnapshot = typeof lineupSnapshots.$inferInsert;

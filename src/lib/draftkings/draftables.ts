@@ -13,8 +13,14 @@
  * its signal-only mode.
  */
 
-/** Standard DraftKings NFL Classic salary cap. (Draftables don't carry the cap.) */
-export const DK_CLASSIC_SALARY_CAP = 50000;
+import { normalizeTeamKey } from '@/lib/nfl/team-keys';
+
+/**
+ * Standard DraftKings NFL Classic salary cap. (Draftables don't carry the cap.)
+ * Defined in src/lib/dfs/rules.ts alongside the rest of the DK Classic rule set and
+ * re-exported here, where the lineup builder has always imported it from.
+ */
+export { DK_CLASSIC_SALARY_CAP } from '@/lib/dfs/rules';
 
 export interface DkDraftable {
   dkPlayerId: string;
@@ -40,21 +46,6 @@ interface RawDraftable {
   salary?: number;
   status?: string | null;
   draftableId?: number | string;
-}
-
-/** DK team abbreviations that differ from our nfl_teams.key. */
-const TEAM_KEY_FIX: Record<string, string> = {
-  WAS: 'WSH',
-  JAC: 'JAX',
-  LA: 'LAR',
-  OAK: 'LV',
-  SD: 'LAC',
-  STL: 'LAR',
-};
-
-function normalizeTeamKey(team: string): string {
-  const u = team.trim().toUpperCase();
-  return TEAM_KEY_FIX[u] ?? u;
 }
 
 function draftablesUrl(draftGroupId: string): string {
@@ -123,18 +114,76 @@ export interface DraftablesResult {
 }
 
 /**
+ * One raw fetch of a draft group's draftables, shared by the salary view and the
+ * `draftableId` index below so a page needing both makes one request, not two.
+ * Cached 15 minutes via the Next Data Cache (salaries shift slowly until lock).
+ */
+async function fetchRawDraftables(draftGroupId: string): Promise<RawDraftable[]> {
+  const res = await fetch(draftablesUrl(draftGroupId), {
+    headers: { accept: 'application/json' },
+    next: { revalidate: 900 },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = (await res.json()) as { draftables?: RawDraftable[] };
+  return data.draftables ?? [];
+}
+
+/* -------------------------------------------------------------------------- */
+/* draftableId → identity                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Who a `draftableId` refers to. The roster payload gives us only the id. */
+export interface DraftableIdentity {
+  dkPlayerId: string | null;
+  name: string | null;
+  /** Normalized to our nfl_teams.key. */
+  teamKey: string | null;
+  /** QB | RB | WR | TE | DST | … */
+  position: string | null;
+}
+
+/**
+ * Index a draft group by `draftableId`.
+ *
+ * WHY THIS EXISTS: DraftKings' authenticated roster payload identifies each drafted player
+ * by `draftableId` ALONE — no team abbreviation, and for concealed players not even a name.
+ * Scoring needs `(name, teamKey)` to reach ESPN's boxscore, so a capture is only usable once
+ * those ids are resolved here, against the PUBLIC endpoint.
+ *
+ * Keyed by `draftableId`, NOT `playerId`: a player appears once per roster-slot eligibility
+ * with a distinct draftableId, and the roster payload only ever quotes the draftable one.
+ *
+ * Never throws — an empty index degrades a capture to "names but no teams", which the live
+ * page surfaces as unresolved rather than as zero points.
+ */
+export async function fetchDraftableIndex(
+  draftGroupId: string,
+): Promise<Map<string, DraftableIdentity>> {
+  const index = new Map<string, DraftableIdentity>();
+  try {
+    for (const r of await fetchRawDraftables(draftGroupId)) {
+      const draftableId = r.draftableId != null ? String(r.draftableId) : null;
+      if (!draftableId || draftableId === '0') continue;
+      index.set(draftableId, {
+        dkPlayerId: r.playerId != null ? String(r.playerId) : null,
+        name: (r.displayName ?? '').trim() || null,
+        teamKey: r.teamAbbreviation ? normalizeTeamKey(r.teamAbbreviation) : null,
+        position: r.position?.trim().toUpperCase() || null,
+      });
+    }
+  } catch (err) {
+    console.error('[draftkings] draftable index fetch failed:', err);
+  }
+  return index;
+}
+
+/**
  * Fetch + normalize the salaries for a draft group. Cached for 15 minutes via the Next
  * Data Cache (salaries shift slowly until lock). Never throws.
  */
 export async function fetchDraftables(draftGroupId: string): Promise<DraftablesResult> {
   try {
-    const res = await fetch(draftablesUrl(draftGroupId), {
-      headers: { accept: 'application/json' },
-      next: { revalidate: 900 },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = (await res.json()) as { draftables?: RawDraftable[] };
-    const rows = data.draftables ?? [];
+    const rows = await fetchRawDraftables(draftGroupId);
 
     const byId = new Map<string, DkDraftable>();
     for (const r of rows) {

@@ -39,9 +39,10 @@ Relationships at a glance:
 - An **owner_season** is the join of `owner` + `season` + `nfl_team`, and has many `scores`.
 - Every league row that belongs to a specific owner-in-a-season references `owner_seasons`, not
   `owners` directly (so all-time identity and per-season alignment stay distinct).
-- Not drawn above (they hang off `seasons` the same way): `playoff_odds_snapshots` and
-  `model_snapshots`. **`users` stands alone** — it is the admin-login table and has no
-  relationship to `owners`.
+- Not drawn above (they hang off `seasons` the same way): `playoff_odds_snapshots`,
+  `model_snapshots`, and the live-scoring pair `lineup_capture_runs` / `lineup_snapshots`
+  (the latter also references `owner_seasons`). **`users` stands alone** — it is the admin-login
+  table and has no relationship to `owners`.
 
 ## Enums
 
@@ -53,7 +54,7 @@ Relationships at a glance:
 | `score_source`   | `auto`, `manual`                                                                         | `scores.source`                  |
 | `contest_status` | `pending`, `locked`, `pulling`, `final`, `error`                                         | `weekly_contests.status`         |
 | `matchup_status` | `scheduled`, `final`                                                                     | `matchups.status`                |
-| `import_status`  | `success`, `partial`, `failed`                                                           | `score_import_runs.status`       |
+| `import_status`  | `success`, `partial`, `failed`                                                           | `score_import_runs.status`, `lineup_capture_runs.status` |
 | `award_type`     | `champion`, `runner_up`, `third`, `fourth`, `weekly_high`, `season_high`, `most_points`, `other` | `season_awards.type`     |
 | `playoff_round`  | `wild_card`, `divisional`, `conference`, `championship`, `third_place`                   | `playoff_matchups.round`         |
 
@@ -328,6 +329,15 @@ An owner's weekly DraftKings fantasy points. One row per `(ownerSeason, week)`.
 > `forfeitByOwnerWeek` set from `getSeasonStandingsData()` and `isEffectiveBye()`. The full rule
 > is in [`SCORING.md`](SCORING.md).
 
+> **`dkPoints` holds DraftKings' own number and nothing else.** The live-scoring work in
+> `src/lib/dfs/` recomputes DK points from a public stat feed while games are in progress; that
+> figure is an **estimate**, and it must never be written to this column — nor to any other, nor
+> allowed to reach the standings engine. `src/lib/dfs/` still touches no database at all; the
+> capture path (`src/lib/lineups/`) does, but writes **only** `lineup_snapshots` and
+> `lineup_capture_runs`, which `src/lib/lineups/no-write.test.ts` enforces by scanning the
+> live-scoring modules for writes to the scoring chain. See
+> [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
+
 ## `season_awards`
 
 Payouts and records for a season (champion, weekly high score, most points, ...).
@@ -429,6 +439,102 @@ games are played — how it actually scored. Produced by `snapshotWeek` / graded
 **Constraints/indexes:** `model_snapshots_season_week_risk_uq` UNIQUE `(seasonId, week, risk)`;
 `model_snapshots_season_idx` on `seasonId`.
 
+---
+
+## Live scoring: `lineup_capture_runs` + `lineup_snapshots`
+
+> 🛑 **Nothing in these two tables is a score.** They hold each owner's captured DraftKings
+> **roster**, so the app can recompute a running total from ESPN's public boxscore while games are
+> in progress. That number is an **estimate**. No code path may copy it into `scores`, feed it to
+> `computeStandings`, or let it influence `weekIsFinal` / bye / forfeit derivation — a mid-Sunday
+> state where every owner sits near zero must never be readable as 32 forfeits. The invariant is
+> enforced mechanically by `src/lib/lineups/no-write.test.ts`. See
+> [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
+
+### `lineup_capture_runs`
+
+Audit log: one row per roster capture. Deliberately mirrors `score_import_runs` so the two ingest
+paths are diagnosed the same way. Written by `ingestLineups` (`src/lib/lineups/ingest.ts`).
+
+| Column                | Type            | Notes                                                       |
+| --------------------- | --------------- | ----------------------------------------------------------- |
+| `id`                  | identity PK     |                                                             |
+| `seasonId`            | integer FK      | NOT NULL → `seasons.id`, `onDelete: cascade`.               |
+| `week`                | integer         | NOT NULL. Same namespaces as `scores`.                      |
+| `dkContestId`         | varchar(64)     | Nullable.                                                   |
+| `status`              | `import_status` | NOT NULL. `success` when every entry matched an owner, `partial` when any did not. |
+| `entriesTotal`        | integer         | NOT NULL, default 0. Lineups seen in the payload.           |
+| `entriesMatched`      | integer         | NOT NULL, default 0. Resolved to an owner.                  |
+| `entriesUnmatched`    | integer         | NOT NULL, default 0. Reported by name, never written.       |
+| `triggeredBy`         | varchar(64)     | Free-form; today `extension` (the ingest API) or `admin:paste` (the Admin → Lineups form). |
+| `sourceUrlTemplate`   | text            | Nullable. **Which DraftKings URL actually returned rosters.** DK's roster endpoint is undocumented and can only be found from a logged-in browser, so recording the winning template here documents it in the database rather than in someone's memory. Surfaced in the Admin → Lineups audit table. The extension sends its `ROSTER_URL_TEMPLATE` automatically; the paste form has an optional **Source URL** field. See [`DRAFTKINGS.md` §11](DRAFTKINGS.md#11-endpoint-inventory--what-is-public-and-what-needs-auth). |
+| `error`               | text            | Nullable failure detail, written when the snapshot upserts throw — see the note below. |
+| `rawPayload`          | jsonb           | Raw roster payload retained for debugging/replay.           |
+| `createdAt`           | timestamptz     | NOT NULL, default `now()`.                                  |
+
+> **The run row is written optimistically, then corrected.** `ingestLineups` inserts it *before* the
+> snapshot upserts (the snapshots need its id) with `success` / `partial`. If a batch then throws, it
+> updates the row to `failed` with the message in `error` and re-throws, because an audit log that
+> claims success while the data never landed is worse than no audit log. The one gap left: if the
+> database is unreachable, that corrective update is best-effort and silently skipped — the original
+> error still reaches the operator.
+
+### `lineup_snapshots`
+
+One owner's captured DraftKings lineup for one week. **Append-only, versioned by `capturedAt`.**
+
+| Column            | Type          | Notes                                                                |
+| ----------------- | ------------- | -------------------------------------------------------------------- |
+| `id`              | identity PK   |                                                                      |
+| `seasonId`        | integer FK    | NOT NULL → `seasons.id`, `onDelete: cascade`.                        |
+| `ownerSeasonId`   | integer FK    | NOT NULL → `owner_seasons.id`, `onDelete: cascade`.                  |
+| `week`            | integer       | NOT NULL. Same namespaces as `scores`: 1–18 regular, 19–22 playoff, 101–103 exhibition. |
+| `isExhibition`    | boolean       | NOT NULL, default `false`. **Derived from the week** by the ingest (`isExhibitionWeek`), never supplied by the caller — exactly like `scores.isExhibition`. |
+| `dkContestId`     | varchar(64)   | Nullable.                                                            |
+| `dkDraftGroupId`  | varchar(64)   | Nullable. The DK slate the lineup was drafted from.                  |
+| `dkEntryKey`      | varchar(64)   | Nullable. DK entry key, when the payload carried one.                |
+| `capturedAt`      | timestamptz   | NOT NULL. **When DraftKings was READ**, not when the row was written. Late-swap resolution compares this against each player's kickoff, so a wrong value silently mislabels slots as locked. |
+| `slots`           | jsonb         | NOT NULL. The drafted players: `[{ slot, dkPlayerId, draftableId, name, teamKey, position, revealed, dkScore, dkStats }]` — normally the nine DK Classic slots, in the order the payload yielded them (every field except `revealed` is nullable, and Admin → Lineups flags a capture with fewer than 9 as **incomplete**). `LineupSlotInput` in `src/lib/lineups/normalize.ts` is the authoritative shape. `slot` is the roster position (`QB`/`RB`/`WR`/`TE`/`FLEX`/`DST`, with `DEF`/`D` collapsed to `DST`); `position` is the player's actual position, which differs for a FLEX. `revealed` is `false` for a player DraftKings is still **concealing** from opponents — see below. `dkScore` (DK's own points) and `dkStats` (DK's own per-stat breakdown, `{ key, value, points }[]` keyed by DK's abbreviations like `RecYds`) are **reconciliation checkpoints, never scoring inputs** — see below. |
+| `captureRunId`    | integer FK    | Nullable → `lineup_capture_runs.id` (which run produced this snapshot). |
+| `createdAt`       | timestamptz   | NOT NULL, default `now()`.                                           |
+
+**Constraints/indexes:**
+
+- `lineup_snapshots_owner_week_captured_uq` — UNIQUE `(ownerSeasonId, week, capturedAt)`. The
+  **upsert key**: re-posting the same capture updates that row, so a retried sync is harmless,
+  while a capture with a *new* `capturedAt` inserts a new version.
+- `lineup_snapshots_season_week_idx` — INDEX `(seasonId, week)`.
+
+> **Why append-only.** DK Classic sets `allowLateSwap: true` (confirmed on DK's public gametype
+> rules endpoint), so an owner can swap a player right up until *that player's own* game kicks off.
+> A single lock-time snapshot therefore goes stale for later games. Keeping every capture means the
+> roster "in effect" is the **newest row per `(ownerSeason, week)`** — which is what
+> `getCaptureStatus` (`src/lib/lineups/query.ts`) selects with Postgres `DISTINCT ON`, and what
+> makes per-slot locked-vs-provisional classification possible later. **Do not add an
+> `ON CONFLICT (ownerSeasonId, week)` upsert**; it would delete the history the feature runs on.
+
+> **Why `name`/`teamKey`/`position` are denormalized into `slots`.** DK's draftables for a past
+> draft group expire, so a snapshot has to stay self-sufficient without a live DraftKings read.
+> DraftKings' roster payload carries **none of those three** — only a `draftableId` — so
+> `ingestLineups` resolves them against the public draftables endpoint (`src/lib/lineups/enrich.ts`)
+> **before** the row is written. A snapshot with `teamKey: null` on revealed players is not
+> scorable: scoring joins to ESPN on `(name, teamKey)`.
+
+> **Why `revealed` is stored rather than inferred.** DraftKings conceals a player from opponents
+> until that player's game kicks off — the row arrives as `draftableId: 0` with no name. A concealed
+> slot must never be rendered as `0.00`: the player has not played, so **no points are missing from
+> the capture, only names**. Concealment tracks swappability exactly, which also means any *revealed*
+> player is already locked and cannot be late-swapped, so revealed data never goes stale. A capture
+> taken at the 1pm lock legitimately shows only the early slate. Real payload:
+> `scripts/fixtures/dk-roster-entry.json`.
+
+> **Why `dkScore` / `dkStats` are stored even though nothing scores from them.** They exist **only
+> at capture time** — DraftKings' authenticated roster endpoint is the only source, and it ages out
+> with the contest. They are the free reconciliation checkpoint for the ESPN-derived estimate:
+> `dkStats` is a per-stat diff, which catches compensating errors that a matching total would hide.
+> `dkStats` is `null` when the payload had no breakdown at all and `[]` when DK said "nothing yet" —
+> the distinction is deliberate. Both are null for a concealed slot.
+
 ## Migration history
 
 Migrations are generated by drizzle-kit from `src/db/schema.ts` and committed under `drizzle/`.
@@ -446,6 +552,7 @@ A fresh checkout applies them all with `npm run db:migrate`.
 | `0007_concerned_iron_patriot.sql` | `owner_seasons.display_name` — the owner's name as that season's sheet listed it. |
 | `0008_shocking_lila_cheney.sql` | `is_exhibition` boolean on `matchups`, `nfl_games` **and** `scores` — the preseason namespace. |
 | `0009_lyrical_firedrake.sql` | `third_place` added to the `playoff_round` enum (`ALTER TYPE … ADD VALUE`, additive) — the consolation game that decides 3rd/4th. |
+| `0010_polite_nicolaos.sql` | `lineup_capture_runs` + `lineup_snapshots` (live-scoring roster capture) with their FKs, the `(ownerSeasonId, week, capturedAt)` unique index and the `(seasonId, week)` index. **Purely additive — it touches no existing table.** Applied to production. |
 
 To add one: edit `src/db/schema.ts`, run `npm run db:generate` (writes the SQL), review it, then
 `npm run db:migrate`. Commit the generated file.
@@ -453,6 +560,8 @@ To add one: edit `src/db/schema.ts`, run `npm run db:generate` (writes the SQL),
 ## Drizzle relations & inferred types
 
 `schema.ts` also declares Drizzle relations (for the relational query API) for `seasons`,
-`owners`, `owner_seasons`, `nfl_teams`, `nfl_games`, `matchups`, `scores`, and `weekly_contests`,
-and exports `$inferSelect` / `$inferInsert` types for every table (e.g. `Season`/`NewSeason`,
-`Score`/`NewScore`). Import these from `@/db` rather than redefining row shapes.
+`owners`, `owner_seasons`, `nfl_teams`, `nfl_games`, `matchups`, `scores`, `weekly_contests` and
+`lineup_snapshots` (→ its season, owner_season and capture run), and exports `$inferSelect` /
+`$inferInsert` types for every table (e.g. `Season`/`NewSeason`, `Score`/`NewScore`,
+`LineupSnapshot`/`NewLineupSnapshot`, `LineupCaptureRun`/`NewLineupCaptureRun`). Import these from
+`@/db` rather than redefining row shapes.

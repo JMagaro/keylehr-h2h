@@ -28,7 +28,8 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { ingestLeaderboard, type LeaderboardEntry } from '@/lib/scores/ingest';
-import { PRESEASON_WEEK_BASE, MAX_PRESEASON_WEEK } from '@/lib/schedule/preseason';
+import { isAuthorized } from '@/lib/ingest/auth';
+import { weekSchema } from '@/lib/ingest/week-schema';
 
 // Neon's serverless driver requires the Node.js runtime.
 export const runtime = 'nodejs';
@@ -53,30 +54,6 @@ const entrySchema = z.object({
  * keeps unknown keys without failing validation.
  */
 const rawEntrySchema = z.record(z.string(), z.unknown());
-
-/** Highest regular/playoff week we accept (18 regular + playoffs 19–22, with headroom). */
-const MAX_REGULAR_WEEK = 25;
-const MIN_EXHIBITION_WEEK = PRESEASON_WEEK_BASE + 1;
-const MAX_EXHIBITION_WEEK = PRESEASON_WEEK_BASE + MAX_PRESEASON_WEEK;
-
-/**
- * A stored week value. Two disjoint namespaces are legal — regular/playoff (1–25) and
- * preseason exhibition (101–103) — and the gap between them is deliberate: it means a
- * typo'd week can never silently land in the wrong namespace.
- */
-const weekSchema = z
-  .number()
-  .int()
-  .refine(
-    (w) =>
-      (w >= 1 && w <= MAX_REGULAR_WEEK) ||
-      (w >= MIN_EXHIBITION_WEEK && w <= MAX_EXHIBITION_WEEK),
-    {
-      message:
-        `Week must be 1–${MAX_REGULAR_WEEK} (regular/playoff) or ` +
-        `${MIN_EXHIBITION_WEEK}–${MAX_EXHIBITION_WEEK} (preseason exhibition).`,
-    },
-  );
 
 const bodySchema = z
   .object({
@@ -188,33 +165,6 @@ function normalizeRaw(raw: Record<string, unknown>[]): {
   }
 
   return { entries, skipped };
-}
-
-/* -------------------------------------------------------------------------- */
-/* Auth                                                                        */
-/* -------------------------------------------------------------------------- */
-
-/** Constant-time string comparison that avoids leaking length via early return. */
-function timingSafeEqual(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  const aBytes = enc.encode(a);
-  const bBytes = enc.encode(b);
-  // Compare against the longer length so timing does not depend on the shorter input.
-  const len = Math.max(aBytes.length, bBytes.length);
-  let diff = aBytes.length ^ bBytes.length;
-  for (let i = 0; i < len; i += 1) {
-    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
-  }
-  return diff === 0;
-}
-
-function isAuthorized(request: Request): boolean {
-  const expected = process.env.INGEST_TOKEN;
-  if (!expected) return false; // Misconfigured server → reject everything.
-  const header = request.headers.get('authorization') ?? '';
-  const prefix = 'Bearer ';
-  if (!header.startsWith(prefix)) return false;
-  return timingSafeEqual(header.slice(prefix.length), expected);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -1,0 +1,172 @@
+{
+  "_comment": "REAL DraftKings roster payload, captured 2026-08-15 from GET https://api.draftkings.com/scores/v2/entries/152064/5219434568?format=json&embed=roster (authenticated). Contest 193778304, draft group 152064. Trimmed to the read subset; the DST row's tail was truncated by the 4000-char probe preview, so its draftableId is a placeholder (marked below). Everything else is verbatim. NOTE the concealment behaviour: slots whose player's game has NOT started are returned with draftableId 0, no name, and isSwappable true.",
+  "entries": [
+    {
+      "roster": {
+        "scorecards": [
+          {
+            "yetToPlay": true,
+            "isSwappable": true,
+            "rosterPositionId": 66,
+            "rosterPosition": "QB",
+            "rosterPositionSortOrder": 1,
+            "draftableId": 0,
+            "maxTimeRemaining": 0
+          },
+          {
+            "firstName": "Ameer",
+            "lastName": "Abdullah",
+            "shortName": "A. Abdullah",
+            "displayName": "Ameer Abdullah",
+            "rosterPositionId": 67,
+            "rosterPosition": "RB",
+            "rosterPositionSortOrder": 2,
+            "percentDrafted": 16.67,
+            "draftableId": 43836582,
+            "score": 0,
+            "stats": [],
+            "timeRemainingUnit": "PMR",
+            "timeRemaining": 60,
+            "maxTimeRemaining": 0,
+            "competition": {
+              "competitionId": 6177720,
+              "name": "JAX 3 @ NO 7",
+              "timeStatus": "1:55 1st",
+              "competitionStatus": "Live",
+              "attributes": {
+                "timeRemaining": "1:55",
+                "homeTeamScore": "7",
+                "awayTeamScore": "3",
+                "quarter": "1"
+              },
+              "startTime": "2026-08-15T20:00:00.0000000Z"
+            },
+            "projection": {
+              "pregameProjection": 14.666666666666666,
+              "realTimeProjection": 14.666666666666666
+            },
+            "playerState": "offense",
+            "playerStates": ["onField"]
+          },
+          {
+            "yetToPlay": true,
+            "isSwappable": true,
+            "rosterPositionId": 67,
+            "rosterPosition": "RB",
+            "rosterPositionSortOrder": 2,
+            "draftableId": 0,
+            "maxTimeRemaining": 0
+          },
+          {
+            "firstName": "Jakobi",
+            "lastName": "Meyers",
+            "shortName": "J. Meyers",
+            "displayName": "Jakobi Meyers",
+            "rosterPositionId": 68,
+            "rosterPosition": "WR",
+            "rosterPositionSortOrder": 4,
+            "percentDrafted": 16.67,
+            "draftableId": 43836540,
+            "score": 0,
+            "stats": [],
+            "timeRemainingUnit": "PMR",
+            "timeRemaining": 60,
+            "maxTimeRemaining": 0,
+            "competition": {
+              "competitionId": 6177720,
+              "name": "JAX 3 @ NO 7",
+              "timeStatus": "1:55 1st",
+              "competitionStatus": "Live",
+              "startTime": "2026-08-15T20:00:00.0000000Z"
+            },
+            "projection": {
+              "pregameProjection": 14.666666666666666,
+              "realTimeProjection": 14.666666666666666
+            },
+            "playerState": "offense",
+            "playerStates": ["onField"]
+          },
+          {
+            "yetToPlay": true,
+            "isSwappable": true,
+            "rosterPositionId": 68,
+            "rosterPosition": "WR",
+            "rosterPositionSortOrder": 4,
+            "draftableId": 0,
+            "maxTimeRemaining": 0
+          },
+          {
+            "yetToPlay": true,
+            "isSwappable": true,
+            "rosterPositionId": 68,
+            "rosterPosition": "WR",
+            "rosterPositionSortOrder": 4,
+            "draftableId": 0,
+            "maxTimeRemaining": 0
+          },
+          {
+            "firstName": "Terrance",
+            "lastName": "Ferguson",
+            "shortName": "T. Ferguson",
+            "displayName": "Terrance Ferguson",
+            "rosterPositionId": 69,
+            "rosterPosition": "TE",
+            "rosterPositionSortOrder": 7,
+            "percentDrafted": 16.67,
+            "draftableId": 43836558,
+            "score": 0,
+            "stats": [],
+            "timeRemainingUnit": "PMR",
+            "timeRemaining": 60,
+            "maxTimeRemaining": 0,
+            "competition": {
+              "competitionId": 6177780,
+              "name": "LAR 3 @ KC 0",
+              "timeStatus": "14:17 2nd",
+              "competitionStatus": "Live",
+              "startTime": "2026-08-15T20:00:00.0000000Z"
+            },
+            "projection": {
+              "pregameProjection": 14.666666666666666,
+              "realTimeProjection": 14.666666666666666
+            },
+            "playerState": "offense",
+            "playerStates": ["onField"]
+          },
+          {
+            "yetToPlay": true,
+            "isSwappable": true,
+            "rosterPositionId": 70,
+            "rosterPosition": "FLEX",
+            "rosterPositionSortOrder": 8,
+            "draftableId": 0,
+            "maxTimeRemaining": 0
+          },
+          {
+            "firstName": "Rams",
+            "lastName": "",
+            "shortName": "Rams",
+            "displayName": "Rams ",
+            "rosterPositionId": 71,
+            "rosterPosition": "DST",
+            "rosterPositionSortOrder": 9,
+            "draftableId": 43836601,
+            "score": 0,
+            "stats": [],
+            "timeRemainingUnit": "PMR",
+            "timeRemaining": 45,
+            "maxTimeRemaining": 0,
+            "competition": {
+              "competitionId": 6177780,
+              "name": "LAR 3 @ KC 0",
+              "timeStatus": "14:17 2nd",
+              "competitionStatus": "Live",
+              "startTime": "2026-08-15T20:00:00.0000000Z"
+            },
+            "playerState": "defense"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -68,19 +68,26 @@
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const data = event.data;
-    if (!data || data.source !== TAG || data.kind !== 'capture-result') return;
+    if (!data || data.source !== TAG) return;
+    if (
+      data.kind !== 'capture-result' &&
+      data.kind !== 'probe-result' &&
+      data.kind !== 'roster-capture-result'
+    ) {
+      return;
+    }
     const entry = pending.get(data.requestId);
     if (!entry) return;
     pending.delete(data.requestId);
     entry.resolve(data.result);
   });
 
-  function captureViaPage(contestId) {
+  /** Generic tagged round-trip to the MAIN world. */
+  function askPage(kind, payload, timeoutMs) {
     return new Promise((resolve) => {
       const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2);
       pending.set(requestId, { resolve });
 
-      // Safety timeout so the popup never hangs if the hook never answers.
       setTimeout(() => {
         if (pending.has(requestId)) {
           pending.delete(requestId);
@@ -90,13 +97,14 @@
               'The DraftKings page did not respond. Reload the contest Standings tab and retry.',
           });
         }
-      }, 20000);
+      }, timeoutMs || 20000);
 
-      window.postMessage(
-        { source: TAG, kind: 'capture-request', requestId, contestId: String(contestId) },
-        '*',
-      );
+      window.postMessage(Object.assign({ source: TAG, kind, requestId }, payload), '*');
     });
+  }
+
+  function captureViaPage(contestId) {
+    return askPage('capture-request', { contestId: String(contestId) }, 20000);
   }
 
   // ---- 3. respond to the popup ---------------------------------------------
@@ -109,6 +117,26 @@
     if (msg.type === 'DETECT_CONTEST') {
       sendResponse({ ok: true, contestName: readContestName() });
       return undefined; // responded synchronously
+    }
+
+    // Roster-endpoint diagnosis (Phase 0). Probing hits several DK URLs in sequence, so it
+    // gets a longer timeout than a single capture.
+    if (msg.type === 'PROBE_ROSTER_ENDPOINT') {
+      askPage('probe-request', { contestId: String(msg.contestId), entryKey: msg.entryKey || '' }, 45000).then(
+        (result) => sendResponse(result),
+      );
+      return true;
+    }
+
+    // Roster capture for live scoring: one authenticated request per entry (DK has no bulk
+    // roster endpoint), so this is by far the longest round-trip the popup makes. 32 entries
+    // at concurrency 4 with jitter is a few seconds; the ceiling is generous so a slow slate
+    // reports a real result instead of a timeout.
+    if (msg.type === 'CAPTURE_ROSTERS') {
+      askPage('roster-capture-request', { contestId: String(msg.contestId) }, 180000).then(
+        (result) => sendResponse(result),
+      );
+      return true;
     }
 
     if (msg.type === 'CAPTURE_LEADERBOARD') {

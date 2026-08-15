@@ -36,6 +36,8 @@ Components, Server Actions, Route Handlers, and `tsx` CLI scripts).
                                             ──▶ src/lib/scores/ingest ──▶ scores
       DraftKings draftables  ──▶ src/lib/draftkings (salaries, server-side, keyless)
       Sleeper + ESPN news    ──▶ src/lib/players   (lineup builder signals)
+      ESPN boxscore API      ──▶ src/lib/dfs       (live DK-points ESTIMATE — never
+                                                    written to scores; see §9)
 ```
 
 All four App Router surfaces ship today. See [§2](#2-request-flow) for the counts.
@@ -49,12 +51,13 @@ All four App Router surfaces ship today. See [§2](#2-request-flow) for the coun
   (plus the lineup Builder), History (index, per-season, head-to-head), Rules, and Cohen's Corner.
 - **Admin pages (`src/app/admin/(panel)/`):** gated behind Auth.js. CRUD runs as **Server
   Actions** that mutate the database and call `revalidatePath()`. Shipped: the dashboard, Owners
-  (list + detail), Assignments, Schedule, Preseason, Sync, Playoffs, Slates, Models, Settings and
-  Users, plus the `/admin/login` route.
+  (list + detail), Assignments, Schedule, Preseason, Sync, **Lineups**, Playoffs, Slates, Models,
+  Settings and Users, plus the `/admin/login` route.
 - **Route handlers (`src/app/api/.../route.ts`):** `POST /api/ingest/draftkings` (the extension's
-  score ingest, bearer `INGEST_TOKEN`), `GET /api/seasons` (the extension's season picker /
-  connection probe), and the Auth.js catch-all. GET handlers are **not** cached by default in
-  Next 16.
+  score ingest, bearer `INGEST_TOKEN`), `POST /api/ingest/lineups` (roster capture for the live
+  estimate — same token, **never** writes a score; see [§9](#9-live-in-progress-scoring-partly-built)),
+  `GET /api/seasons` (the extension's season picker / connection probe), and the Auth.js catch-all.
+  GET handlers are **not** cached by default in Next 16.
 - **`middleware.ts`:** gates `/admin/*` (except `/admin/login`) — see [§6](#6-auth--admin-model-implemented).
 - **CLI scripts (`scripts/`, `src/db/seed/`):** run via `tsx` outside the request lifecycle
   for seeding, the schedule/matchup pull, the season/playoff/award importers, the odds
@@ -282,7 +285,12 @@ Manual fallback: commissioner pastes leaderboard JSON or hand-enters scores
 The DraftKings API is **unofficial, undocumented, and against DK's Terms of Service**, and the
 authenticated-session requirement (token expiry + bot detection) is the single biggest fragility.
 A manual fallback is therefore mandatory. See [`DRAFTKINGS.md`](DRAFTKINGS.md) for the full design,
-caveats, and mitigations.
+caveats, and mitigations — including [§11](DRAFTKINGS.md#11-endpoint-inventory--what-is-public-and-what-needs-auth),
+the probed inventory of which DK endpoints work without a session.
+
+A separate path for showing points *while games are in progress* is under construction. It has its
+own tables and is **read-only with respect to this pipeline** — it never writes `scores` — see
+[§9](#9-live-in-progress-scoring-partly-built).
 
 ## 8. Key tables (quick reference)
 
@@ -302,5 +310,100 @@ caveats, and mitigations.
 | `playoff_odds_snapshots` | Monte-Carlo playoff odds per owner-week, for the trend chart.     |
 | `model_snapshots`   | Lineup-model recommendations + their graded results.                  |
 | `users`             | Admin logins for the commissioner panel (separate from `owners`).     |
+| `lineup_snapshots`  | Captured DK rosters for the live **estimate** — append-only, versioned. Never a score. |
+| `lineup_capture_runs` | Audit log of each roster capture, incl. which DK URL worked.        |
 
-Full column-level detail is in [`DATA_MODEL.md`](DATA_MODEL.md).
+Full column-level detail is in [`DATA_MODEL.md`](DATA_MODEL.md). The two `lineup_*` tables arrived
+in migration `0010`, which is applied — see [§9](#9-live-in-progress-scoring-partly-built).
+
+## 9. Live in-progress scoring (partly built)
+
+> **What exists (Phases 0–3 of 5):** a pure DraftKings scoring engine and a public-ESPN stat
+> adapter under `src/lib/dfs/`, plus roster capture and storage under `src/lib/lineups/`
+> (`POST /api/ingest/lineups` + Admin → Lineups), fed by the Chrome extension's one-click
+> **Capture lineups** (v1.2.0). **What does not exist:** DK→ESPN player matching, and any `/live`
+> page. Do not read this as a shipped feature. Full detail —
+> [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
+
+The scoring pipeline in [§7](#7-draftkings-scoring-pipeline-implemented--via-the-browser-extension)
+needs the commissioner's browser, so a week's numbers only move when someone syncs. The plan for
+in-progress numbers: capture each owner's DK **roster** from that same browser (a few times a week —
+DK Classic allows late swap, so captures are versioned rather than overwritten), then recompute the
+points server-side from ESPN's public boxscore API — no DK session on the server, no cron, machine
+can be off in between.
+
+```text
+WHO THEY STARTED (authenticated, re-captured)        WHAT THEY DID (public, recomputed on demand)
+
+DraftKings roster payload  (1 request per entry)     ESPN summary API (keyless — accept header
+      │  POST /api/ingest/lineups                          ONLY, never a user-agent)
+      │  or Admin → Lineups paste                          │  src/lib/dfs/sources/espn-boxscore.ts
+      │  src/lib/lineups/normalize.ts  (pure, structural)  │     fetchGameSummary(id, ttlSeconds)
+      │  src/lib/lineups/enrich.ts     (draftableId →      │
+      │                                 name/team/pos)     │
+      │  src/lib/lineups/ingest.ts     (owner matching)    ▼
+      ▼                                              EspnSummaryResponse
+lineup_snapshots  (append-only, newest wins)               │  src/lib/dfs/sources/espn-extract.ts
+lineup_capture_runs  (audit)                               │     extractGame  (pure)
+      │  src/lib/lineups/query.ts  getCaptureStatus        ▼
+      │                                              PlayerStatLine / DstStatLine
+      └──────────────────┬─────────────────────────────────┘   (src/lib/dfs/stat-line.ts)
+                         ▼
+        src/lib/dfs/score.ts   scorePlayer / scoreDst / scoreLineup  (pure)
+        src/lib/dfs/rules.ts   DK_CLASSIC_NFL  (frozen rule data)
+                         ▼
+            an ESTIMATE — displayed only, never written to `scores`
+```
+
+The join between the two halves — matching a captured DK player to an ESPN athlete — is Phase 4 and
+does not exist yet. Half of its input does: DK's roster payload names nobody and no team, only a
+`draftableId`, so `enrich.ts` resolves that against the **public** draftables endpoint at capture
+time (DK expires draftables for old draft groups, so a snapshot must stand alone). That is what puts
+the `(name, teamKey)` pair on the snapshot that Phase 4 will match on.
+
+Three architectural constraints, all deliberate:
+
+- **The estimate cannot enter the scoring chain.** `src/lib/dfs/` imports no database and no
+  `src/lib/standings/`, so the module graph forbids it outright. The capture path *does* need the
+  database, so it is fenced by a test instead: `src/lib/lineups/no-write.test.ts` scans every module
+  under `src/lib/dfs`, `src/lib/lineups` and `src/lib/live` and fails on any write to `scores`,
+  `matchups`, `playoff_matchups`, `season_awards` or `nfl_games`. Reads are allowed; writes are not.
+  DraftKings' leaderboard remains the sole authority for `scores`.
+- **The engine is pure and the rule set is data**, so both are exhaustively unit-tested (63 tests)
+  and DK's published rules can be diffed against `rules.ts` by eye.
+- **The adapter is source-agnostic.** `stat-line.ts` names its fields after DraftKings' rules, not
+  ESPN's JSON, so a second provider can feed the same engine without touching `score.ts`.
+
+`src/lib/nfl/team-keys.ts` holds the one `normalizeTeamKey()` — it existed as three private copies
+(DraftKings draftables, Sleeper players, and the live-scoring stat adapters) and was pulled up
+here. Drift between copies silently fails to join a player to their stats or their salary, and
+surfaces as a mysterious zero rather than an error. Our canonical keys follow ESPN's
+abbreviations, so ESPN input is a pass-through; the fixups cover DK's `JAC`/`WAS`, Sleeper's
+`WAS`, and the historical relocations.
+
+`npm run dfs:selftest` validates the engine across a whole week against Sleeper's independently
+computed `pts_ppr`. Cross-source caveats (including why Sleeper cannot be the live feed) are in
+[`DRAFTKINGS.md` §11](DRAFTKINGS.md#11-endpoint-inventory--what-is-public-and-what-needs-auth).
+
+On the capture side, two shapes are worth knowing before touching it:
+
+- **`lineup_snapshots` is append-only, versioned by `capturedAt`.** DK Classic allows late swap, so
+  the roster in effect is the *newest* row per `(ownerSeason, week)` — one `DISTINCT ON` in
+  `src/lib/lineups/query.ts`. Collapsing it to one row per owner-week would delete the history the
+  feature runs on.
+- **The normalizer is deliberately shape-agnostic.** `src/lib/lineups/normalize.ts` finds roster
+  rows structurally instead of by path, because DK's roster endpoint is undocumented — the same
+  technique the extension's leaderboard extractor uses, and the reason a raw DK payload can be
+  posted (or pasted) verbatim.
+- **Capture is a fan-out, and half of it is invisible.** DraftKings has no bulk roster endpoint (the
+  `embed=leaderboard,roster` form returns 200 with an empty map), so the extension issues one
+  authenticated request per entry. DK also *conceals* each player until their game kicks off, so a
+  complete 32/32 capture routinely stores mostly nameless slots. That is expected: a concealed player
+  has scored nothing, so only names are missing, never points — and anyone visible is already locked
+  past late swap. `revealed` is stored per slot so no UI can render a concealed player as `0.00`.
+
+Auth and week validation are **shared with the score ingest**, not duplicated:
+`src/lib/ingest/{auth,week-schema}.ts`, extracted from the DraftKings route with no behaviour
+change. Owner-name matching is shared too (`src/lib/scores/owner-match.ts`) — if the two ingests
+ever resolved a DK entry name differently, an owner's roster and their score would land on
+different rows.

@@ -72,6 +72,30 @@
       <div id="status" class="status" role="status" aria-live="polite"></div>
       <div id="lastSynced" class="last-synced" hidden></div>
 
+      <!-- ========================== LINEUP CAPTURE ========================= -->
+      <!--
+        Live scoring. This is the ONLY step that needs a DraftKings login — it records WHO each
+        owner started. Scoring runs afterwards on the server from public NFL stats, so nothing
+        has to stay open or switched on for the rest of the week.
+
+        Players whose games have not kicked off come back CONCEALED (DraftKings hides them from
+        opponents). That is not a partial capture: a player who has not played has scored
+        nothing, so no points are ever missing — only names, which a later capture fills in.
+      -->
+      <div class="live" id="lineupsCard">
+        <div class="live-head">
+          <span class="live-title">Lineups <em>— for live scoring</em></span>
+        </div>
+        <div id="lineupsStatus" class="live-status" role="status" aria-live="polite">
+          Capture everyone’s picks after lock, then again later to catch late swaps.
+        </div>
+        <button id="lineupsBtn" class="secondary lineups-btn" type="button" disabled>
+          <span id="lineupsSpinner" class="spinner" hidden></span>
+          <span id="lineupsLabel">Capture lineups</span>
+        </button>
+        <div id="lastCaptured" class="last-synced" hidden></div>
+      </div>
+
       <!-- ============================ LIVE SYNC ============================ -->
       <div class="live" id="liveCard">
         <div class="live-head">
@@ -90,6 +114,28 @@
         </div>
         <button id="liveStopBtn" class="secondary live-stop" type="button" hidden>Stop Live Sync</button>
       </div>
+
+      <!-- =================== ROSTER ENDPOINT DIAGNOSIS ==================== -->
+      <!--
+        Phase 0 of live scoring. DK's roster endpoint is undocumented and auth-gated, so it
+        cannot be found from outside a logged-in browser. This probes candidate URLs and, if
+        they all fail, shows every api.draftkings.com URL the gamecenter itself requested —
+        whatever DK's own UI calls is by definition the right endpoint.
+      -->
+      <details id="diagnoseExpander" class="expander">
+        <summary>Diagnose roster endpoint</summary>
+        <p class="hint">
+          Open a contest <strong>gamecenter</strong> tab, click an entry to load a lineup, then
+          run this. Copy the result into <code>docs/DRAFTKINGS.md</code>.
+        </p>
+        <button id="probeBtn" class="secondary" type="button">
+          <span id="probeSpinner" class="spinner" hidden></span>
+          <span id="probeLabel">Probe roster endpoint</span>
+        </button>
+        <div id="probeResult" class="probe-result" role="status" aria-live="polite"></div>
+        <textarea id="probeRaw" class="probe-raw" rows="8" readonly hidden></textarea>
+        <button id="probeCopyBtn" class="secondary" type="button" hidden>Copy full result</button>
+      </details>
 
       <details id="pasteExpander" class="expander">
         <summary>Paste manually</summary>

@@ -16,6 +16,7 @@ const ADMIN_NAV = [
   { href: '/admin/schedule', label: 'Schedule' },
   { href: '/admin/preseason', label: 'Preseason' },
   { href: '/admin/sync', label: 'Sync' },
+  { href: '/admin/lineups', label: 'Lineups' },
   { href: '/admin/playoffs', label: 'Playoffs' },
   { href: '/admin/slates', label: 'Slates' },
   { href: '/admin/models', label: 'Models' },

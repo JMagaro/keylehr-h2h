@@ -462,6 +462,24 @@ button.big {
   display: none;
 }
 
+/* ---- lineup capture card (shares the .live card shell) ---- */
+.live-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.live-title em {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.lineups-btn {
+  margin-top: 8px;
+}
+
 /* ---- paste expander ---- */
 .expander {
   margin-top: 14px;
@@ -491,4 +509,56 @@ button.big {
 
 .expander label {
   margin-top: 10px;
+}
+
+/* ---- roster-endpoint diagnosis (Phase 0 of live scoring) ---- */
+.expander .hint {
+  margin: 8px 0 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.expander .hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+
+.probe-result {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 16px;
+  word-break: break-word;
+}
+
+.probe-result.ok {
+  color: var(--ok);
+}
+
+.probe-result.warn {
+  color: var(--amber);
+}
+
+.probe-result.err {
+  color: var(--error);
+}
+
+.probe-result code {
+  display: inline-block;
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  word-break: break-all;
+}
+
+/* The copy-pasteable report. Monospace + no wrap so URLs stay readable. */
+.probe-raw {
+  width: 100%;
+  margin-top: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
 }

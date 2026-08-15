@@ -30,8 +30,8 @@ dev). They mirror [`.env.example`](../.env.example).
 | `AUTH_SECRET`         | Yes (P1 auth)   | Auth.js signing secret. Generate with `openssl rand -base64 32`.                                       |
 | `ADMIN_EMAIL`         | Yes (P1 auth)   | The single commissioner/admin login email for v1.                                                      |
 | `ADMIN_PASSWORD_HASH` | Yes (P1 auth)   | **Bcrypt hash** of the admin password (never the plaintext). See [§5](#5-admin-password-hash).         |
-| `INGEST_TOKEN`        | **Yes, to score** | Bearer token the DK Sync Chrome extension sends to `POST /api/ingest/draftkings` (and `/api/seasons`). **Without it every sync 401s** — the server rejects all ingest when it's unset. Same value in the extension's Settings screen. See [`extension/README.md`](../extension/README.md). |
-| `DK_SESSION_COOKIE`   | P3 only         | Authenticated DraftKings session for the leaderboard read. Leave blank until Phase 3. See [`DRAFTKINGS.md`](DRAFTKINGS.md). |
+| `INGEST_TOKEN`        | **Yes, to score** | Bearer token the DK Sync Chrome extension sends to `POST /api/ingest/draftkings` (and `/api/seasons`). The same token guards `POST /api/ingest/lineups` (roster capture). **Without it every sync 401s** — the server rejects all ingest when it's unset. Same value in the extension's Settings screen. See [`extension/README.md`](../extension/README.md). |
+| `DK_SESSION_COOKIE`   | Unused          | Was to hold an authenticated DraftKings session for a server-side leaderboard read. **That design was rejected** — the read happens in the commissioner's browser instead, so nothing reads this variable. See [§6](#6-vercel-cron-for-the-weekly-pull--not-built). Safe to leave unset. |
 | `CRON_SECRET`         | Unused          | Was to guard a Vercel Cron score-pull endpoint. **That route was never built and won't be** — see [§6](#6-vercel-cron-for-the-weekly-pull--not-built). Safe to leave unset. |
 | `AUTH_URL`            | Local dev       | Base URL of the app for Auth.js v5. Set it locally (`http://localhost:3000`); **auto-detected on Vercel**, so it is optional in production. |
 
@@ -66,13 +66,18 @@ npm run db:seed        # 32 NFL teams + the current season
 ```
 
 - `npm run db:generate` only needs to be run when `src/db/schema.ts` changes; it writes a new
-  migration file you then commit. Every migration to date (`drizzle/0000_*.sql` … `0008_*.sql`)
+  migration file you then commit. Every migration to date (`drizzle/0000_*.sql` … `0010_*.sql`)
   is already committed — see [`DATA_MODEL.md`](DATA_MODEL.md#migration-history).
 - `npm run db:push` syncs the schema directly without a migration file — fine for a personal dev
   database, **not recommended for production**. Prefer `db:migrate` in production so changes are
   versioned.
 - You can run these locally against prod, from a CI step, or any environment that has the
   production `DATABASE_URL`.
+
+> **Production is through `0010`** — the two live-scoring capture tables (`lineup_capture_runs`,
+> `lineup_snapshots`), applied. It is purely additive: it alters no existing table, so it moved no
+> score and no standing. A dev database still on `0009` works normally except for
+> `POST /api/ingest/lineups` and Admin → Lineups, which fail against the missing relations.
 
 > Run migrations **before** the new app version serves traffic that depends on the new schema.
 
@@ -148,7 +153,8 @@ The pull would run on a schedule via Vercel Cron, hitting a route handler guarde
 ## 7. Post-deploy checklist
 
 - [ ] `DATABASE_URL` set (pooled Neon URL) and reachable.
-- [ ] `npm run db:migrate` applied against production.
+- [ ] `npm run db:migrate` applied against production — currently through **`0010`**
+      (see [§4](#4-run-migrations-against-production)).
 - [ ] `npm run db:seed` run (32 teams + current season present).
 - [ ] Auth env vars set (`AUTH_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`; `AUTH_URL` locally).
 - [ ] Commissioner can sign in at `/admin/login`.
