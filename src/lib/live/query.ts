@@ -9,6 +9,7 @@
  * engine reads. Enforced mechanically by src/lib/lineups/no-write.test.ts.
  */
 import { and, desc, eq, isNotNull } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
 import {
   db,
@@ -27,10 +28,28 @@ import { isExhibitionWeek } from '@/lib/schedule/preseason';
 import type { AssembleMatchup, AssembleSnapshot } from './assemble';
 import type { LiveGameRef } from './stats';
 
+/**
+ * Per-NFL-team context for a week: who they play, when, and their logo.
+ *
+ * This is what lets a roster row read "@LAC Sun 4:25 PM" instead of just a team code — the
+ * detail page needs to say something useful about a player whose game has not started, and
+ * ESPN's live status only exists once it has.
+ */
+export interface LiveTeamContext {
+  teamKey: string;
+  name: string | null;
+  logoEspn: string | null;
+  opponentKey: string | null;
+  isHome: boolean;
+  kickoff: Date | null;
+}
+
 export interface LiveWeekData {
   matchups: AssembleMatchup[];
   snapshots: AssembleSnapshot[];
   games: LiveGameRef[];
+  /** Keyed by `nfl_teams.key`. */
+  teamContext: Record<string, LiveTeamContext>;
 }
 
 /** Map DraftKings-adjacent status text onto the three states ESPN's TTL table uses. */
@@ -71,6 +90,24 @@ export async function getDefaultLiveWeek(seasonId: number): Promise<number> {
 }
 
 /**
+ * Locate a matchup so the detail page can load its week.
+ *
+ * The detail page then goes through the SAME `getLiveWeekData` + `getLiveStatsForWeek` path as
+ * the list. That is deliberate: the week's stat index is already warm in the Data Cache, so
+ * opening a matchup costs no additional ESPN traffic no matter how many people click through.
+ */
+export async function getMatchupLocation(
+  matchupId: number,
+): Promise<{ seasonId: number; week: number } | null> {
+  const [row] = await db
+    .select({ seasonId: matchups.seasonId, week: matchups.week })
+    .from(matchups)
+    .where(eq(matchups.id, matchupId))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
  * Everything /live needs for one week.
  *
  * `isExhibition` is derived from the week and applied as a REQUIRED filter on matchups, not
@@ -81,6 +118,9 @@ export async function getLiveWeekData(seasonId: number, week: number): Promise<L
   const isExhibition = isExhibitionWeek(week);
 
   const homeOwner = ownerSeasons;
+  // `nfl_teams` is joined twice in the games query (home and away), so it needs two aliases.
+  const homeTeam = alias(nflTeams, 'home_team');
+  const awayTeam = alias(nflTeams, 'away_team');
   const [matchupRows, snapshotRows, gameRows] = await Promise.all([
     // Matchups with both sides' display data. Two joins per side, so this is one round-trip
     // rather than one per participant.
@@ -112,10 +152,24 @@ export async function getLiveWeekData(seasonId: number, week: number): Promise<L
       .where(and(eq(lineupSnapshots.seasonId, seasonId), eq(lineupSnapshots.week, week)))
       .orderBy(lineupSnapshots.ownerSeasonId, desc(lineupSnapshots.capturedAt)),
 
-    // The week's NFL games, for ESPN event ids and a starting guess at each game's state.
+    // The week's NFL games: ESPN event ids, a starting guess at each game's state, and both
+    // teams' identity — the last of which is what makes a roster row able to say who a player
+    // is playing and when.
     db
-      .select({ espnEventId: nflGames.espnEventId, status: nflGames.status })
+      .select({
+        espnEventId: nflGames.espnEventId,
+        status: nflGames.status,
+        kickoff: nflGames.kickoff,
+        homeKey: homeTeam.key,
+        homeName: homeTeam.name,
+        homeLogo: homeTeam.logoEspn,
+        awayKey: awayTeam.key,
+        awayName: awayTeam.name,
+        awayLogo: awayTeam.logoEspn,
+      })
       .from(nflGames)
+      .innerJoin(homeTeam, eq(nflGames.homeTeamId, homeTeam.id))
+      .innerJoin(awayTeam, eq(nflGames.awayTeamId, awayTeam.id))
       .where(
         and(
           eq(nflGames.seasonId, seasonId),
@@ -124,6 +178,26 @@ export async function getLiveWeekData(seasonId: number, week: number): Promise<L
         ),
       ),
   ]);
+
+  const teamContext: Record<string, LiveTeamContext> = {};
+  for (const g of gameRows) {
+    teamContext[g.homeKey] = {
+      teamKey: g.homeKey,
+      name: g.homeName,
+      logoEspn: g.homeLogo,
+      opponentKey: g.awayKey,
+      isHome: true,
+      kickoff: g.kickoff,
+    };
+    teamContext[g.awayKey] = {
+      teamKey: g.awayKey,
+      name: g.awayName,
+      logoEspn: g.awayLogo,
+      opponentKey: g.homeKey,
+      isHome: false,
+      kickoff: g.kickoff,
+    };
+  }
 
   // Owner display data for everyone appearing in a matchup.
   const ownerRows = await db
@@ -171,7 +245,8 @@ export async function getLiveWeekData(seasonId: number, week: number): Promise<L
       slots: (s.slots as LineupSlotInput[]) ?? [],
     })),
     games: gameRows
-      .filter((g): g is { espnEventId: string; status: string | null } => Boolean(g.espnEventId))
-      .map((g) => ({ espnEventId: g.espnEventId, state: toGameState(g.status) })),
+      .filter((g) => Boolean(g.espnEventId))
+      .map((g) => ({ espnEventId: g.espnEventId as string, state: toGameState(g.status) })),
+    teamContext,
   };
 }

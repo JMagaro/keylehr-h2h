@@ -1,69 +1,22 @@
 /**
- * One live matchup: two owners, their running estimates, and an expandable 9-slot breakdown.
+ * One live matchup in the week list — a summary, and a single click target.
+ *
+ * The WHOLE card is the link, matching the season cards on /history. The per-player breakdown
+ * lives on the detail page rather than in an inline expander here: a <details> toggle nested
+ * inside a link fights the link, and the detail page has room to show each player's stat line
+ * and game state properly.
  *
  * The display rule that drives every branch here: a number we don't have is never rendered as
  * a number. `—` plus a reason, never `0.00`. See src/lib/live/assemble.ts.
  */
+import Link from 'next/link';
+import { ChevronRight } from 'lucide-react';
+
 import { Badge } from '@/components/badge';
 import { Card, CardBody } from '@/components/card';
 import { TeamLogo } from '@/components/team-logo';
-import type { LiveMatchup, LiveSlot, LiveTeam } from '@/lib/live/assemble';
+import type { LiveMatchup, LiveTeam } from '@/lib/live/assemble';
 import { formatPoints, cn } from '@/lib/utils';
-
-/** Roster-slot display order, so both sides of a matchup line up row for row. */
-const SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'DST'];
-
-function slotRank(slot: string | null): number {
-  const i = SLOT_ORDER.indexOf((slot ?? '').toUpperCase());
-  return i < 0 ? SLOT_ORDER.length : i;
-}
-
-function sortSlots(slots: LiveSlot[]): LiveSlot[] {
-  return [...slots].sort((a, b) => slotRank(a.slot) - slotRank(b.slot));
-}
-
-/** What to show in the points column, and why, for each non-scored state. */
-function slotDisplay(slot: LiveSlot): { value: string; note: string; muted: boolean } {
-  switch (slot.status) {
-    case 'scored':
-      return { value: formatPoints(slot.points ?? 0), note: slot.gameDetail ?? '', muted: false };
-    case 'pending':
-      return { value: '—', note: slot.gameDetail ?? 'Yet to play', muted: true };
-    case 'concealed':
-      // DraftKings hides opponents' players until kickoff. Say that plainly rather than
-      // letting a blank row read as a missing pick.
-      return { value: '—', note: 'Hidden until kickoff', muted: true };
-    case 'noStats':
-      // A real 0.00 — they are playing and have not recorded anything. Shown muted so it
-      // reads differently from a scored 0, but it IS a number, not a gap.
-      return { value: formatPoints(0), note: 'No stats yet', muted: true };
-    case 'unresolved':
-      return { value: '?', note: 'Game not loaded', muted: true };
-  }
-}
-
-function SlotRow({ slot }: { slot: LiveSlot }) {
-  const { value, note, muted } = slotDisplay(slot);
-  return (
-    <tr className="border-t border-border/50">
-      <td className="py-1.5 pr-2 text-xs font-medium text-muted">{slot.slot ?? '—'}</td>
-      <td className="py-1.5 pr-2 text-sm">
-        {slot.name ?? <span className="text-muted italic">Hidden</span>}
-        {slot.teamKey ? <span className="ml-1.5 text-xs text-muted">{slot.teamKey}</span> : null}
-      </td>
-      <td className="py-1.5 pr-2 text-xs text-muted">{note}</td>
-      <td
-        className={cn(
-          'py-1.5 text-right text-sm tabular-nums',
-          muted ? 'text-muted' : 'font-semibold',
-          slot.status === 'unresolved' && 'text-tie',
-        )}
-      >
-        {value}
-      </td>
-    </tr>
-  );
-}
 
 function TeamSide({ team }: { team: LiveTeam }) {
   return (
@@ -109,53 +62,36 @@ export function MatchupCard({ matchup }: { matchup: LiveMatchup }) {
     bothCaptured && home.points !== away.points ? (home.points > away.points ? 'home' : 'away') : null;
 
   return (
-    <Card>
-      <CardBody className="flex flex-col gap-3">
-        <div className={cn('rounded-md px-1', leader === 'home' && 'bg-win-soft/40')}>
-          <TeamSide team={home} />
-        </div>
-        <div className={cn('rounded-md px-1', leader === 'away' && 'bg-win-soft/40')}>
-          <TeamSide team={away} />
-        </div>
+    <Link
+      href={`/live/${matchup.id}`}
+      className="group block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      <Card className="h-full transition-colors group-hover:border-accent/50">
+        <CardBody className="flex flex-col gap-3">
+          <div className={cn('rounded-md px-1', leader === 'home' && 'bg-win-soft/40')}>
+            <TeamSide team={home} />
+          </div>
+          <div className={cn('rounded-md px-1', leader === 'away' && 'bg-win-soft/40')}>
+            <TeamSide team={away} />
+          </div>
 
-        {anyCaptured ? (
-          <details className="group">
-            <summary className="cursor-pointer list-none text-xs font-medium text-muted hover:text-foreground">
-              <span className="group-open:hidden">Show players</span>
-              <span className="hidden group-open:inline">Hide players</span>
-            </summary>
-            <div className="mt-2 grid gap-4 md:grid-cols-2">
-              {[home, away].map((team) => (
-                <div key={team.ownerSeasonId}>
-                  <div className="mb-1 text-xs font-semibold">{team.ownerName}</div>
-                  {team.hasSnapshot ? (
-                    <table className="w-full">
-                      <tbody>
-                        {sortSlots(team.slots).map((s, i) => (
-                          <SlotRow key={`${s.slot}-${s.name ?? 'hidden'}-${i}`} slot={s} />
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <p className="text-xs text-muted">
-                      Lineup not captured — nothing is known about this roster, which is why the
-                      total reads &mdash; rather than 0.00.
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </details>
-        ) : (
-          <Badge variant="tie">Neither lineup captured</Badge>
-        )}
-
-        {anyCaptured && !bothCaptured ? (
-          <Badge variant="tie">
-            {(!home.hasSnapshot ? home : away).ownerName}&apos;s lineup not captured
-          </Badge>
-        ) : null}
-      </CardBody>
-    </Card>
+          <div className="flex items-center justify-between gap-2">
+            {!bothCaptured ? (
+              <Badge variant="tie">
+                {!anyCaptured
+                  ? 'Neither lineup captured'
+                  : `${(!home.hasSnapshot ? home : away).ownerName}'s lineup not captured`}
+              </Badge>
+            ) : (
+              <span />
+            )}
+            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-muted group-hover:text-foreground">
+              Players
+              <ChevronRight className="size-3.5" aria-hidden="true" />
+            </span>
+          </div>
+        </CardBody>
+      </Card>
+    </Link>
   );
 }

@@ -31,7 +31,7 @@
  * Nothing here is a score. See docs/SCORING.md §15.
  */
 import { scoreDst, scorePlayer, type ScoreComponent } from '@/lib/dfs/score';
-import type { LineupSlotInput } from '@/lib/lineups/normalize';
+import type { DkStat, LineupSlotInput } from '@/lib/lineups/normalize';
 
 import { playerStatKey, type LiveStatIndex } from './stats';
 
@@ -55,6 +55,14 @@ export interface LiveSlot {
   gameDetail: string | null;
   /** DraftKings' own number at capture time — a reconciliation checkpoint, not the estimate. */
   dkScore: number | null;
+  /**
+   * DraftKings' own stat line at capture time.
+   *
+   * Read it as a SNAPSHOT, not a live figure: it is whatever DK said when the roster was
+   * read, so during a game it lags the ESPN-derived number by however long ago that was. A
+   * difference is expected and is not an error — the UI must date it.
+   */
+  dkStats: DkStat[] | null;
 }
 
 export interface LiveTeam {
@@ -136,6 +144,7 @@ function resolveSlot(slot: LineupSlotInput, index: LiveStatIndex): LiveSlot {
     teamKey: slot.teamKey,
     position: slot.position,
     dkScore: slot.dkScore,
+    dkStats: slot.dkStats,
   };
 
   // DraftKings hid this player because their game has not kicked off. We know the roster
