@@ -7,12 +7,12 @@ sections as you go; **[Start here](#start-here-fresh-session)** is the entry poi
 _Last updated: 2026-08-15 (**live in-progress scoring is DONE, Phases 0–5** — the pure DK engine +
 ESPN adapter, roster capture/storage with migration `0010` **applied**, the `draftableId` → identity
 bridge, `src/lib/live/` incl. **capture-staleness detection**, the **`/live`** +
-**`/live/[matchupId]`** pages, one-button Sync in **extension v1.3.0**, `liveTag` wired to the
+**`/live/[matchupId]`** pages, one-button Sync in **extension v1.4.0**, `liveTag` wired to the
 capture, and the removal of **all** exhibition tooling (public page *and* admin setup). **Then, on
 top:** schedule-derived **week detection** (`GET /api/current-week`) closing the silent
 wrong-week-overwrite hazard, **minutes remaining** from ESPN's clock, and **projections +
 win probability** using DraftKings' own reverse-engineered formula. **Nothing is pushed —
-`git log origin/main..main` lists eleven commits.** Prior: live-scoring *remediation* Phases 0–4 + the playoff
+`git log origin/main..main` is empty — all twelve commits are pushed and deployed.** Prior: live-scoring *remediation* Phases 0–4 + the playoff
 **3rd-place game**, preseason syncing from the DK Chrome extension, preseason exhibition games,
 tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model tracker)._
 
@@ -26,46 +26,11 @@ tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model
   Phase 0–5 write-up — on top of the earlier 12-commit run `d0ba364` … `e2a3f1a`. **Those commit
   messages are the real design record** — read them before touching the scoring, live or playoff
   paths; each one states the bug, the decision and what was rejected.
-  > **Push check.** ⚠️ **Every commit of this session is LOCAL.** Run `git log origin/main..main`
-  > — it listed **eleven** on 2026-08-15, against an `origin/main` ref last fetched 2026-08-10, so
-  > `git fetch` first if the number matters. If it lists anything, push it, and note that Vercel has
-  > not deployed it yet. **Nothing on production serves `/live`, and nothing serves
-  > `/api/current-week`, until you do** — which also means the extension's week detection silently
-  > falls back to its old guesses against production.
-  > **One caveat when reading the log:** `d3cc2e9`'s message says "Admin → Preseason STAYS". That was
-  > true when written and was **superseded an hour later by `ed6ef78`**, which removed it. The
-  > commits are still the design record; this is the one place a later commit reversed an earlier
-  > one's stated decision.
-- **Stack:** Next.js 16.2.9 (App Router, Turbopack) · React 19 · Tailwind v4 (CSS `@theme`, no
-  config file) · Drizzle + Neon Postgres (**HTTP driver** — every query is a network round-trip) ·
-  NextAuth (commissioner login) · a Chrome extension for DraftKings sync.
-- **Verification:** `npm run verify` is **9/9 green** (typecheck · lint · **330 unit tests,
-  26 files** · production build · ESPN health · engine invariants · **historical snapshot
-  unchanged** · **engine no-op proofs** · 2025 ground-truth replay), with the frozen-history
-  snapshot byte-identical. The two TRUTH checks are from the remediation session — see the
-  freeze-gate part of that DONE section below. It was 144 tests / 16 files at `e2a3f1a`; the extra
-  **186 across 10 new files** are the live-scoring work — 63 engine (`score` 41 + `espn-extract` 22),
-  61 capture (`normalize` 30 + `no-write` 24 + `enrich` 7), 17 `live/assemble`, 8 `live/staleness`,
-  11 `schedule/current-week`, 12 `live/minutes` and 14 `live/projection`. Typecheck and lint are
-  clean.
-  > `no-write.test.ts` **discovers** the modules it scans, so its count grows on its own as files
-  > land — 22 at `a3d919e` → **24** now, with no edit to the test itself.
-- **Migrations:** applied through **0010** — `0010_polite_nicolaos.sql` (the two live-scoring
-  capture tables) is **applied to production**; `lineup_snapshots` and `lineup_capture_runs` exist
-  with their unique + season/week indexes. It is purely additive (two new tables, no ALTERs), so it
-  moved no score, no standing, and not the frozen snapshot. Both tables are still empty — no
-  capture has been posted to production yet.
-- **Seasons in DB:** 2023, 2024, 2025 fully imported (regular season **and** playoffs, validated
-  against the sheets) and now **frozen behind a snapshot gate** + 2026 (upcoming; schedule synced,
-  **all 32 owners assigned**, `missedLineup.opponentScores = league_median` — set by the user in
-  Admin → Settings this session — and 16 preseason **exhibition** matchups generated at week 102,
-  no exhibition scores ingested yet). 2023–2025 carry `rules = NULL`, i.e. they run on
-  `DEFAULT_SEASON_RULES`. The rebuild is feature-complete vs the original Google-Sheets workflow.
-  Verified against the prod DB on 2026-08-10: 2023/2024/2025 carry **zero** exhibition rows, which is
-  why adding the `isExhibition` exclusions can't move any historical number (the 2025 ground-truth
-  replay is unchanged by them).
-- **The DFS model:** owners are assigned an NFL team (drives the H2H *schedule* only); each week a score
-  is the owner's **NFL-wide DraftKings lineup total**. Players were not tracked at all until Phase B.
+  > **Push check.** ✅ **Pushed.** `54fcc22..0b2f686` went to `origin/main` on 2026-08-16 and
+  > Vercel deployed it. Verified in production: `/live` 200, `/live/[matchupId]` 200,
+  > `/api/current-week` 200 (the local `INGEST_TOKEN` works against prod — same value), and
+  > `/preseason` correctly 404. Always re-check with `git log origin/main..main` — it should be
+  > empty; anything listed is unpushed work from a later session.
 
 ## 🛑 Two structural ideas — do not undo either
 
@@ -572,7 +537,7 @@ Sleeper PPR as a free proxy).
     DraftKings' own per-owner numbers.
   - **`/live` cannot leak an information advantage** — a concealed slot has no identity *stored*, so
     the page can only ever show what DK had already unlocked.
-- **One Sync button; the public `/preseason` page retired** (`d3cc2e9`, extension **1.3.0**).
+- **One Sync button; the public `/preseason` page retired** (`d3cc2e9`, extension **1.3.0**; now **1.4.0**).
   **Sync** now posts scores *and* lineups off a single DraftKings read (`captureRosters` returns
   `entries` alongside `lineups`); scores go first, lineups are best-effort and report in their own
   card, and an outright roster failure falls back to the plain leaderboard read. `onCaptureLineups`
@@ -773,16 +738,12 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
   carried — which for a real DK roster payload is *none*. That makes a pasted capture unscorable by
   design. Either thread a draft-group id through the form or accept the paste box as a
   store-the-evidence fallback only.
-- **🐞 `dkProjection` is `undefined`, not `null`, on every snapshot captured before it existed —
-  and that renders `NaN`.** `slots` is `jsonb` so the new field needed no migration, but
-  `src/lib/lineups/query.ts` casts the stored JSON straight to `LineupSlotInput[]` with no
-  per-field defaulting, and `src/lib/live/projection.ts` guards with `slot.dkProjection === null`,
-  which is **false** for `undefined`. The slot then evaluates `banked + undefined × (minutesLeft/60)`
-  → `NaN`, which propagates to the team's projected total, to `winProbability` (rendered **"NaN%"**)
-  and into `/live`'s closeness sort. **Reproduced against a pre-`dkProjection` slot shape; every
-  lineup snapshot in the database today predates the field** (week 102, 6 snapshots). A one-line
-  code decision — `?? null` on read, or `!= null` guards — but it is a logic change, so it needs a
-  human. **Not deployed yet**, so nothing is broken in production today.
+- ✅ **`dkProjection` NaN on legacy snapshots — FIXED in `0b2f686`.** `slots` is jsonb, so the
+  field needed no migration and older rows simply lack the key; `undefined` slipped past an
+  `=== null` guard and turned the projection arithmetic into `NaN`. Now hydrated on read via
+  `hydrateStoredSlot` / `hydrateStoredSlots` (`src/lib/lineups/normalize.ts`), with `== null`
+  guards in `projection.ts` as belt and braces, and three regression tests. **Generalise it: any
+  field added to that jsonb later is `undefined` on older rows — hydrate, never cast.**
 - **Win probability is calibrated by assumption.** `LINEUP_SD_FULL_SLATE = 40` in
   `src/lib/live/projection.ts` is a rough industry figure for a Classic lineup's spread, never
   fitted to this league. The *projection* it feeds is DraftKings' own formula and is exact; the
@@ -837,7 +798,7 @@ Do these three things, in this order:
 2. **Run `npm run verify`.** It must be **9/9**. It needs `DATABASE_URL`, and its ground-truth
    replay writes to the DB (idempotent, by design); `npm run verify:quick` skips that and the
    production build. If the **historical snapshot** check fires, stop — you moved a frozen season.
-3. **Check the repo state:** `git status` and `git log origin/main..main`. ⚠️ **The five
+3. **Check the repo state:** `git status` and `git log origin/main..main`. **The five
    live-scoring commits `6559f0f` … `d3cc2e9` are local** (see the push check in Snapshot).
 
 The rebuild is **feature-complete** vs the old Google-Sheets workflow. Importers are idempotent;
@@ -846,7 +807,7 @@ The rebuild is **feature-complete** vs the old Google-Sheets workflow. Importers
 **Live in-progress scoring is DONE (Phases 0–5)** — the pure engine + ESPN adapter, roster
 capture/storage (`src/lib/lineups/`, `POST /api/ingest/lineups`, Admin → Lineups), the join and read
 model (`src/lib/live/`), and the **`/live`** + **`/live/[matchupId]`** pages. Migration `0010` is
-applied. The extension is at **v1.3.0**, where one **Sync** button posts scores and rosters from a
+applied. The extension is at **v1.4.0**, where one **Sync** button posts scores and rosters from a
 single DraftKings read. A real capture reconciled against DraftKings' own numbers at
 **max |delta| 0.00** across 6 owners with zero unresolved slots.
 
@@ -873,6 +834,39 @@ Conventions that will bite you if you skip them: run `verify` **before** pushing
 build catches `'use server'` export errors nothing else does); `src/lib/standings/` stays pure (no
 DB imports); every `scores`/`matchups` query needs the `isExhibition` filter; and the Neon HTTP
 driver means one query = one round-trip, so batch writes.
+
+## ▶ Next session: start here
+
+Live scoring is **built, pushed and deployed**. The remaining work is confirmation, not
+construction.
+
+**1. The one action outstanding — a second capture for week 102.**
+The only capture in the database was taken mid-slate on 2026-08-15, so 30 of its 54 roster spots
+were still concealed by DraftKings and are scoring nothing. A re-sync now that those games have
+finished will:
+
+  - reveal all 54 slots and clear `/live`'s "these totals are low" banner,
+  - write a SECOND snapshot per owner, which is the only untested mechanism left
+    (append-only versioning — newest `capturedAt` wins per `(ownerSeasonId, week)`),
+  - be the first capture carrying `dkProjection`, so projections populate for real.
+
+How: extension → App Base URL `https://keylehr-h2h.vercel.app` → reload the extension → reload the
+DraftKings tab → **Sync**. Week and Preseason auto-fill from `/api/current-week`.
+
+**2. Then reconcile it.** Compare the ESPN-derived estimate against the `dkScore` / `dkStats` the
+capture stores. The 2026-08-15 run hit **max |delta| 0.00 across 6 owners**, but on a 2-game
+preseason slate with incomplete rosters. A finished-game, fully-revealed capture is the sharper
+test — a per-stat diff, not just per-total.
+
+**3. Do NOT re-fix these.** They read like open bugs in older notes and are closed:
+the `dkProjection` `NaN` (fixed in `0b2f686`, hydrated on read), the paste path not enriching
+(fixed — the form takes a draft group id), and DraftKings' PMR "different rule" (it was a stale
+`eTag` row, not a rule).
+
+**What is genuinely still open** is the three risks in *Open items* below: `pointsAllowedMode`
+unconfirmed, a 16-game cold render untested against `maxDuration = 30`, and the win-probability
+standard deviation being an assumed constant. None blocks use; all three want a real regular-season
+week.
 
 ## Map of the important code
 

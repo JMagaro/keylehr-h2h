@@ -1,17 +1,17 @@
 # KeyLehr H2H — DraftKings Sync (Chrome extension)
 
-**Current version: 1.3.0** (`manifest.json`). 1.3.0 is **one button**: **Sync** now posts the week's
+**Current version: 1.4.0** (`manifest.json`). Since 1.3.0 it is **one button**: **Sync** now posts the week's
 scores *and* captures every owner's roster from a single DraftKings read — the separate "Capture
 lineups" button is gone. See [Lineups](#lineups-captured-automatically-by-sync). 1.2.0 added roster
 capture; 1.1.0 added the endpoint probe, now relabelled
 [Troubleshooting](#troubleshooting--draftkings-endpoints). The POST contracts are unchanged and
 **no new permissions** were added.
 
-> **Since 1.3.0 shipped, without a version bump:** the week and the **Preseason** toggle are now
+> **New in 1.4.0:** the week and the **Preseason** toggle are now
 > **detected** from the app's synced NFL schedule
 > ([`/api/current-week`](#the-apicurrent-week-endpoint-week-detection)) instead of guessed from the
 > contest name, and the popup shows the dates the selected week covers before you sync. `manifest.json`
-> still reads `1.3.0`. No new permissions; the endpoint is a GET on the token the popup already holds.
+> No new permissions; the endpoint is a GET on the token the popup already holds.
 
 > **Why one button.** Both halves come from the same leaderboard read — `captureRosters` has to
 > fetch it anyway to get entry keys — and there is no case where you want one without the other.
@@ -621,7 +621,7 @@ The app matches each `entryName` (case-insensitive, trimmed) to `owner_seasons.d
 
 | File                | Role                                                                       |
 | ------------------- | -------------------------------------------------------------------------- |
-| `manifest.json`     | MV3 manifest (permissions, content script, popup, background service worker). **Version lives here** — currently `1.3.0`. |
+| `manifest.json`     | MV3 manifest (permissions, content script, popup, background service worker). **Version lives here** — currently `1.4.0`. |
 | `popup.html/.css/.js` | The popup UI + the two sync paths + the **Lineups** status card + the Live Sync card + the **Troubleshooting** panel + result banners. `onSync()` drives both halves; `saveCapturedLineups(cap, season, week, contestId)` POSTs the already-fetched rosters and reports into the Lineups card. `postIngestTo(path, payload)` is the shared poster for both ingest endpoints and **always** produces an error message. **Week detection** lives here too: `fetchWeekInfo` / `refreshWeekInfo` / `renderWeekInfo` / `formatDateRange` fill the `#weekInfo` line from [`/api/current-week`](#the-apicurrent-week-endpoint-week-detection). |
 | `background.js`     | MV3 service worker. Drives **Live Sync**: a `chrome.alarms` poll that runs the credentialed capture in an open DK tab's MAIN world (`chrome.scripting.executeScript`), POSTs to ingest, and auto-stops when the contest is completed. Reflects state via `chrome.storage` + badge. |
 | `content-script.js` | Injects the page hook; bridges popup ⇄ hook through a generic tagged round-trip (`askPage`), used by `CAPTURE_LEADERBOARD`, `PROBE_ROSTER_ENDPOINT` (45s — it hits several DK URLs in sequence) and `CAPTURE_ROSTERS` (180s — one request per entry, so it is the longest round-trip the popup makes); reads the contest name from the gamecenter DOM (`DETECT_CONTEST`). |

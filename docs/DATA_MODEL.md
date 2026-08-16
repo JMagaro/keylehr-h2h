@@ -544,15 +544,14 @@ One owner's captured DraftKings lineup for one week. **Append-only, versioned by
 > an invented future. See
 > [`SCORING.md` §15](SCORING.md#projections--win-probability--draftkings-own-formula).
 
-> 🐞 **OPEN DEFECT — snapshots written before `dkProjection` existed have no such key at all.**
-> `slots` is `jsonb`, so adding the field needed no migration and no backfill: an older row simply
-> lacks it, and `src/lib/lineups/query.ts` casts the JSON straight to `LineupSlotInput[]` without
-> per-field defaulting. The projection code tests `slot.dkProjection === null`, which is **false**
-> for `undefined`, so an old slot evaluates `banked + undefined × (minutesLeft / 60)` → **`NaN`**.
-> Reproduced: a pre-`dkProjection` slot yields `projected: NaN`, renders **"proj NaN"** and
-> **"NaN%"**, and poisons `/live`'s closeness sort. **Every snapshot currently in the database
-> predates the field** (week 102). Needs a code decision — a `?? null` on read, a `!= null` test,
-> or a backfill — so it is recorded here rather than worked around in prose.
+> ✅ **FIXED in `0b2f686`.** A snapshot captured *before* `dkProjection` existed has no such key —
+> `undefined`, not `null` — and `=== null` let it through, projecting to **`NaN`** which propagated
+> to the team total, the win probability ("NaN%") and `/live`'s closeness sort. Fixed at the READ
+> BOUNDARY: `hydrateStoredSlot` / `hydrateStoredSlots` in `src/lib/lineups/normalize.ts` normalize
+> stored jsonb into a well-formed slot, and both query modules use them. `projection.ts` also
+> switched to `== null` so it no longer trusts its caller. Three regression tests pin the exact
+> shape that was in the database. **The lesson generalises: `slots` is jsonb, so ANY field added
+> later is `undefined` on older rows — hydrate on read, never cast.**
 
 ## Migration history
 

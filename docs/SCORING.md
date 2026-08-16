@@ -476,7 +476,7 @@ would hand the ground-truth replay stale rows.
 
 > **Status: built (Phases 0–5).** The scoring **engine** and its ESPN adapter ship in
 > `src/lib/dfs/`; roster **capture and storage** ship in `src/lib/lineups/`, behind
-> `POST /api/ingest/lineups` and Admin → Lineups; the Chrome extension (v1.3.0) captures scores
+> `POST /api/ingest/lineups` and Admin → Lineups; the Chrome extension (v1.4.0) captures scores
 > **and** rosters from one **Sync** click; `src/lib/live/` joins the two halves and
 > [**`/live`**](#rendering-it--live-phases-45) renders them.
 >
@@ -845,12 +845,14 @@ A slot whose `dkProjection` is `null` — a concealed player — contributes **w
 nothing more**, and is counted in `unprojectedSlots`. We report what a player has; we do not invent
 what they will get.
 
-> 🐞 **Known defect: a snapshot captured *before* `dkProjection` existed is not `null`, it is
-> `undefined`** — the key is simply absent from the stored `slots` jsonb, and nothing defaults it on
-> read. The `=== null` tests in `projection.ts` miss it, and the slot projects to **`NaN`**, which
-> propagates to the team total, the win probability ("NaN%") and `/live`'s closeness sort.
-> **Every snapshot in the database today predates the field.** Flagged, not worked around — the fix
-> is a code decision. See [`DATA_MODEL.md`](DATA_MODEL.md#live-scoring-lineup_capture_runs--lineup_snapshots).
+> ✅ **FIXED in `0b2f686`.** A snapshot captured *before* `dkProjection` existed has no such key —
+> `undefined`, not `null` — and `=== null` let it through, projecting to **`NaN`** which propagated
+> to the team total, the win probability ("NaN%") and `/live`'s closeness sort. Fixed at the READ
+> BOUNDARY: `hydrateStoredSlot` / `hydrateStoredSlots` in `src/lib/lineups/normalize.ts` normalize
+> stored jsonb into a well-formed slot, and both query modules use them. `projection.ts` also
+> switched to `== null` so it no longer trusts its caller. Three regression tests pin the exact
+> shape that was in the database. **The lesson generalises: `slots` is jsonb, so ANY field added
+> later is `undefined` on older rows — hydrate on read, never cast.**
 
 ##### Win probability is a MODEL, not a measurement
 
