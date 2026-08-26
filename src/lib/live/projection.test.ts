@@ -106,6 +106,55 @@ describe('projectLineup', () => {
     const p = projectLineup(t, clocks);
     expect(p.isFinal).toBe(false);
     expect(p.unprojectedSlots).toBe(1);
+    expect(p.projectedSlots).toBe(0);
+  });
+
+  it('reports NO projected slots when nothing carries a DraftKings projection', () => {
+    // THE STATE EVERY CAPTURE IN THE DATABASE IS IN. DraftKings strips `pregameProjection`
+    // once a game ends, so a post-game capture has none — and then `projected` is merely
+    // `current` wearing a different label. `projectedSlots: 0` is how the UI knows not to
+    // print it as a forecast.
+    const t = team(
+      [
+        slot({ teamKey: 'SEA', points: 0, dkProjection: null }),
+        slot({ teamKey: 'SEA', points: 3, dkProjection: null }),
+      ],
+      3,
+    );
+    const p = projectLineup(t, clocks);
+    expect(p.projectedSlots).toBe(0);
+    expect(p.unprojectedSlots).toBe(2);
+    expect(p.isFinal).toBe(false);
+    expect(p.projected).toBe(p.current);
+  });
+
+  it('counts a projected slot only when there is time for it to apply', () => {
+    // A finished player's projection multiplies by zero minutes and adds nothing, so it is no
+    // basis for calling the total "projected" — otherwise a fully-final lineup with one live
+    // unprojected slot would still claim a forecast.
+    const t = team(
+      [
+        slot({ teamKey: 'LAR', points: 20, dkProjection: 15 }), // final: contributes nothing
+        slot({ teamKey: 'SEA', points: 0, dkProjection: 12 }), // yet to play: contributes 12
+      ],
+      20,
+    );
+    const p = projectLineup(t, clocks);
+    expect(p.projectedSlots).toBe(1);
+    expect(p.unprojectedSlots).toBe(0);
+  });
+
+  it('flags a partial projection so the UI can mark it a floor', () => {
+    const t = team(
+      [
+        slot({ teamKey: 'SEA', points: 0, dkProjection: 12 }),
+        slot({ teamKey: 'SEA', points: 0, dkProjection: null }),
+      ],
+      0,
+    );
+    const p = projectLineup(t, clocks);
+    expect(p.projectedSlots).toBe(1);
+    expect(p.unprojectedSlots).toBe(1);
   });
 
   it('marks a lineup final when no game time remains', () => {

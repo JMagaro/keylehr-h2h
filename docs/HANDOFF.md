@@ -839,13 +839,36 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
   a **rule bug** on that DST row with the points-allowed component named. Settle it on a
   regular-season week with a defensive or return TD.
 - **⚠️ No capture has ever carried `dkProjection`, so projections and win probability have never
-  run on real data.** All 216 stored slots across the four week-102 captures have it `null`: the
-  mid-slate ones predate the field, and **DraftKings strips its projection once a game is over**
-  (`"projection": { "valueIcon": "" }` in the post-game raw payload). This is structural, not a
-  bug: the capture that is ideal for the drift audit is precisely the one that cannot carry a
-  projection. Only a **mid-game** capture on a real slate closes it — which Live Sync's conditional
-  refresh now produces as a side effect. Until then, treat `/live`'s projected finals and
-  win-probability line as unit-tested only.
+  run on real data.** All 216 stored slots across the four week-102 captures have it `null`.
+  **Diagnosed 2026-08-25 — the parser is NOT at fault, and this is now well understood:**
+  - Runs **1 and 2** (mid-game) *do* contain `"pregameProjection": 14.666…` in their stored
+    `raw_payload`. They simply predate `readProjection`, which landed in `52c7d2b` at 23:35 UTC —
+    about 90 minutes after the last of them.
+  - Runs **3 and 4** (post-game) have the parser but no data: **DraftKings strips the numbers once
+    a game ends**, leaving `"projection": { "valueIcon": "" | "ice" | "fire" }`.
+  - **The current parser was replayed over run 1's stored payload and extracted 24 of 24 revealed
+    slots.** The capture path works; only the timing was ever wrong.
+
+  It closes itself: Live Sync's conditional refresh fires at kickoff waves, which is mid-game,
+  which is exactly when DK publishes the number. And the overwrite you would expect — the 4:25
+  capture replacing the 1pm players' now-stripped projections — is harmless, because
+  `projectSlot` multiplies by `minutesLeft / 60` and a finished player has none. Every capture
+  carries projections for precisely the players whose projections still count.
+
+  > **TODO (deliberately deferred, 2026-08-25): pin the extraction with a regression test.**
+  > Nothing currently proves the capture path reads this field — `projection.test.ts` covers the
+  > arithmetic on synthetic fixtures only. If DraftKings renames `pregameProjection`, or someone
+  > refactors `readProjection`, projections silently return to `null` and the page keeps looking
+  > healthy. **Run 1's `raw_payload` is the fixture** (`select raw_payload from
+  > lineup_capture_runs where id = 1`) and it yields 24/24 — extract it to
+  > `src/lib/lineups/fixtures/` and assert against `normalizeRosterPayload`. This is the same
+  > silent-failure class the settled-week gate and `no-write.test.ts` exist to prevent.
+
+  ✅ **The misleading UI is FIXED (2026-08-25).** With every projection `null`, `projectLineup`
+  returned `projected === current` and `/live` printed "proj 62.66" under a score of 62.66 —
+  claiming we expected them to finish exactly where they stood. `LineupProjection` now carries
+  `projectedSlots`; the detail page renders nothing when it is `0`, and marks a partial
+  projection as a floor (`proj 141.20+`) rather than passing it off as complete.
 - **The capture that proved the path was preseason, on one season.** Season 1 / week 102, 6 owners,
   54 slots. A full 32-owner regular-season Sunday has not been exercised end to end, and **a ~16-game
   cold render has never been tested against `maxDuration = 30`** (the fan-out runs at concurrency 6;
@@ -858,12 +881,11 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
   by design, but it means "0 unmapped" is not a completeness proof. And
   `ASSUMED_GAME_LENGTH_MS = 4h` in `reconcile-query.ts` can only make the sample **smaller**, never
   wrong; read the "N of M compared" line, not just the verdict counts.
-- **Two live-scoring surfaces sit outside `no-write.test.ts`'s scan**, which covers
-  `src/lib/{dfs,lineups,live}` plus `src/app/live`: the new
-  `src/app/api/live-status/route.ts` and `src/app/admin/(panel)/scoring/page.tsx`. Both are
-  read-only by construction and say so in a header comment — but a comment is not the mechanical
-  proof the rest of the path gets. Widening the scan is a one-line change to the test's roots and
-  needs a human's call.
+- ✅ **Two live-scoring surfaces outside `no-write.test.ts`'s scan — FIXED before the push.**
+  `src/app/api/live-status/route.ts` and `src/app/admin/(panel)/scoring/page.tsx` are now scanned
+  alongside `src/lib/{dfs,lineups,live}` and `src/app/live`, and **each route dir is asserted
+  individually** — a guard that silently scans nothing passes, so a typo'd path had to be made
+  impossible to miss. 24 → 30 assertions.
 - **A pasted capture is never enriched.** Admin → Lineups sends no `draftGroupId`, so
   `ingestLineups` skips `enrichLineups` and the snapshot keeps only whatever names/teams DK's payload
   carried — which for a real DK roster payload is *none*. That makes a pasted capture unscorable by

@@ -29,6 +29,19 @@ export interface LineupProjection {
   projected: number;
   /** Slots with no pregame projection — projected excludes their future contribution. */
   unprojectedSlots: number;
+  /**
+   * Slots that actually contributed a projection, i.e. had a captured `dkProjection` and time
+   * left to spend it in.
+   *
+   * ZERO MEANS THERE IS NO PROJECTION, only a relabelled current score, and callers MUST NOT
+   * render it as one. That is not hypothetical: DraftKings strips `pregameProjection` from a
+   * roster once the game ends, so a capture taken after the whistle carries none at all — and
+   * every capture in the database at the time of writing is exactly that. `projected` then
+   * equals `current`, and printing "proj 62.66" under a score of 62.66 claims we expect them
+   * to finish precisely where they stand, when the truth is that we have nothing to project
+   * with.
+   */
+  projectedSlots: number;
   /** True when nothing is left to play: projected equals current, and this is the result. */
   isFinal: boolean;
 }
@@ -56,6 +69,7 @@ export function projectLineup(
 ): LineupProjection {
   let projected = 0;
   let unprojectedSlots = 0;
+  let projectedSlots = 0;
   let anyTimeLeft = false;
 
   for (const slot of team.slots) {
@@ -74,12 +88,17 @@ export function projectLineup(
       continue;
     }
     projected += (slot.points ?? 0) + slot.dkProjection * (minutesLeft / REGULATION_MINUTES);
+    // Only counted when there is time for the projection to apply to. A finished player's
+    // projection multiplies by zero minutes and adds nothing, so it is not a basis for
+    // calling the total "projected".
+    if (minutesLeft > 0) projectedSlots += 1;
   }
 
   return {
     current: team.points,
     projected: Math.round(projected * 100) / 100,
     unprojectedSlots,
+    projectedSlots,
     isFinal: !anyTimeLeft,
   };
 }

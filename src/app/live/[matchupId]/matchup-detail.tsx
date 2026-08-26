@@ -155,13 +155,33 @@ function ScoreValue({
     // Never 0.00 for an uncaptured roster — see assemble.ts.
     return <span className={cn(numberClass, 'font-bold text-muted')}>—</span>;
   }
+
+  // Same rule as everywhere else on this page: never render a number we do not have. With no
+  // captured `dkProjection` the "projection" is just the current score relabelled, which reads
+  // as "we expect them to finish exactly here" — a claim we cannot make. Show nothing instead.
+  const hasBasis = projection !== null && !projection.isFinal && projection.projectedSlots > 0;
+  // Some slots projectable and some not: the figure is real but excludes the rest, so it is a
+  // FLOOR. Marked the way the running total is described in assemble.ts rather than passed off
+  // as complete.
+  const isFloor = hasBasis && projection.unprojectedSlots > 0;
+
   return (
     <span className="flex flex-col items-center">
       <span className={cn(numberClass, 'font-bold tabular-nums')}>{formatPoints(team.points)}</span>
-      {projection && !projection.isFinal ? (
+      {hasBasis ? (
         // DraftKings' own projection model, recomputed live from ESPN's clock:
         // score + pregame × (minutes left / 60). See lib/live/projection.ts.
-        <span className="text-[11px] text-muted">proj {formatPoints(projection.projected)}</span>
+        <span
+          className="text-[11px] text-muted"
+          title={
+            isFloor
+              ? `At least this much — ${projection.unprojectedSlots} slot(s) still to play have no DraftKings projection, so their points are not counted here.`
+              : 'Projected final, from DraftKings’ own projection and the game clock.'
+          }
+        >
+          proj {formatPoints(projection.projected)}
+          {isFloor ? '+' : ''}
+        </span>
       ) : null}
     </span>
   );
