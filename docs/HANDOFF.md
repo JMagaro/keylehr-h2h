@@ -4,15 +4,20 @@ A running "where things stand" doc so a fresh Claude/context window (or contribu
 without re-deriving everything. Update the **Snapshot**, **Recent work** and **Known open items**
 sections as you go; **[Start here](#start-here-fresh-session)** is the entry point.
 
-_Last updated: 2026-08-15 (**live in-progress scoring is DONE, Phases 0–5** — the pure DK engine +
-ESPN adapter, roster capture/storage with migration `0010` **applied**, the `draftableId` → identity
-bridge, `src/lib/live/` incl. **capture-staleness detection**, the **`/live`** +
-**`/live/[matchupId]`** pages, one-button Sync in **extension v1.4.0**, `liveTag` wired to the
-capture, and the removal of **all** exhibition tooling (public page *and* admin setup). **Then, on
-top:** schedule-derived **week detection** (`GET /api/current-week`) closing the silent
+_Last updated: 2026-08-23 (**three things landed and are NOT yet committed** — see
+[Recent work](#recent-work-newest-first): a **mobile rebuild of `/live`** (presentation only, no
+logic change), **Live Sync now refreshes rosters conditionally** via the new
+**`GET /api/live-status`** (**extension 1.4.0 → 1.5.0**), and a **scoring-drift audit** at
+**Admin → Scoring** that reconciles our per-player numbers against DraftKings' own. `verify` 9/9,
+**349 tests**, typecheck + lint clean. Before that: **live in-progress scoring, Phases 0–5** — the
+pure DK engine + ESPN adapter, roster capture/storage with migration `0010` **applied**, the
+`draftableId` → identity bridge, `src/lib/live/` incl. **capture-staleness detection**, the
+**`/live`** + **`/live/[matchupId]`** pages, one-button Sync in the extension, `liveTag` wired to
+the capture, and the removal of **all** exhibition tooling (public page *and* admin setup). **Then,
+on top:** schedule-derived **week detection** (`GET /api/current-week`) closing the silent
 wrong-week-overwrite hazard, **minutes remaining** from ESPN's clock, and **projections +
-win probability** using DraftKings' own reverse-engineered formula. **Nothing is pushed —
-`git log origin/main..main` is empty — all twelve commits are pushed and deployed.** Prior: live-scoring *remediation* Phases 0–4 + the playoff
+win probability** using DraftKings' own reverse-engineered formula — all of which **are** pushed
+and deployed. Prior: live-scoring *remediation* Phases 0–4 + the playoff
 **3rd-place game**, preseason syncing from the DK Chrome extension, preseason exhibition games,
 tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model tracker)._
 
@@ -26,11 +31,17 @@ tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model
   Phase 0–5 write-up — on top of the earlier 12-commit run `d0ba364` … `e2a3f1a`. **Those commit
   messages are the real design record** — read them before touching the scoring, live or playoff
   paths; each one states the bug, the decision and what was rejected.
-  > **Push check.** ✅ **Pushed.** `54fcc22..0b2f686` went to `origin/main` on 2026-08-16 and
-  > Vercel deployed it. Verified in production: `/live` 200, `/live/[matchupId]` 200,
-  > `/api/current-week` 200 (the local `INGEST_TOKEN` works against prod — same value), and
-  > `/preseason` correctly 404. Always re-check with `git log origin/main..main` — it should be
-  > empty; anything listed is unpushed work from a later session.
+  > **Push check.** ⚠️ **The 2026-08-23 work is UNCOMMITTED** — the mobile `/live` rebuild, the
+  > Live Sync roster refresh (extension **1.5.0**) and the scoring-drift audit are all in the
+  > working tree, not in a commit and not deployed. `git status` is the check; `git diff HEAD`
+  > shows the lot. Everything before it is pushed: `54fcc22..0b2f686` went to `origin/main` on
+  > 2026-08-16 and Vercel deployed it, verified in production (`/live` 200,
+  > `/live/[matchupId]` 200, `/api/current-week` 200 — the local `INGEST_TOKEN` works against prod,
+  > same value — and `/preseason` correctly 404). Always re-check with
+  > `git log origin/main..main`; anything listed is unpushed work from a later session.
+  >
+  > **Nothing new needs a migration.** The audit adds no table and the endpoint adds no column —
+  > both read what is already stored. Deploying is a push; there is no `db:migrate` step.
 
 ## 🛑 Two structural ideas — do not undo either
 
@@ -418,6 +429,103 @@ Sleeper PPR as a free proxy).
 
 ## Recent work (newest first)
 
+- **Scoring-drift audit: Admin → Scoring** (⚠️ **uncommitted**). Tests 333 → **349**. New pure
+  module `src/lib/live/reconcile.ts` (`reconcileSlot` / `reconcileWeek`,
+  `RECONCILE_TOLERANCE = 0.01`; 14 tests) and its read-only DB half `reconcile-query.ts`
+  (`reconcileWeekFromDb`, `buildReconciliation`, `getReconcilableSeasons`, `getCapturedWeeks`).
+  New page `src/app/admin/(panel)/scoring/page.tsx`, with a **Scoring** entry in the admin nav
+  between Lineups and Playoffs. Written up in
+  [`SCORING.md` §15](SCORING.md#does-the-estimate-agree-with-draftkings--the-drift-audit).
+  - **The problem it solves is silence.** `/live` computes DK Classic points from ESPN. If one of
+    those rules were wrong, **nothing would ever say so** — the page would render slightly wrong
+    numbers forever and look perfectly healthy doing it. The one reconciliation that existed was
+    done **by hand, once** (max |delta| 0.00 across 6 owners) and never repeated.
+  - **It costs nothing, because both sides are already in the database.** Every capture stores
+    DraftKings' own per-player `dkScore` **and** `dkStats`. No new collection, no new table, no
+    migration — computed on demand, because a stored copy would be a third thing to keep in sync.
+  - **The verdicts exist to route a finding to the right owner**, which is the whole reason a
+    total-only diff isn't enough: `ruleDrift` (same stat line, different price — **our** bug, in
+    `src/lib/dfs/rules.ts`) · `statDrift` (ESPN and DK saw different plays — not ours) ·
+    `unmapped` (**DK paid for a key the audit's `DK_TO_OUR_KEY` map does not know — that points at
+    the MAP, not at the scoring rules**, so nobody hunts a defect that does not exist) ·
+    `unmatched` (the ESPN name/team join failed) · `agree` · `notComparable`.
+  - **The key map was built from REAL captured payloads**, not documentation. Observed:
+    `PaYds PaTD INT RuYds RuTD REC RecYds RecTD SACK DFR Targets` plus points-allowed tier rows
+    (`0 PA`, `1-6 PA`, `7-13 PA`, `14-20 PA`). Two subtleties: **`INT` means thrown for a QB and
+    caught for a DST**, resolved by the slot; and **points-allowed rows are compared on POINTS, not
+    value**, because DK's row is a flag (value 1) named for its range while ours records the actual
+    points conceded.
+  - **🛑 THE TRAP: `dkScore` is a SNAPSHOT from capture time, ours is LIVE.** So a slot is judged
+    only when its game is **final** *and* the capture **postdates** it. `ASSUMED_GAME_LENGTH_MS =
+    4 hours` in `reconcile-query.ts` is the one approximation in the feature — neither ESPN nor our
+    schedule records when a game **ENDED** — and it errs deliberately toward "not comparable",
+    because the other direction *invents* drift by comparing a half-finished DK number with a
+    finished one.
+  - **RESULT ON REAL DATA.** Season 1 week 102: **54 slots, 54 agree, 0 rule drift, 0 unmapped,
+    0 unmatched, 0 skipped, max |delta| 0.00 across 6 owners** — reproducing the earlier hand-done
+    reconciliation automatically.
+  - **🛑 EXPLICITLY REJECTED — do not re-litigate.** Two alternatives were considered and turned
+    down. (1) **Making DraftKings' official totals the headline number on `/live`**: they are
+    frozen between polls, so the page would stop moving whenever the machine sleeps — and `/live`
+    working with every machine switched off is the entire reason the capture architecture exists.
+    (2) **Truing up per-player scores on every poll**: that needs the capture write path
+    re-engineered from **append-only to update-in-place**, plus per-game state recorded on each
+    slot, to correct a discrepancy measured at **0.00**. This audit is how we would find out if
+    that ever stops being true — **only then** is it worth reopening.
+- **Live Sync now refreshes rosters, conditionally; `GET /api/live-status`** (⚠️ **uncommitted**,
+  extension **1.4.0 → 1.5.0**). New route `src/app/api/live-status/route.ts` — bearer
+  `INGEST_TOKEN`, CORS mirroring `/api/current-week`, returns
+  `{ shouldRecapture, reason, hasCapture, capturedAt, concealedSlots, gamesStartedSinceCapture,
+  gamesLoaded, gamesTotal, matchups, missingCaptures }`. Contract in
+  [`DRAFTKINGS.md` §14](DRAFTKINGS.md#14-the-capture-staleness-endpoint-implemented); rationale in
+  [`SCORING.md` §15](SCORING.md#keeping-the-capture-fresh-without-asking-anyone).
+  - **🛑 WHY IT IS CONDITIONAL — this is the crux, and the obvious implementation is wrong.** The
+    leaderboard is **one** request and `scores` upserts on `(ownerSeasonId, week)`, so polling
+    scores costs nothing in traffic or storage. Rosters invert both: DraftKings has **no bulk
+    roster endpoint** (documented in `extension/page-hook.js`, the "Roster capture (live scoring)"
+    header above `ROSTER_URL_TEMPLATE`), so a refresh is **one credentialed request PER ENTRY —
+    32** — and captures are **append-only**. Every poll would be
+    **~4,000 requests against the commissioner's own DK account** across a Sunday and
+    **~250 MB/season** of near-identical rows, versus **~6–8 refreshes/week and ~1 MB/week** for
+    the conditional version — **at identical freshness**, because a roster only changes when
+    DraftKings reveals players at a kickoff. Measured: ~2.2 KB per entry per capture → ~71 KB raw
+    payload + ~37 KB snapshots per 32-owner capture.
+  - **No new predicate.** The route reuses the already-tested `assessCaptureStaleness`. It adds
+    exactly one case staleness cannot express: **a week with matchups but no capture at all**,
+    where there is no `capturedAt` to compare kickoffs against.
+  - **The final poll is UNCONDITIONAL**, and that is deliberate: when DK reports the contest
+    complete, that is the one capture where **every player is revealed and DK's per-player numbers
+    are final** — which is exactly what the new scoring audit reconciles against.
+  - **The roster half is best-effort throughout.** It must never stop the score loop or the poll
+    timer, and it reports into its **own** popup line (`Rosters:`) so a roster problem is never
+    mistaken for a score problem. New `background.js` functions: `appUrl`, `postJson` (generalised
+    out of `postIngest`), `shouldRefreshRosters`, `requestRosterCapture`, `maybeRefreshRosters`.
+    New persisted state: `lastRosterSync`, `lastRosterError`. `popup.js` `renderLive()` shows them.
+    The capture reuses the popup's **existing** `CAPTURE_ROSTERS` bridge — one tested capture path,
+    not two.
+- **Mobile rebuild of `/live` — no logic change** (⚠️ **uncommitted**). Presentation only; the data
+  path, the five slot states and every number are untouched.
+  - **`matchup-detail.tsx`:** the mirrored `grid-cols-[1fr_auto_1fr]` layout is now **`sm:` and up
+    only**. Below `sm` the same data renders **STACKED** — one block per roster slot with both
+    players full width beneath it, plus a **two-tone legend** identifying which row belongs to which
+    owner. Reason: at 390px the mirrored layout left **~70px per player**, truncating names and
+    dropping the stat line entirely. **Two layouts, ONE data source** — everything is computed once
+    and rendered twice; do not let the variants drift.
+  - **`matchup-nav.tsx`:** prev/next collapse to two **44px** arrow buttons flanking the jump
+    dropdown below `sm`; full cards from `sm` up. **Also fixed a real bug:** the `<label>` around
+    the jump `<select>` was **inline**, so `w-full` did nothing and the select fell back to its
+    **intrinsic** width (its longest option), pushing the whole page wider than a phone viewport.
+    It is now `block w-full`.
+  - **`matchup-card.tsx`:** tighter padding below `sm`, roster summary truncates, footer wraps. The
+    "not captured" badge was shortened from a sentence naming the owner to
+    **"1 lineup not captured" / "Neither lineup captured"** — the row directly above already says
+    which side is missing and shows `—`.
+  - **`live/page.tsx`:** the "N lineups not captured" notice now names at most **six** owners then
+    counts the rest (`MAX_NAMED_MISSING = 6`); listing 26 names filled an entire phone screen before
+    any matchup appeared. Card grid is `md:grid-cols-2` (was `lg:`). Tighter page padding below
+    `sm`.
+  - **Verified with Chrome DevTools Protocol device emulation at 360 / 390 / 768px:**
+    `document.documentElement.scrollWidth` equals the viewport width and no element exceeds it.
 - **Projections + win probability, closeness sort, difference-maker** (`52c7d2b`). Tests 315 →
   **330**. New pure module `src/lib/live/projection.ts` (`projectSlot`, `projectLineup`,
   `winProbability`, `formatWinProbability`; 14 tests). Written up in
@@ -537,7 +645,7 @@ Sleeper PPR as a free proxy).
     DraftKings' own per-owner numbers.
   - **`/live` cannot leak an information advantage** — a concealed slot has no identity *stored*, so
     the page can only ever show what DK had already unlocked.
-- **One Sync button; the public `/preseason` page retired** (`d3cc2e9`, extension **1.3.0**; now **1.4.0**).
+- **One Sync button; the public `/preseason` page retired** (`d3cc2e9`, extension **1.3.0**; now **1.5.0**).
   **Sync** now posts scores *and* lineups off a single DraftKings read (`captureRosters` returns
   `entries` alongside `lineups`); scores go first, lineups are best-effort and report in their own
   card, and an outright roster failure falls back to the plain leaderboard read. `onCaptureLineups`
@@ -726,13 +834,36 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
 
 - **`pointsAllowedMode` is still unsettled.** It ships `'raw'`; DK has historically excluded points
   its DST was not on the field for. The 0.00 reconciliation was on a **preseason** contest with 6
-  owners, which barely exercises the DST tiers. `dkStats` is the instrument — settle it on a
-  regular-season week with a defensive or return TD, where being wrong lands a DST exactly one tier
-  off.
+  owners, which barely exercises the DST tiers. `dkStats` is the instrument — and **Admin → Scoring
+  is now the tool that reads it**: a wrong mode lands a DST exactly one tier off, which surfaces as
+  a **rule bug** on that DST row with the points-allowed component named. Settle it on a
+  regular-season week with a defensive or return TD.
+- **⚠️ No capture has ever carried `dkProjection`, so projections and win probability have never
+  run on real data.** All 216 stored slots across the four week-102 captures have it `null`: the
+  mid-slate ones predate the field, and **DraftKings strips its projection once a game is over**
+  (`"projection": { "valueIcon": "" }` in the post-game raw payload). This is structural, not a
+  bug: the capture that is ideal for the drift audit is precisely the one that cannot carry a
+  projection. Only a **mid-game** capture on a real slate closes it — which Live Sync's conditional
+  refresh now produces as a side effect. Until then, treat `/live`'s projected finals and
+  win-probability line as unit-tested only.
 - **The capture that proved the path was preseason, on one season.** Season 1 / week 102, 6 owners,
   54 slots. A full 32-owner regular-season Sunday has not been exercised end to end, and **a ~16-game
   cold render has never been tested against `maxDuration = 30`** (the fan-out runs at concurrency 6;
   the proving capture needed a fraction of that). If a cold Sunday render times out, start here.
+  ✅ **Append-only versioning is no longer on this list** — week 102 now holds three capture
+  versions per owner, newest winning, nothing overwritten.
+- **The drift audit's coverage grows with the seasons, and two of its limits are worth knowing.**
+  `DK_TO_OUR_KEY` in `src/lib/live/reconcile.ts` was built from **observed** payloads, so a stat
+  DraftKings has never paid for in a captured week reads as `unmapped` the first time it appears —
+  by design, but it means "0 unmapped" is not a completeness proof. And
+  `ASSUMED_GAME_LENGTH_MS = 4h` in `reconcile-query.ts` can only make the sample **smaller**, never
+  wrong; read the "N of M compared" line, not just the verdict counts.
+- **Two live-scoring surfaces sit outside `no-write.test.ts`'s scan**, which covers
+  `src/lib/{dfs,lineups,live}` plus `src/app/live`: the new
+  `src/app/api/live-status/route.ts` and `src/app/admin/(panel)/scoring/page.tsx`. Both are
+  read-only by construction and say so in a header comment — but a comment is not the mechanical
+  proof the rest of the path gets. Widening the scan is a one-line change to the test's roots and
+  needs a human's call.
 - **A pasted capture is never enriched.** Admin → Lineups sends no `draftGroupId`, so
   `ingestLineups` skips `enrichLineups` and the snapshot keeps only whatever names/teams DK's payload
   carried — which for a real DK roster payload is *none*. That makes a pasted capture unscorable by
@@ -798,8 +929,10 @@ Do these three things, in this order:
 2. **Run `npm run verify`.** It must be **9/9**. It needs `DATABASE_URL`, and its ground-truth
    replay writes to the DB (idempotent, by design); `npm run verify:quick` skips that and the
    production build. If the **historical snapshot** check fires, stop — you moved a frozen season.
-3. **Check the repo state:** `git status` and `git log origin/main..main`. **The five
-   live-scoring commits `6559f0f` … `d3cc2e9` are local** (see the push check in Snapshot).
+3. **Check the repo state:** `git status` and `git log origin/main..main`. **As of 2026-08-23 the
+   working tree is dirty on purpose** — the mobile `/live` rebuild, the Live Sync roster refresh
+   (extension **1.5.0**) and the scoring-drift audit are written and verified but **not committed**
+   (see the push check in Snapshot). `git diff HEAD` is the whole of it.
 
 The rebuild is **feature-complete** vs the old Google-Sheets workflow. Importers are idempotent;
 2023–2025 (regular season + playoffs) are in, validated, and gated against moving.
@@ -807,9 +940,11 @@ The rebuild is **feature-complete** vs the old Google-Sheets workflow. Importers
 **Live in-progress scoring is DONE (Phases 0–5)** — the pure engine + ESPN adapter, roster
 capture/storage (`src/lib/lineups/`, `POST /api/ingest/lineups`, Admin → Lineups), the join and read
 model (`src/lib/live/`), and the **`/live`** + **`/live/[matchupId]`** pages. Migration `0010` is
-applied. The extension is at **v1.4.0**, where one **Sync** button posts scores and rosters from a
-single DraftKings read. A real capture reconciled against DraftKings' own numbers at
-**max |delta| 0.00** across 6 owners with zero unresolved slots.
+applied. The extension is at **v1.5.0**, where one **Sync** button posts scores and rosters from a
+single DraftKings read, and **Live Sync additionally re-reads rosters when `GET /api/live-status`
+says a kickoff has revealed something** — plus always on the final poll. A real capture reconciled
+against DraftKings' own numbers at **max |delta| 0.00** across 6 owners with zero unresolved slots;
+that check is now a page (**Admin → Scoring**) rather than a one-off.
 
 Before touching any of it, read
 [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). Three things
@@ -837,36 +972,51 @@ driver means one query = one round-trip, so batch writes.
 
 ## ▶ Next session: start here
 
-Live scoring is **built, pushed and deployed**. The remaining work is confirmation, not
-construction.
+Live scoring is **built and deployed**; the 2026-08-23 work on top of it (mobile `/live`, the
+conditional roster refresh, the drift audit) is **written, verified and uncommitted**. The
+remaining work is confirmation, not construction.
 
-**1. The one action outstanding — a second capture for week 102.**
-The only capture in the database was taken mid-slate on 2026-08-15, so 30 of its 54 roster spots
-were still concealed by DraftKings and are scoring nothing. A re-sync now that those games have
-finished will:
+**0. Commit and push the working tree.** `git status` lists nine modified files and four new ones.
+`npm run verify` is 9/9 and 349 tests pass as it stands. **No migration is involved** — the audit
+adds no table and `/api/live-status` adds no column. Read
+[Recent work](#recent-work-newest-first) for what each piece decided and what was rejected; that is
+the design record until these land as commits.
 
-  - reveal all 54 slots and clear `/live`'s "these totals are low" banner,
-  - write a SECOND snapshot per owner, which is the only untested mechanism left
-    (append-only versioning — newest `capturedAt` wins per `(ownerSeasonId, week)`),
-  - be the first capture carrying `dkProjection`, so projections populate for real.
+**1. ✅ CLOSED — the second week-102 capture has landed.** Older notes here asked for it. The
+database now holds **four** captures for season 1 / week 102: two mid-slate on 2026-08-15
+(24 of 54 slots revealed) and two after the games finished on 2026-08-16, both **54/54 revealed**.
+So two things previously listed as untested are now exercised on real data:
 
-How: extension → App Base URL `https://keylehr-h2h.vercel.app` → reload the extension → reload the
-DraftKings tab → **Sync**. Week and Preseason auto-fill from `/api/current-week`.
+  - **Append-only versioning works in production** — three `capturedAt` versions per owner-week,
+    newest winning, nothing overwritten.
+  - **The reconciliation is automatic now.** Admin → Scoring on that week reports **54 slots, 54
+    agree, 0 rule drift, 0 unmapped, 0 unmatched, 0 skipped, max |delta| 0.00 across 6 owners** —
+    the same answer the hand-done check gave, without the hand.
 
-**2. Then reconcile it.** Compare the ESPN-derived estimate against the `dkScore` / `dkStats` the
-capture stores. The 2026-08-15 run hit **max |delta| 0.00 across 6 owners**, but on a 2-game
-preseason slate with incomplete rosters. A finished-game, fully-revealed capture is the sharper
-test — a per-stat diff, not just per-total.
+**2. ⚠️ NOT closed, and the old note predicted the opposite: no capture has ever carried
+`dkProjection`.** All **216** stored slots across all four week-102 captures have it `null`. The
+mid-slate captures predate the field; the post-game ones cannot carry it, because **DraftKings
+strips its projection once the game is over** — in run 4's raw payload the object reads
+`"projection": { "valueIcon": "" }` against a competition of `CompetitionOver`.
+**The consequence is structural, and worth understanding before chasing it as a bug:** the capture
+that is best for the [drift audit](SCORING.md#does-the-estimate-agree-with-draftkings--the-drift-audit)
+(post-game, everything revealed and final) is exactly the capture that carries **no** projection,
+and vice versa. `/live`'s projected finals and win probability have therefore **never run on real
+captured data** — only on unit-test fixtures. **A mid-game capture during a real regular-season
+Sunday is what closes this**, and Live Sync's conditional refresh now produces those as a
+side effect.
 
 **3. Do NOT re-fix these.** They read like open bugs in older notes and are closed:
-the `dkProjection` `NaN` (fixed in `0b2f686`, hydrated on read), the paste path not enriching
+the `dkProjection` `NaN` (fixed in `0b2f686`, hydrated on read — that is the *NaN*, distinct from
+item 2 above, which is about the value never being *present*), the paste path not enriching
 (fixed — the form takes a draft group id), and DraftKings' PMR "different rule" (it was a stale
 `eTag` row, not a rule).
 
-**What is genuinely still open** is the three risks in *Open items* below: `pointsAllowedMode`
-unconfirmed, a 16-game cold render untested against `maxDuration = 30`, and the win-probability
-standard deviation being an assumed constant. None blocks use; all three want a real regular-season
-week.
+**What is genuinely still open** is the risks in *Open items* below: `pointsAllowedMode`
+unconfirmed (**Admin → Scoring is now the instrument for settling it** — a wrong mode lands a DST
+one tier off and surfaces as a rule bug on that row), `dkProjection` never captured, a 16-game cold
+render untested against `maxDuration = 30`, and the win-probability standard deviation being an
+assumed constant. None blocks use; all of them want a real regular-season week.
 
 ## Map of the important code
 
@@ -942,14 +1092,30 @@ week.
   `countConcealedSlots`, 8 tests — the "re-sync, your totals are low" detector) · `minutes.ts`
   (**pure**, `minutesLeftInGame` / `lineupMinutes`, 12 tests — how much football is left) ·
   `projection.ts` (**pure**, `projectSlot` / `projectLineup` / `winProbability`, 14 tests —
-  DraftKings' own projection formula plus a labelled win-probability **model**) · `query.ts`
+  DraftKings' own projection formula plus a labelled win-probability **model**) ·
+  `reconcile.ts` (**pure**, `reconcileSlot` / `reconcileWeek`, 14 tests — do we agree with
+  DraftKings, player by player) · `reconcile-query.ts` (**reads only**: `reconcileWeekFromDb`,
+  `buildReconciliation`, `getReconcilableSeasons`, `getCapturedWeeks`; holds
+  `ASSUMED_GAME_LENGTH_MS`, the feature's one approximation) · `query.ts`
   (**reads only**: `getLiveWeekData`, `getDefaultLiveWeek`, `getMatchupLocation`). Routes:
   `src/app/live/` (list, ordered by **closeness**) and `src/app/live/[matchupId]/` (head-to-head
   detail, no `PageHeader`; `matchup-nav.tsx` = prev/next + dropdown, carrying both owners, logos,
-  scores and minutes). **Neither route may set `dynamic = 'force-dynamic'`** — see
-  [`SCORING.md` §15](SCORING.md#rendering-it--live-phases-45). `liveTag` is invalidated by
+  scores and minutes). **Both pages have two layouts below/above `sm` sharing ONE data source** —
+  the mirrored roster rail and the rich prev/next cards do not fit a 390px screen; see
+  [`SCORING.md` §15](SCORING.md#the-routes). **Neither route may set `dynamic = 'force-dynamic'`**
+  — see [`SCORING.md` §15](SCORING.md#rendering-it--live-phases-45). `liveTag` is invalidated by
   `POST /api/ingest/lineups`.
+- **Is the estimate right?** `GET /api/live-status` (`src/app/api/live-status/route.ts`,
+  **read-only**) tells the extension whether re-reading all 32 rosters would reveal anything —
+  [`DRAFTKINGS.md` §14](DRAFTKINGS.md#14-the-capture-staleness-endpoint-implemented). **Admin →
+  Scoring** (`src/app/admin/(panel)/scoring/page.tsx`, **read-only**) reconciles our per-player
+  points against DraftKings' own `dkScore`/`dkStats` —
+  [`SCORING.md` §15](SCORING.md#does-the-estimate-agree-with-draftkings--the-drift-audit). Neither
+  is covered by `no-write.test.ts`, whose scan stops at `src/lib/{dfs,lineups,live}` +
+  `src/app/live`; both carry an explicit read-only header instead.
 - Admin (commissioner): `src/app/admin/(panel)/` — Owners · Assignments · Schedule · **Preseason** ·
-  Sync · **Lineups** · Playoffs · **Slates** · **Models** · Settings · Users (all auth-gated)
+  Sync · **Lineups** · **Scoring** · Playoffs · **Slates** · **Models** · Settings · Users (all
+  auth-gated). **Scoring** is the odd one out: no server action, no writes — it is a read-only
+  audit of whether `/live` agrees with DraftKings.
 - Season importers (idempotent): `scripts/import-season{,3}.ts` (regular season; `import-season3.ts` is
   the 2025 verify anchor — do NOT modify), `scripts/import-playoffs{,-2025}.ts` (brackets)

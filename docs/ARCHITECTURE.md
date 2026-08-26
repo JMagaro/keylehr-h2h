@@ -56,17 +56,25 @@ All four App Router surfaces ship today. See [§2](#2-request-flow) for the coun
   > awaits `searchParams`. See [§9](#9-live-in-progress-scoring-built).
 - **Admin pages (`src/app/admin/(panel)/`):** gated behind Auth.js. CRUD runs as **Server
   Actions** that mutate the database and call `revalidatePath()`. Shipped: the dashboard, Owners
-  (list + detail), Assignments, Schedule, Preseason, Sync, **Lineups**, Playoffs, Slates, Models,
-  Settings and Users, plus the `/admin/login` route.
+  (list + detail), Assignments, Schedule, Preseason, Sync, **Lineups**, **Scoring**, Playoffs,
+  Slates, Models, Settings and Users, plus the `/admin/login` route.
+  > **Admin → Scoring is the exception that proves the rule: it has no Server Action at all.** It
+  > is a read-only audit of whether `/live` agrees with DraftKings, computed on demand from data
+  > captures already store — see [§9](#9-live-in-progress-scoring-built).
 - **Route handlers (`src/app/api/.../route.ts`):** `POST /api/ingest/draftkings` (the extension's
   score ingest, bearer `INGEST_TOKEN`), `POST /api/ingest/lineups` (roster capture for the live
   estimate — same token, **never** writes a score; see [§9](#9-live-in-progress-scoring-built)),
   `GET /api/seasons` (the extension's season picker / connection probe),
   `GET /api/current-week` (**read-only** week detection from `nfl_games`, so the extension never
   syncs a contest against the wrong week — see
-  [`SCORING.md` §4](SCORING.md#which-week-is-it--detecting-it-from-the-schedule)), and the Auth.js
-  catch-all. All three GETs share the same bearer token and CORS headers.
-  GET handlers are **not** cached by default in Next 16.
+  [`SCORING.md` §4](SCORING.md#which-week-is-it--detecting-it-from-the-schedule)),
+  `GET /api/live-status` (**read-only** capture-staleness check: tells the extension's Live Sync
+  loop whether re-reading all 32 rosters would reveal anything, so a 32-request fan-out is paid for
+  only when a kickoff has made it worth something — see
+  [`DRAFTKINGS.md` §14](DRAFTKINGS.md#14-the-capture-staleness-endpoint-implemented)), and the
+  Auth.js catch-all. Those **three GETs** — `seasons`, `current-week`, `live-status` — share the
+  same bearer token and the same CORS headers, so the extension configures one token and nothing
+  else. GET handlers are **not** cached by default in Next 16.
 - **`middleware.ts`:** gates `/admin/*` (except `/admin/login`) — see [§6](#6-auth--admin-model-implemented).
 - **CLI scripts (`scripts/`, `src/db/seed/`):** run via `tsx` outside the request lifecycle
   for seeding, the schedule/matchup pull, the season/playoff/award importers, the odds
@@ -343,6 +351,13 @@ in migration `0010`, which is applied — see [§9](#9-live-in-progress-scoring-
 > + read model under `src/lib/live/`, rendered by **`/live`** and **`/live/[matchupId]`**. It is
 > still an **estimate** — DraftKings' leaderboard remains the sole authority for `scores`. Full
 > detail — [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
+>
+> **Since then, two additions that both lean on data already being collected.** The extension's
+> Live Sync loop (v1.5.0) re-reads rosters when `GET /api/live-status` says a kickoff has revealed
+> players the estimate is missing, and always once the contest completes. And **Admin → Scoring**
+> reconciles our per-player numbers against DraftKings' own, which every capture already stores —
+> read-only, computed on demand, no new table. See
+> [the drift audit](#the-drift-audit-does-the-estimate-agree-with-draftkings) below.
 
 The scoring pipeline in [§7](#7-draftkings-scoring-pipeline-implemented--via-the-browser-extension)
 needs the commissioner's browser, so a week's *official* numbers only move when someone syncs. The
@@ -381,6 +396,13 @@ lineup_capture_runs  (audit)                               │     extractGame  
                          ▼
         /live  and  /live/[matchupId]
             an ESTIMATE — displayed only, never written to `scores`
+                         │
+                         ├─▶ GET /api/live-status   "would re-reading rosters reveal anything?"
+                         │      read-only; the extension's Live Sync loop asks every poll
+                         │
+                         └─▶ /admin/scoring         our points  vs  DK's own dkScore/dkStats
+                                src/lib/live/reconcile.ts        (pure)
+                                src/lib/live/reconcile-query.ts  (reads only)
 ```
 
 The join between the two halves — matching a captured DK player to an ESPN athlete — is
@@ -454,3 +476,63 @@ Auth and week validation are **shared with the score ingest**, not duplicated:
 change. Owner-name matching is shared too (`src/lib/scores/owner-match.ts`) — if the two ingests
 ever resolved a DK entry name differently, an owner's roster and their score would land on
 different rows.
+
+### Keeping the capture fresh, without a human remembering to
+
+A capture goes stale in one specific way: DraftKings conceals a player until their game kicks off,
+so an early capture legitimately misses the late slate, and those players then score points the
+estimate cannot see. `/live` already detects this and says so. **`GET /api/live-status`
+(`src/app/api/live-status/route.ts`, read-only) exposes the same detection to the extension**, so
+Live Sync can act on it instead of nagging a person.
+
+The design constraint that shapes it is a cost asymmetry, and it is why the endpoint exists at all
+rather than the extension simply refreshing rosters every poll:
+
+| | Leaderboard (scores) | Rosters |
+| --- | --- | --- |
+| Requests per refresh | **1** | **1 per entry — 32** (DK has no bulk roster endpoint) |
+| Storage per refresh | upsert on `(ownerSeasonId, week)` — no growth | **append-only** — 32 new rows, kept forever |
+| Changes between kickoffs | continuously | **not at all** |
+
+Refreshing rosters every poll across a Sunday is ~4,000 credentialed requests against the
+commissioner's own DraftKings account and ~250 MB/season of near-identical snapshots, for **no
+extra freshness** — a roster only changes when DK reveals someone, which happens at a kickoff. The
+conditional version does ~6–8 refreshes a week and lands within one poll of each kickoff.
+
+Two properties keep this honest:
+
+- **No second definition of "stale".** The route calls the same `assessCaptureStaleness` that
+  `/live` renders from. It adds exactly one case that predicate cannot express — a week with
+  matchups and **no capture at all**, where there is no capture time to compare kickoffs against.
+- **The final poll is unconditional.** When the contest completes the extension re-captures
+  regardless, because that is the only capture where every player is revealed and DraftKings' own
+  per-player numbers are final — which is what the drift audit below reconciles against.
+
+### The drift audit: does the estimate agree with DraftKings?
+
+`/live` recomputes DK Classic points from ESPN. **If one of those rules were wrong, nothing would
+ever say so** — the page would be quietly wrong forever and look healthy doing it. `/admin/scoring`
+is the standing check, and its whole architecture follows from one observation: **both sides of the
+comparison are already in the database.** Every capture stores DraftKings' own per-player score and
+stat line (`dkScore` / `dkStats`), which is DK's unmediated account of the same game we scored from
+ESPN.
+
+So the feature adds **no collection, no table, and no job** — it is arithmetic over existing rows,
+computed on demand. A stored copy would be a third thing to keep in sync with two sources that
+already agree.
+
+- **`src/lib/live/reconcile.ts` is pure** — no DB, no network, no clock — like every other module
+  in that directory, and unit-tested accordingly (14 tests). It owns the verdicts, which exist to
+  route a finding to the right owner: `ruleDrift` (**ours**, in `src/lib/dfs/rules.ts`),
+  `statDrift` (the two feeds saw different plays — nobody's), `unmapped` (**the audit's own key
+  map**, not the scoring rules), `unmatched` (the ESPN identity join failed).
+- **`src/lib/live/reconcile-query.ts` reads only**, and holds the single approximation:
+  `ASSUMED_GAME_LENGTH_MS`. DraftKings' number is a snapshot from capture time while ours is live,
+  so a slot may only be judged once its game is final *and* the capture postdates it — and nothing
+  we have records when a game *ended*. It errs toward "not comparable", because the other direction
+  invents drift.
+
+Both modules are covered by `no-write.test.ts` automatically, since the scan discovers files under
+`src/lib/live` rather than enumerating them. **The page and the route are not** — the scan covers
+`src/app/live`, not every consumer — so both carry an explicit read-only header instead. Full
+rationale: [`SCORING.md` §15](SCORING.md#does-the-estimate-agree-with-draftkings--the-drift-audit).

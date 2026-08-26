@@ -535,6 +535,24 @@ One owner's captured DraftKings lineup for one week. **Append-only, versioned by
 > `dkStats` is `null` when the payload had no breakdown at all and `[]` when DK said "nothing yet" —
 > the distinction is deliberate. Both are null for a concealed slot.
 
+> **Those two columns now have a reader: Admin → Scoring** (`src/lib/live/reconcile.ts` +
+> `reconcile-query.ts`). It compares our ESPN-derived points against `dkScore`, and when the totals
+> disagree, walks `dkStats` to say whether the two sources disagreed about **what happened** or
+> about **what it was worth** — the second being a bug in our rules. It is **read-only and computed
+> on demand**: a stored reconciliation would be a third copy to keep in sync with two sources that
+> already exist. Two consequences for anyone touching the write path:
+>
+> - **`dkScore` is a SNAPSHOT of capture time; our number is live.** The audit therefore judges a
+>   slot only when its game is final *and* `capturedAt` postdates it. Do not "helpfully" backfill or
+>   refresh `dkScore` on an existing row — that would silently make old captures look comparable
+>   when they are not.
+> - **`dkStats` keys are DraftKings' own abbreviations, verbatim, and must stay that way.** The
+>   audit's `DK_TO_OUR_KEY` map was built from real captured payloads (`PaYds PaTD INT RuYds RuTD
+>   REC RecYds RecTD SACK DFR Targets`, plus points-allowed tier rows like `7-13 PA`). Normalizing
+>   them at write time would destroy the only evidence of what DraftKings actually paid for.
+>
+> See [`SCORING.md` §15](SCORING.md#does-the-estimate-agree-with-draftkings--the-drift-audit).
+
 > **`dkProjection` is stored for the same "only exists at capture time" reason, but it is not a
 > checkpoint — it is an input.** It holds DK's **pregame** projection (from the nested `projection`
 > object; the *live* one is deliberately not stored), and it drives the projected finals on `/live`

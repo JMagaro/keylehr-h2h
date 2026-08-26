@@ -95,6 +95,13 @@ counts toward Points For and repairs itself on the next sync (see
    "Missed lineup — auto-loss · FF" row on `/my-team`, with the opponent's Points Against equal
    to that week's league median (2026 rule).
 
+6. **Glance at Admin → Scoring** once the week's games are final and a post-game capture exists.
+   It compares every captured player's ESPN-derived score against DraftKings' own number for the
+   same player. Nothing to configure, nothing to collect — it reads what the capture already
+   stored. **This is a health check on `/live`, not on the week's official scores**, which come
+   from the leaderboard and are unaffected either way. See
+   [below](#checking-that-our-scoring-still-agrees-with-draftkings).
+
 ### ⚠️ The wrong week overwrites a real one
 
 **This is the most destructive mistake available in the weekly loop, and it is completely silent.**
@@ -163,6 +170,13 @@ is no separate button to click. See
 This is the single most important operational rule for `/live`, and getting it wrong makes the page
 quietly wrong rather than obviously broken.
 
+> **Extension v1.5.0 automates it, if you leave Live Sync on.** The background loop now asks the
+> app (`GET /api/live-status`) on every poll whether re-reading rosters would reveal anything, and
+> re-captures only when the answer is yes — plus once more when DraftKings reports the contest
+> complete. That is ~6–8 refreshes a week instead of ~1,000, at the same freshness. **The rule
+> below still applies whenever Live Sync is off**, which is the default. See
+> [`../extension/README.md`](../extension/README.md#why-the-roster-refresh-is-conditional-and-not-every-poll).
+
 DraftKings conceals a player until *that player's* game kicks off. A capture taken at the 1pm lock
 therefore hides the **entire late slate** — those roster spots have no identity at all and count as
 nothing. That is honest at 1pm. **By 5pm it is wrong:** those players are on the field scoring
@@ -173,13 +187,21 @@ first real capture, **14 of 16 games had started while 30 roster spots were stil
 about — DK Classic allows swaps until each player's own kickoff). Captures are append-only and the
 newest one wins, so re-syncing is always safe and never loses anything.
 
+**The one capture worth having no matter what is the one AFTER the games end.** Every player is
+revealed and DraftKings' own per-player numbers are final, which is what makes the week auditable
+in [Admin → Scoring](#checking-that-our-scoring-still-agrees-with-draftkings). Live Sync takes that
+capture automatically on its final poll; without Live Sync, run **Sync** once more after the last
+game goes final.
+
 `/live` detects this for you and says **"These totals are low — re-sync to fix"**, naming how many
 games have kicked off since the last capture and how many roster spots are still unknown. It stays
 quiet when re-capturing would not actually help — for example right after a 1pm capture, when the
 early games are underway but nothing has kicked off *since* you captured.
 
 **What "good" looks like on `/live`.** The page states `N/M games loaded` and names any owner with
-no capture rather than showing them as `0.00`. Players whose game is loaded but who have no ESPN row
+no capture rather than showing them as `0.00` — **up to six of them by name, then a count**
+("… and 20 more"), because spelling out 26 names filled an entire phone screen and pushed every
+matchup below it. The notice itself is never suppressed; only the name list is capped. Players whose game is loaded but who have no ESPN row
 score 0 (correctly — ESPN only lists players who recorded a stat); only players whose **game did not
 load** read as *unresolved*, and that is the one state worth chasing. See
 [`SCORING.md` §15](SCORING.md#the-five-slot-states--the-load-bearing-concept).
@@ -221,6 +243,44 @@ result banner and by the paste form alike. Fix them the same way as a score mism
 owner's **DK entry name** in Admin → Assignments, then capture again.
 
 See [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
+
+### Checking that our scoring still agrees with DraftKings
+
+**Admin → Scoring** (`/admin/scoring?season=<id>&week=<n>`) is the standing answer to a question
+that otherwise never gets asked: *is `/live` actually computing DraftKings' scoring correctly?*
+
+`/live` derives DK Classic points from ESPN box scores. If one of those rules were wrong, nothing
+in the system would say so — the page would render slightly wrong numbers forever and look
+perfectly healthy doing it. This page compares each captured player against **DraftKings' own
+per-player score and stat line**, both of which every capture already stores. It reads only, writes
+nothing, and computes on demand.
+
+**How to read it.** The headline is *"N of M slots compared, max difference X"*. Read **both**
+numbers: a spotless verdict over a sample of nine is not a clean bill of health. Then the counts:
+
+| Verdict | What it means | Do you act? |
+| ------- | ------------- | ----------- |
+| **Agrees** | Our number matches DraftKings within 0.01. | No. |
+| **Rule bug** | Both sources saw the same play; we priced it differently. | **Yes — this is ours.** Report it; the fix is in `src/lib/dfs/rules.ts`. |
+| **Source differs** | ESPN and DraftKings disagree about what happened (7 receptions vs 8). | No. Not ours to fix, and deliberately not flagged as needing attention. |
+| **Unknown stat** | DraftKings paid for a stat the audit cannot name, so the gap cannot be attributed. | **Yes, but not as a scoring bug** — the audit's key map needs teaching first. |
+| **No ESPN match** | We produced no score for that player at all; the name/team join failed. | **Yes** — usually a name-matching problem, same family as an unmatched DK entry name. |
+| **Skipped** | Not comparable: concealed at capture time, or the game had not finished when DraftKings was read. | No. |
+
+> **Skipped is the normal state mid-week, and that is by design.** DraftKings' number is a snapshot
+> from capture time; ours is live. Comparing a mid-game capture against a finished game measures the
+> gap between two moments, not an error. So a slot is judged only when its game is final **and** the
+> capture came after it. **Which is why the capture that matters is the one taken after the games
+> end** — Live Sync takes it automatically on its final poll.
+
+**When to look.** After a completed week, once a post-game capture exists. There is nothing to
+watch mid-Sunday: almost everything will read *Skipped*, correctly.
+
+**What it says today.** Season 1 week 102: 54 slots, 54 agree, 0 rule bugs, max difference 0.00
+across 6 owners — the same result as the hand-done reconciliation that closed the live-scoring
+work, reproduced by a page load. Full rationale, including the verdict definitions and the one
+approximation involved:
+[`SCORING.md` §15](SCORING.md#does-the-estimate-agree-with-draftkings--the-drift-audit).
 
 ### Playoff weeks
 
@@ -363,5 +423,13 @@ code.
 | `/live` shows an owner's total as **—** | No roster was captured for them that week | Run **Sync** from the extension. The page names them rather than showing `0.00`, because zero would be indistinguishable from a forfeit. |
 | `/live` says **"These totals are low — re-sync to fix"** | Games have kicked off since the last capture, so DraftKings would now reveal players it was hiding — those players are scoring and the estimate is excluding them | Hit **Sync** in the extension. This is the expected mid-Sunday workflow, not a fault — see [One capture is not enough](#-one-capture-is-not-enough--sync-again-after-the-last-kickoff). |
 | Totals on `/live` look too low but there's **no** warning | Nothing has kicked off since your capture, so re-capturing would reveal nothing | Not a staleness problem. Check `N/M games loaded` and the unresolved count instead. |
+| The `/live` "not captured" notice ends **"… and 20 more"** | Not a fault — the notice names at most 6 owners then counts the rest, so it cannot fill a phone screen | Nothing is hidden: every uncaptured owner still shows `—` on their own card. Run **Sync**. |
+| Live Sync's popup says **`Rosters: none needed yet`** for hours | Expected. Rosters are re-read only when a kickoff has revealed players the estimate is missing — most polls legitimately need nothing | Nothing to do. Confirm scores are still ticking on the line above; the two are independent. |
+| Live Sync shows **`⚠ Rosters: Could not ask the app: HTTP 401`** | The extension's Ingest Token does not match the server's, or `INGEST_TOKEN` is unset — `/api/live-status` uses the same token as everything else | Fix the token in the popup's settings. Scores are failing too if this is the cause; check the score line. See [`DEPLOYMENT.md` §2](DEPLOYMENT.md#2-environment-variables). |
+| Live Sync shows **`⚠ Rosters: …`** but scores are syncing fine | Expected behaviour, not a bug: the roster half is best-effort and reported separately so it cannot cast doubt on scores | Re-run **Sync** by hand if `/live` looks stale. The score sync is unaffected. |
+| **Admin → Scoring** reports **rule bugs** | Our scoring rules price a stat differently from DraftKings, on an identical stat line | **Report it.** The fix is in `src/lib/dfs/rules.ts`; the finding names the component. Official `scores` are unaffected — only the `/live` estimate is wrong. |
+| **Admin → Scoring** reports **unknown stats** | DraftKings paid for a stat key the audit's map does not recognise, so it cannot attribute the gap | Not a scoring bug — the map in `src/lib/live/reconcile.ts` needs the key added. Do **not** go hunting in `rules.ts` first. |
+| **Admin → Scoring** says **0 of 54 compared** | No slot is comparable yet: the games were not final when DraftKings was read, or the players were still concealed | Capture again after the games finish, then reload. Live Sync does this on its final poll. |
+| **Admin → Scoring** shows **"No captured rosters yet"** | The season has no `lineup_snapshots` rows — the audit reads captures, it does not collect anything | Run a **Sync** from the extension for a week that has been played. |
 | `verify` fails on **historical snapshot unchanged** | A change moved a frozen season | Stop. See [§6](#6-the-snapshot-gate). |
 | `verify` fails on **engine no-op proofs** | A precondition that makes the derivation model safe on history no longer holds | Stop — the corresponding change is not safe and needs a fresh look. The message names the season and the proof. |

@@ -47,10 +47,21 @@ const FORBIDDEN: { pattern: RegExp; why: string }[] = [
 
 const libDir = fileURLToPath(new URL('..', import.meta.url));
 /**
- * The /live route is guarded too, not just the libraries behind it. A server component can
- * reach the database directly, so "the lib layer is clean" would be an incomplete proof.
+ * The ROUTES are guarded too, not just the libraries behind them. A server component or route
+ * handler can reach the database directly, so "the lib layer is clean" would be an incomplete
+ * proof.
+ *
+ * Add any new surface that reads the live-scoring path here. Each of these carries a
+ * "NOTHING HERE WRITES" comment in its header — this is what makes that a proof rather than
+ * an intention.
  */
-const liveRouteDir = fileURLToPath(new URL('../../app/live', import.meta.url));
+const guardedRouteDirs = [
+  '../../app/live',
+  // The capture-staleness endpoint the extension polls.
+  '../../app/api/live-status',
+  // The scoring-drift audit, which reads captures and box scores to compare them.
+  '../../app/admin/(panel)/scoring',
+].map((rel) => fileURLToPath(new URL(rel, import.meta.url)));
 
 function collectSourceFiles(dir: string): string[] {
   let entries: string[];
@@ -78,7 +89,7 @@ function collectSourceFiles(dir: string): string[] {
 describe('live scoring never writes a score', () => {
   const files = [
     ...GUARDED_DIRS.flatMap((d) => collectSourceFiles(join(libDir, d))),
-    ...collectSourceFiles(liveRouteDir),
+    ...guardedRouteDirs.flatMap((d) => collectSourceFiles(d)),
   ];
 
   it('finds the live-scoring modules to guard', () => {
@@ -86,8 +97,14 @@ describe('live scoring never writes a score', () => {
     expect(files.length).toBeGreaterThan(0);
   });
 
-  it('guards the /live route, not only the libraries behind it', () => {
-    expect(files.some((f) => f.includes(`${sep}app${sep}live${sep}`))).toBe(true);
+  it.each([
+    ['/live', `${sep}app${sep}live${sep}`],
+    ['/api/live-status', `${sep}app${sep}api${sep}live-status${sep}`],
+    ['admin scoring audit', `${sep}scoring${sep}`],
+  ])('guards the %s route, not only the libraries behind it', (_label, marker) => {
+    // Each route dir is asserted individually: a typo'd path would silently scan nothing,
+    // and a guard that scans nothing passes.
+    expect(files.some((f) => f.includes(marker))).toBe(true);
   });
 
   it.each(files.map((f) => [f.slice(f.indexOf(`${sep}src${sep}`) + 1), f]))(
