@@ -53,6 +53,9 @@ export const maxDuration = 30;
 const LIVE_DESCRIPTION =
   "A running estimate while games are being played, computed from public NFL stats using DraftKings' scoring rules.";
 
+/** How many owners the "not captured" notice names before it starts counting instead. */
+const MAX_NAMED_MISSING = 6;
+
 function weekLabel(week: number): string {
   return isExhibitionWeek(week) ? exhibitionWeekLabel(week) : `Week ${week}`;
 }
@@ -67,7 +70,7 @@ export default async function LivePage({
 
   if (seasons.length === 0) {
     return (
-      <Container width="wide" as="div" className="flex flex-col gap-8 py-10">
+      <Container width="wide" as="div" className="flex flex-col gap-6 py-6 sm:gap-8 sm:py-10">
         <PageHeader eyebrow="In progress" title="Live" description={LIVE_DESCRIPTION} />
         <EmptyState icon={Activity} title="No seasons yet" description="Create a season first." />
       </Container>
@@ -135,12 +138,12 @@ export default async function LivePage({
   });
 
   return (
-    <Container width="wide" as="div" className="flex flex-col gap-8 py-10">
+    <Container width="wide" as="div" className="flex flex-col gap-6 py-6 sm:gap-8 sm:py-10">
       {header}
 
       {/* Permanent, not dismissible. The number on this page is not the number that pays out. */}
       <Card className="border-tie/30 bg-tie-soft/40">
-        <CardBody className="flex flex-wrap items-center justify-between gap-3">
+        <CardBody className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
           <p className="text-sm text-foreground">
             <span className="font-semibold">Live estimate — {weekLabel(week)}.</span> Computed from
             public NFL stats. The <span className="font-semibold">DraftKings leaderboard is the
@@ -177,7 +180,7 @@ export default async function LivePage({
 
           {staleness.shouldRecapture ? (
             <Card className="border-tie/30 bg-tie-soft/40">
-              <CardBody className="flex items-start gap-3">
+              <CardBody className="flex items-start gap-3 p-4 sm:p-5">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0 text-tie" aria-hidden="true" />
                 <p className="text-sm">
                   <span className="font-semibold">
@@ -194,19 +197,25 @@ export default async function LivePage({
             </Card>
           ) : null}
 
-          {/* Surfaced, never swallowed: an owner with no capture is not an owner with 0.00. */}
+          {/* Surfaced, never swallowed: an owner with no capture is not an owner with 0.00.
+              Named up to a limit, though: spelling out 26 owners filled an entire phone screen
+              and pushed every matchup below it, to say something each card already says on its
+              own row. The count is the alarming part; the names are a courtesy. */}
           {view.missingCaptures.length > 0 ? (
             <Card className="border-tie/30">
-              <CardBody className="flex items-start gap-3">
+              <CardBody className="flex items-start gap-3 p-4 sm:p-5">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0 text-tie" aria-hidden="true" />
                 <p className="text-sm">
                   <span className="font-semibold">
                     {view.missingCaptures.length} lineup
                     {view.missingCaptures.length === 1 ? '' : 's'} not captured:
                   </span>{' '}
-                  {view.missingCaptures.join(', ')}. Their totals show as{' '}
-                  <span className="font-mono">—</span>, not zero — run a capture from the Chrome
-                  extension to fill them in.
+                  {view.missingCaptures.slice(0, MAX_NAMED_MISSING).join(', ')}
+                  {view.missingCaptures.length > MAX_NAMED_MISSING
+                    ? ` and ${view.missingCaptures.length - MAX_NAMED_MISSING} more`
+                    : ''}
+                  . Their totals show as <span className="font-mono">—</span>, not zero — run a
+                  capture from the Chrome extension to fill them in.
                 </p>
               </CardBody>
             </Card>
@@ -214,7 +223,7 @@ export default async function LivePage({
 
           {partialSlate ? (
             <Card className="border-tie/30">
-              <CardBody className="flex items-start gap-3">
+              <CardBody className="flex items-start gap-3 p-4 sm:p-5">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0 text-tie" aria-hidden="true" />
                 <p className="text-sm">
                   Only {view.gamesLoaded} of {view.gamesTotal} games loaded from ESPN. Players in
@@ -224,7 +233,7 @@ export default async function LivePage({
             </Card>
           ) : null}
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             {ordered.map((m) => (
               <MatchupCard key={m.id} matchup={m} />
             ))}

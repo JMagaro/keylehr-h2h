@@ -3,6 +3,17 @@
  * every fantasy app uses because it makes "who is beating whom, at which position" readable
  * at a glance.
  *
+ * ON A PHONE THAT LAYOUT CANNOT WORK, and it is not a matter of tightening it up. Three
+ * columns at 390px leave each player roughly 70px once the logo and the points column are
+ * subtracted — enough for "J. Jeffe…" and nothing else, with the stat line gone entirely. So
+ * below `sm` the same data renders STACKED: one block per roster slot, both players full width
+ * beneath it, each keeping its name, stat line and game state. A two-tone legend says which
+ * row belongs to which owner, since stacking removes the left/right cue the mirror gives you
+ * for free. The mirrored rail returns from `sm` up.
+ *
+ * Two layouts, ONE data source: everything below is computed once and rendered twice. Do not
+ * let the variants drift into computing different things.
+ *
  * Each player row carries what you actually need mid-game: the points, a plain-English stat
  * line, and their game's state — which for a player yet to kick off means their opponent and
  * kickoff time, since "0.00" would be meaningless there.
@@ -22,11 +33,15 @@ import {
   projectLineup,
   winProbability,
   type LineupProjection,
+  type WinProbability,
 } from '@/lib/live/projection';
 import { formatPoints, cn } from '@/lib/utils';
 
 /** Roster order, so both sides line up row for row. */
 const SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'DST'];
+
+/** A single-slot gap at or above this is worth calling out as the difference-maker. */
+const DIFFERENCE_MAKER_POINTS = 5;
 
 function slotRank(slot: string | null): number {
   const i = SLOT_ORDER.indexOf((slot ?? '').toUpperCase());
@@ -116,6 +131,87 @@ function pointsCell(slot: LiveSlot): { value: string; muted: boolean; tone?: str
   }
 }
 
+/** The name, or an explicit statement that DraftKings is still hiding it. */
+function PlayerName({ slot }: { slot: LiveSlot }) {
+  return slot.name ? (
+    <>{slot.name}</>
+  ) : (
+    <span className="italic text-muted">Hidden until kickoff</span>
+  );
+}
+
+/** The owner's running total plus, while anything is left to play, DK's projected final. */
+function ScoreValue({
+  team,
+  projection,
+  size,
+}: {
+  team: LiveTeam;
+  projection: LineupProjection | null;
+  size: 'lg' | 'xl';
+}) {
+  const numberClass = size === 'xl' ? 'text-3xl' : 'text-2xl';
+  if (!team.hasSnapshot) {
+    // Never 0.00 for an uncaptured roster — see assemble.ts.
+    return <span className={cn(numberClass, 'font-bold text-muted')}>—</span>;
+  }
+  return (
+    <span className="flex flex-col items-center">
+      <span className={cn(numberClass, 'font-bold tabular-nums')}>{formatPoints(team.points)}</span>
+      {projection && !projection.isFinal ? (
+        // DraftKings' own projection model, recomputed live from ESPN's clock:
+        // score + pregame × (minutes left / 60). See lib/live/projection.ts.
+        <span className="text-[11px] text-muted">proj {formatPoints(projection.projected)}</span>
+      ) : null}
+    </span>
+  );
+}
+
+/** "58m left · 7 playing · 2 to play" — what makes a running total readable. */
+function teamMetaLine(team: LiveTeam, minutes: LineupMinutes): string {
+  if (!team.hasSnapshot) return 'Lineup not captured';
+  const parts = [
+    // 40 points with 300 minutes left is a completely different position from 40 with 12.
+    `${formatMinutes(minutes.minutesLeft)} left`,
+    `${team.scored + team.noStats} playing`,
+  ];
+  if (team.pending + team.concealed > 0) parts.push(`${team.pending + team.concealed} to play`);
+  return parts.join(' · ');
+}
+
+/**
+ * The vs / win-probability strip between the two scores.
+ *
+ * An ESTIMATE from projected margin and time left — labelled, never dressed up as a
+ * measurement. See lib/live/projection.ts for the model.
+ */
+function OddsLine({
+  odds,
+  home,
+  away,
+}: {
+  odds: WinProbability | null;
+  home: LiveTeam;
+  away: LiveTeam;
+}) {
+  if (!odds) return <span className="text-xs text-muted">vs</span>;
+  // Both branches lead with whoever is ahead, so the name and the number always agree.
+  const leader = odds.home >= 0.5 ? home : away;
+  const text = odds.settled
+    ? `${leader.ownerName} won`
+    : `${formatWinProbability(Math.max(odds.home, 1 - odds.home), false)} ${leader.ownerName}`;
+  return (
+    <span className="flex flex-col items-center text-xs text-muted">
+      <span>vs</span>
+      <span className="mt-0.5 text-center text-[11px]">{text}</span>
+    </span>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Desktop (sm and up): the mirrored layout                                    */
+/* -------------------------------------------------------------------------- */
+
 function PlayerCell({
   slot,
   ctx,
@@ -139,7 +235,7 @@ function PlayerCell({
       <TeamLogo src={ctx?.logoEspn ?? null} alt={slot.teamKey ? `${slot.teamKey} logo` : ''} size={22} />
       <div className={cn('min-w-0 flex-1', right && 'text-right')}>
         <div className="truncate text-sm font-medium">
-          {slot.name ?? <span className="text-muted italic">Hidden until kickoff</span>}
+          <PlayerName slot={slot} />
         </div>
         <div className="truncate text-xs text-muted">
           {summary || line || (slot.status === 'concealed' ? 'DraftKings has not revealed this pick' : '')}
@@ -175,49 +271,112 @@ function TeamHeader({
       <TeamLogo src={team.logoEspn} alt={team.teamKey ? `${team.teamKey} logo` : ''} size={40} />
       <div className="min-w-0">
         <div className="truncate font-semibold">{team.ownerName}</div>
-        <div className="text-xs text-muted">
-          {team.hasSnapshot ? (
-            <>
-              {/* The number that makes a live matchup readable: 40 points with 300 minutes
-                  left is a completely different position from 40 with 12. */}
-              {formatMinutes(minutes.minutesLeft)} left
-              {' · '}
-              {team.scored + team.noStats} playing
-              {team.pending + team.concealed > 0
-                ? ` · ${team.pending + team.concealed} to play`
-                : ''}
-            </>
-          ) : (
-            'Lineup not captured'
-          )}
-        </div>
+        <div className="text-xs text-muted">{teamMetaLine(team, minutes)}</div>
       </div>
     </div>
   );
 }
 
-function TeamScore({
+/* -------------------------------------------------------------------------- */
+/* Mobile (below sm): the stacked layout                                       */
+/* -------------------------------------------------------------------------- */
+
+/** Which owner a stacked row belongs to. Replaces the left/right cue the mirror gives free. */
+type Side = 'home' | 'away';
+
+function SideMarker({ side }: { side: Side }) {
+  return (
+    <span
+      className={cn(
+        'h-3.5 w-1 shrink-0 rounded-full',
+        side === 'home' ? 'bg-accent' : 'bg-border-strong',
+      )}
+      aria-hidden="true"
+    />
+  );
+}
+
+/** One owner's line in the stacked scoreboard: logo, name, meta, score. */
+function MobileTeamRow({
   team,
+  side,
+  minutes,
   projection,
 }: {
   team: LiveTeam;
+  side: Side;
+  minutes: LineupMinutes;
   projection: LineupProjection | null;
 }) {
-  if (!team.hasSnapshot) {
-    // Never 0.00 for an uncaptured roster — see assemble.ts.
-    return <span className="text-3xl font-bold text-muted">—</span>;
-  }
   return (
-    <span className="flex flex-col items-center">
-      <span className="text-3xl font-bold tabular-nums">{formatPoints(team.points)}</span>
-      {projection && !projection.isFinal ? (
-        // DraftKings' own projection model, recomputed live from ESPN's clock:
-        // score + pregame × (minutes left / 60). See lib/live/projection.ts.
-        <span className="text-[11px] text-muted">proj {formatPoints(projection.projected)}</span>
-      ) : null}
-    </span>
+    <div className="flex items-center gap-2.5">
+      <SideMarker side={side} />
+      <TeamLogo src={team.logoEspn} alt={team.teamKey ? `${team.teamKey} logo` : ''} size={32} />
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-semibold">{team.ownerName}</div>
+        <div className="truncate text-xs text-muted">{teamMetaLine(team, minutes)}</div>
+      </div>
+      <div className="shrink-0 text-right">
+        <ScoreValue team={team} projection={projection} size="lg" />
+      </div>
+    </div>
   );
 }
+
+/** One player, full width — the whole point of stacking is that nothing has to truncate. */
+function MobilePlayerRow({
+  slot,
+  side,
+  ctx,
+  index,
+}: {
+  slot: LiveSlot | null;
+  side: Side;
+  ctx: LiveTeamContext | undefined;
+  index: LiveStatIndex;
+}) {
+  // Nothing to draw. The mirrored layout renders an invisible spacer here to keep the two
+  // sides aligned; stacked there is no alignment to preserve, and nine "No slot" rows for an
+  // owner who simply has no capture is noise the scoreboard already explained.
+  if (!slot) return null;
+
+  const pts = pointsCell(slot);
+  const summary = statSummary(slot);
+  const line = gameLine(slot, ctx, index);
+
+  return (
+    <div className="flex items-start gap-2.5 py-1.5">
+      <span className="mt-1">
+        <SideMarker side={side} />
+      </span>
+      <TeamLogo
+        src={ctx?.logoEspn ?? null}
+        alt={slot.teamKey ? `${slot.teamKey} logo` : ''}
+        size={20}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">
+          <PlayerName slot={slot} />
+        </div>
+        {summary ? <div className="text-xs text-muted">{summary}</div> : null}
+        <div className="text-[11px] text-muted/80">
+          {line || (slot.status === 'concealed' ? 'DraftKings has not revealed this pick' : '')}
+        </div>
+      </div>
+      <div
+        className={cn(
+          'shrink-0 tabular-nums',
+          pts.muted ? 'text-muted' : 'font-semibold',
+          pts.tone,
+        )}
+      >
+        {pts.value}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 
 export function MatchupDetail({
   matchup,
@@ -244,6 +403,9 @@ export function MatchupDetail({
       biggestGapIndex = i;
     }
   });
+  const isDifferenceMaker = (i: number) =>
+    i === biggestGapIndex && biggestGap >= DIFFERENCE_MAKER_POINTS;
+
   const bothCaptured = home.hasSnapshot && away.hasSnapshot;
   const homeMinutes = lineupMinutes(home.slots, index.teamState);
   const awayMinutes = lineupMinutes(away.slots, index.teamState);
@@ -259,42 +421,44 @@ export function MatchupDetail({
         )
       : null;
 
+  // Kept short and allowed to wrap. The long form ("…so their total is unknown rather than
+  // zero") ran to three uppercase lines on a phone and burst out of the card, while saying
+  // what the row above already says: that side reads "Lineup not captured" and scores "—".
+  const notCapturedBadge = !bothCaptured ? (
+    <Badge variant="tie" className="max-w-full">
+      {!home.hasSnapshot && !away.hasSnapshot
+        ? 'Neither lineup captured'
+        : '1 lineup not captured'}
+    </Badge>
+  ) : null;
+
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <CardBody className="flex flex-col gap-4">
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <CardBody className="flex flex-col gap-4 p-4 sm:p-5">
+          {/* Mobile: stacked, so neither name nor score has to compete for width. */}
+          <div className="flex flex-col gap-3 sm:hidden">
+            <MobileTeamRow team={home} side="home" minutes={homeMinutes} projection={homeProj} />
+            <div className="flex items-center gap-3">
+              <span className="h-px flex-1 bg-border" aria-hidden="true" />
+              <OddsLine odds={odds} home={home} away={away} />
+              <span className="h-px flex-1 bg-border" aria-hidden="true" />
+            </div>
+            <MobileTeamRow team={away} side="away" minutes={awayMinutes} projection={awayProj} />
+          </div>
+
+          {/* sm and up: the mirrored scoreboard. */}
+          <div className="hidden grid-cols-[1fr_auto_1fr] items-center gap-3 sm:grid">
             <TeamHeader team={home} align="left" minutes={homeMinutes} />
             <div className="flex items-center gap-3">
-              <TeamScore team={home} projection={homeProj} />
-              <span className="flex flex-col items-center text-xs text-muted">
-                <span>vs</span>
-                {odds ? (
-                  // An ESTIMATE from projected margin and time left — labelled, never dressed
-                  // up as a measurement. See lib/live/projection.ts for the model.
-                  <span className="mt-0.5 whitespace-nowrap text-[11px]">
-                    {odds.settled
-                      ? formatWinProbability(odds.home, true) === 'Won'
-                        ? `${home.ownerName} won`
-                        : `${away.ownerName} won`
-                      : `${formatWinProbability(Math.max(odds.home, 1 - odds.home), false)} ${
-                          odds.home >= 0.5 ? home.ownerName : away.ownerName
-                        }`}
-                  </span>
-                ) : null}
-              </span>
-              <TeamScore team={away} projection={awayProj} />
+              <ScoreValue team={home} projection={homeProj} size="xl" />
+              <OddsLine odds={odds} home={home} away={away} />
+              <ScoreValue team={away} projection={awayProj} size="xl" />
             </div>
             <TeamHeader team={away} align="right" minutes={awayMinutes} />
           </div>
 
-          {!bothCaptured ? (
-            <Badge variant="tie">
-              {!home.hasSnapshot && !away.hasSnapshot
-                ? 'Neither lineup captured — nothing here is a comparison'
-                : `${(!home.hasSnapshot ? home : away).ownerName}'s lineup not captured, so their total is unknown rather than zero`}
-            </Badge>
-          ) : null}
+          {notCapturedBadge}
         </CardBody>
       </Card>
 
@@ -303,30 +467,80 @@ export function MatchupDetail({
           {rows.length === 0 ? (
             <p className="p-5 text-sm text-muted">No captured rosters for this matchup yet.</p>
           ) : (
-            <div className="divide-y divide-border/60">
-              {rows.map(([h, a], i) => (
-                <div
-                  key={`${h?.slot ?? ''}-${a?.slot ?? ''}-${i}`}
-                  className={cn(
-                    'grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3',
-                    i === biggestGapIndex && biggestGap >= 5 && 'bg-accent/5',
-                  )}
-                >
-                  <PlayerCell slot={h} ctx={h?.teamKey ? teamContext[h.teamKey] : undefined} index={index} align="left" />
-                  <div className="flex w-12 shrink-0 flex-col items-center">
-                    <span className="text-[11px] font-semibold text-muted">
-                      {h?.slot ?? a?.slot ?? ''}
-                    </span>
-                    {i === biggestGapIndex && biggestGap >= 5 ? (
-                      <span className="text-[9px] font-semibold uppercase text-accent">
-                        +{formatPoints(biggestGap)}
-                      </span>
-                    ) : null}
+            <>
+              {/* Stacking removes the left/right cue, so the two-tone key earns its one line. */}
+              <div className="flex items-center gap-4 border-b border-border/60 px-3 py-2 text-xs text-muted sm:hidden">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <SideMarker side="home" />
+                  <span className="truncate">{home.ownerName}</span>
+                </span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <SideMarker side="away" />
+                  <span className="truncate">{away.ownerName}</span>
+                </span>
+              </div>
+
+              <div className="divide-y divide-border/60">
+                {rows.map(([h, a], i) => (
+                  <div
+                    key={`${h?.slot ?? ''}-${a?.slot ?? ''}-${i}`}
+                    className={cn(isDifferenceMaker(i) && 'bg-accent/5')}
+                  >
+                    {/* Mobile: slot heading, then both players full width beneath it. */}
+                    <div className="px-3 py-2 sm:hidden">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                          {h?.slot ?? a?.slot ?? ''}
+                        </span>
+                        {isDifferenceMaker(i) ? (
+                          <span className="text-[10px] font-semibold uppercase text-accent">
+                            +{formatPoints(biggestGap)} swing
+                          </span>
+                        ) : null}
+                      </div>
+                      <MobilePlayerRow
+                        slot={h}
+                        side="home"
+                        ctx={h?.teamKey ? teamContext[h.teamKey] : undefined}
+                        index={index}
+                      />
+                      <MobilePlayerRow
+                        slot={a}
+                        side="away"
+                        ctx={a?.teamKey ? teamContext[a.teamKey] : undefined}
+                        index={index}
+                      />
+                    </div>
+
+                    {/* sm and up: mirrored around the slot rail. */}
+                    <div className="hidden grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 sm:grid">
+                      <PlayerCell
+                        slot={h}
+                        ctx={h?.teamKey ? teamContext[h.teamKey] : undefined}
+                        index={index}
+                        align="left"
+                      />
+                      <div className="flex w-12 shrink-0 flex-col items-center">
+                        <span className="text-[11px] font-semibold text-muted">
+                          {h?.slot ?? a?.slot ?? ''}
+                        </span>
+                        {isDifferenceMaker(i) ? (
+                          <span className="text-[9px] font-semibold uppercase text-accent">
+                            +{formatPoints(biggestGap)}
+                          </span>
+                        ) : null}
+                      </div>
+                      <PlayerCell
+                        slot={a}
+                        ctx={a?.teamKey ? teamContext[a.teamKey] : undefined}
+                        index={index}
+                        align="right"
+                      />
+                    </div>
                   </div>
-                  <PlayerCell slot={a} ctx={a?.teamKey ? teamContext[a.teamKey] : undefined} index={index} align="right" />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </CardBody>
       </Card>

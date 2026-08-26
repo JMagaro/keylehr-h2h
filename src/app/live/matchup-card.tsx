@@ -8,6 +8,10 @@
  *
  * The display rule that drives every branch here: a number we don't have is never rendered as
  * a number. `—` plus a reason, never `0.00`. See src/lib/live/assemble.ts.
+ *
+ * Sized for a phone first: the padding tightens below `sm`, the roster summary truncates
+ * rather than wrapping to three lines, and the footer wraps instead of crushing the badge
+ * against the chevron at 360px.
  */
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
@@ -18,25 +22,24 @@ import { TeamLogo } from '@/components/team-logo';
 import type { LiveMatchup, LiveTeam } from '@/lib/live/assemble';
 import { formatPoints, cn } from '@/lib/utils';
 
+/** "7 playing · 2 to play · 1 unresolved", or why there is no number at all. */
+function summaryLine(team: LiveTeam): string {
+  if (!team.hasSnapshot) return 'Lineup not captured';
+  const parts = [`${team.scored + team.noStats} playing`];
+  if (team.pending + team.concealed > 0) parts.push(`${team.pending + team.concealed} to play`);
+  if (team.unresolved > 0) parts.push(`${team.unresolved} unresolved`);
+  return parts.join(' · ');
+}
+
 function TeamSide({ team }: { team: LiveTeam }) {
   return (
     <div className="flex items-center gap-3">
       <TeamLogo src={team.logoEspn} alt={team.teamKey ? `${team.teamKey} logo` : ''} size={28} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">{team.ownerName}</div>
-        <div className="text-xs text-muted">
-          {team.hasSnapshot ? (
-            <>
-              {team.scored + team.noStats} playing
-              {team.pending + team.concealed > 0 ? ` · ${team.pending + team.concealed} to play` : ''}
-              {team.unresolved > 0 ? ` · ${team.unresolved} unresolved` : ''}
-            </>
-          ) : (
-            'Lineup not captured'
-          )}
-        </div>
+        <div className="truncate text-xs text-muted">{summaryLine(team)}</div>
       </div>
-      <div className="text-right">
+      <div className="shrink-0 text-right">
         {team.hasSnapshot ? (
           <span className="text-lg font-bold tabular-nums">{formatPoints(team.points)}</span>
         ) : (
@@ -67,7 +70,7 @@ export function MatchupCard({ matchup }: { matchup: LiveMatchup }) {
       className="group block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-accent"
     >
       <Card className="h-full transition-colors group-hover:border-accent/50">
-        <CardBody className="flex flex-col gap-3">
+        <CardBody className="flex flex-col gap-3 p-4 sm:p-5">
           <div className={cn('rounded-md px-1', leader === 'home' && 'bg-win-soft/40')}>
             <TeamSide team={home} />
           </div>
@@ -75,12 +78,12 @@ export function MatchupCard({ matchup }: { matchup: LiveMatchup }) {
             <TeamSide team={away} />
           </div>
 
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            {/* Short by design: each row above already says which side is missing, so the
+                badge only has to raise the flag, not repeat the name. */}
             {!bothCaptured ? (
               <Badge variant="tie">
-                {!anyCaptured
-                  ? 'Neither lineup captured'
-                  : `${(!home.hasSnapshot ? home : away).ownerName}'s lineup not captured`}
+                {!anyCaptured ? 'Neither lineup captured' : '1 lineup not captured'}
               </Badge>
             ) : (
               <span />

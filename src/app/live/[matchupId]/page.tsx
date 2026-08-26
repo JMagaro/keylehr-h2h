@@ -92,7 +92,7 @@ export default async function LiveMatchupPage({
   const options = view.matchups.map((m) => toNavItem(m, index));
 
   return (
-    <Container width="wide" as="div" className="flex flex-col gap-4 py-8">
+    <Container width="wide" as="div" className="flex flex-col gap-4 py-6 sm:py-8">
       {/*
         Deliberately spare. The matchup is named three more times below — in the nav bar, the
         dropdown and the scoreboard — and the week appears in the back link, so a PageHeader

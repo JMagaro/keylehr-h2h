@@ -7,6 +7,12 @@
  * matchup you're about to open — a head-to-head is identified by the pair, not by whoever
  * happens to be listed first.
  *
+ * ON A PHONE the rich prev/next cards are the wrong trade: two of them stacked push the
+ * actual scoreboard below the fold, which is the one thing you opened the page for. So below
+ * `sm` they collapse to two tappable arrows either side of the jump dropdown — the dropdown
+ * already names every matchup with both owners and both scores, so nothing is lost but
+ * height. The full cards return from `sm` up.
+ *
  * Prev/next are `<Link>`s, so they navigate with JavaScript disabled; only the dropdown needs
  * the client. It wraps at both ends — with 16 matchups a dead arrow is more annoying than a
  * loop.
@@ -61,6 +67,7 @@ function SidePreview({ side }: { side: NavSide }) {
   );
 }
 
+/** The full card form — sm and up, where there is room for it. */
 function Step({
   matchup,
   direction,
@@ -96,6 +103,33 @@ function Step({
   );
 }
 
+/**
+ * The arrow-only form — below `sm`. Sized to a 44px tap target rather than to its icon, which
+ * is the difference between a control you can hit on a phone and one you stab at.
+ */
+function ArrowStep({
+  matchup,
+  direction,
+}: {
+  matchup: MatchupNavItem;
+  direction: 'prev' | 'next';
+}) {
+  const isPrev = direction === 'prev';
+  const Icon = isPrev ? ChevronLeft : ChevronRight;
+  return (
+    <Link
+      href={`/live/${matchup.id}`}
+      aria-label={`${isPrev ? 'Previous' : 'Next'} matchup: ${label(matchup)}`}
+      className={[
+        'flex size-11 shrink-0 items-center justify-center rounded-lg border border-border',
+        'bg-card text-muted transition-colors hover:border-border-strong hover:text-foreground',
+      ].join(' ')}
+    >
+      <Icon className="size-5" aria-hidden="true" />
+    </Link>
+  );
+}
+
 export function MatchupNav({
   matchups,
   currentId,
@@ -112,33 +146,63 @@ export function MatchupNav({
 }) {
   const router = useRouter();
 
-  return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-3">
-      <Step matchup={prev} direction="prev" />
+  // A native select can't render logos, so it carries the scores as text instead — still
+  // enough to find the matchup you want without stepping through them. Shared by both
+  // layouts so the option list is written once.
+  // `block` is load-bearing: a <label> is inline by default, so `w-full` on it does nothing and
+  // the select falls back to its INTRINSIC width — which a native select takes from its longest
+  // option ("Chris deMartino 141.20 — 138.40 Josh Lehr"). That pushed the whole page wider than
+  // a phone viewport and scrolled the header off screen.
+  const jumpSelect = (
+    <label className="block w-full">
+      <span className="sr-only">Jump to a matchup</span>
+      <select
+        value={currentId}
+        onChange={(e) => router.push(`/live/${e.target.value}`)}
+        className="w-full truncate rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-border-strong"
+      >
+        {matchups.map((m) => (
+          <option key={m.id} value={m.id}>
+            {/* Each name carries its OWN score, separated by "vs". The previous format put
+                both scores in the middle ("Josh Lehr 62.66 — — James Myers"), which collides
+                with the em dash that means "not captured" — a matchup with neither lineup read
+                as "Marc Downing — — — Nick Scianna". */}
+            {m.home.ownerName} {score(m.home)} vs {m.away.ownerName} {score(m.away)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 
-      <div className="flex shrink-0 flex-col items-center justify-center gap-1 sm:w-80">
-        <label className="w-full">
-          <span className="sr-only">Jump to a matchup</span>
-          {/* A native select can't render logos, so it carries the scores as text instead —
-              still enough to find the matchup you want without stepping through them. */}
-          <select
-            value={currentId}
-            onChange={(e) => router.push(`/live/${e.target.value}`)}
-            className="w-full truncate rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-border-strong"
-          >
-            {matchups.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.home.ownerName} {score(m.home)} — {score(m.away)} {m.away.ownerName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="text-[11px] text-muted">
-          {position} of {matchups.length}
-        </span>
+  const positionLabel = (
+    <span className="text-[11px] text-muted">
+      {position} of {matchups.length}
+    </span>
+  );
+
+  return (
+    <>
+      {/* Below sm: arrows flanking the dropdown, one row, no scoreboard pushed off screen. */}
+      <div className="flex flex-col items-center gap-1 sm:hidden">
+        <div className="flex w-full items-center gap-2">
+          <ArrowStep matchup={prev} direction="prev" />
+          <div className="min-w-0 flex-1">{jumpSelect}</div>
+          <ArrowStep matchup={next} direction="next" />
+        </div>
+        {positionLabel}
       </div>
 
-      <Step matchup={next} direction="next" />
-    </div>
+      {/* sm and up: the full prev/next cards. */}
+      <div className="hidden sm:flex sm:items-stretch sm:gap-3">
+        <Step matchup={prev} direction="prev" />
+
+        <div className="flex shrink-0 flex-col items-center justify-center gap-1 sm:w-80">
+          {jumpSelect}
+          {positionLabel}
+        </div>
+
+        <Step matchup={next} direction="next" />
+      </div>
+    </>
   );
 }
