@@ -1,0 +1,3960 @@
+{
+  "version": 1,
+  "seasonYear": 2026,
+  "seasonId": 1,
+  "week": 102,
+  "snapshotCount": 24,
+  "ownerCount": 6,
+  "snapshots": [
+    {
+      "ownerSeasonId": 1012,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:49:34.970Z",
+      "slots": [
+        {
+          "name": null,
+          "slot": "QB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Jalen Royals",
+          "slot": "WR",
+          "dkScore": 3.7,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 17,
+              "points": 1.7
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 2,
+              "points": 0
+            }
+          ],
+          "teamKey": "KC",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1403491",
+          "draftableId": "43836596"
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "TE",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "FLEX",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "DST",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1012,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:56:57.780Z",
+      "slots": [
+        {
+          "name": null,
+          "slot": "QB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Jalen Royals",
+          "slot": "WR",
+          "dkScore": 3.7,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 17,
+              "points": 1.7
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 2,
+              "points": 0
+            }
+          ],
+          "teamKey": "KC",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1403491",
+          "draftableId": "43836596"
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "TE",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "FLEX",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "DST",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1012,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:25:44.968Z",
+      "slots": [
+        {
+          "name": "Jalen Milroe",
+          "slot": "QB",
+          "dkScore": 5.04,
+          "dkStats": [
+            {
+              "key": "PaYds",
+              "value": 36,
+              "points": 1.44
+            },
+            {
+              "key": "RuYds",
+              "value": 36,
+              "points": 3.6
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1290102",
+          "draftableId": "43836521",
+          "dkProjection": null
+        },
+        {
+          "name": "Rasheen Ali",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "BAL",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1229133",
+          "draftableId": "43836524",
+          "dkProjection": null
+        },
+        {
+          "name": "Will Shipley",
+          "slot": "RB",
+          "dkScore": 2.2,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 22,
+              "points": 2.2
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1287636",
+          "draftableId": "43836538",
+          "dkProjection": null
+        },
+        {
+          "name": "Tory Horton",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "SEA",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1223393",
+          "draftableId": "43836604",
+          "dkProjection": null
+        },
+        {
+          "name": "Elijah Moore",
+          "slot": "WR",
+          "dkScore": 0.2,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 2,
+              "points": 0.2
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1128783",
+          "draftableId": "43836651",
+          "dkProjection": null
+        },
+        {
+          "name": "Jalen Royals",
+          "slot": "WR",
+          "dkScore": 3.7,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 17,
+              "points": 1.7
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 2,
+              "points": 0
+            }
+          ],
+          "teamKey": "KC",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1403491",
+          "draftableId": "43836596",
+          "dkProjection": null
+        },
+        {
+          "name": "Luke Schoonmaker",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "DAL",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "1130242",
+          "draftableId": "43836556",
+          "dkProjection": null
+        },
+        {
+          "name": "Tank Bigsby",
+          "slot": "FLEX",
+          "dkScore": 0.5,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 5,
+              "points": 0.5
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1215035",
+          "draftableId": "43836477",
+          "dkProjection": null
+        },
+        {
+          "name": "Ravens",
+          "slot": "DST",
+          "dkScore": 5,
+          "dkStats": [
+            {
+              "key": "SACK",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 1,
+              "points": 4
+            }
+          ],
+          "teamKey": "BAL",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "366",
+          "draftableId": "43836457",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1012,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:30:02.552Z",
+      "slots": [
+        {
+          "name": "Jalen Milroe",
+          "slot": "QB",
+          "dkScore": 5.04,
+          "dkStats": [
+            {
+              "key": "PaYds",
+              "value": 36,
+              "points": 1.44
+            },
+            {
+              "key": "RuYds",
+              "value": 36,
+              "points": 3.6
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1290102",
+          "draftableId": "43836521",
+          "dkProjection": null
+        },
+        {
+          "name": "Rasheen Ali",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "BAL",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1229133",
+          "draftableId": "43836524",
+          "dkProjection": null
+        },
+        {
+          "name": "Will Shipley",
+          "slot": "RB",
+          "dkScore": 2.2,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 22,
+              "points": 2.2
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1287636",
+          "draftableId": "43836538",
+          "dkProjection": null
+        },
+        {
+          "name": "Tory Horton",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "SEA",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1223393",
+          "draftableId": "43836604",
+          "dkProjection": null
+        },
+        {
+          "name": "Elijah Moore",
+          "slot": "WR",
+          "dkScore": 0.2,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 2,
+              "points": 0.2
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1128783",
+          "draftableId": "43836651",
+          "dkProjection": null
+        },
+        {
+          "name": "Jalen Royals",
+          "slot": "WR",
+          "dkScore": 3.7,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 17,
+              "points": 1.7
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 2,
+              "points": 0
+            }
+          ],
+          "teamKey": "KC",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1403491",
+          "draftableId": "43836596",
+          "dkProjection": null
+        },
+        {
+          "name": "Luke Schoonmaker",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "DAL",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "1130242",
+          "draftableId": "43836556",
+          "dkProjection": null
+        },
+        {
+          "name": "Tank Bigsby",
+          "slot": "FLEX",
+          "dkScore": 0.5,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 5,
+              "points": 0.5
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1215035",
+          "draftableId": "43836477",
+          "dkProjection": null
+        },
+        {
+          "name": "Ravens",
+          "slot": "DST",
+          "dkScore": 5,
+          "dkStats": [
+            {
+              "key": "SACK",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 1,
+              "points": 4
+            }
+          ],
+          "teamKey": "BAL",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "366",
+          "draftableId": "43836457",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1013,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:49:34.970Z",
+      "slots": [
+        {
+          "name": null,
+          "slot": "QB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Ameer Abdullah",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "590796",
+          "draftableId": "43836582"
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Jakobi Meyers",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "880151",
+          "draftableId": "43836540"
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Terrance Ferguson",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "1286179",
+          "draftableId": "43836558"
+        },
+        {
+          "name": null,
+          "slot": "FLEX",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Rams",
+          "slot": "DST",
+          "dkScore": 8,
+          "dkStats": [
+            {
+              "key": "SACK",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 1,
+              "points": 7
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "343",
+          "draftableId": "43836453"
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1013,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:56:57.780Z",
+      "slots": [
+        {
+          "name": null,
+          "slot": "QB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Ameer Abdullah",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "590796",
+          "draftableId": "43836582"
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Jakobi Meyers",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "880151",
+          "draftableId": "43836540"
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Terrance Ferguson",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "1286179",
+          "draftableId": "43836558"
+        },
+        {
+          "name": null,
+          "slot": "FLEX",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Rams",
+          "slot": "DST",
+          "dkScore": 8,
+          "dkStats": [
+            {
+              "key": "SACK",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 1,
+              "points": 7
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "343",
+          "draftableId": "43836453"
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1013,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:25:44.968Z",
+      "slots": [
+        {
+          "name": "Jalen Milroe",
+          "slot": "QB",
+          "dkScore": 5.04,
+          "dkStats": [
+            {
+              "key": "PaYds",
+              "value": 36,
+              "points": 1.44
+            },
+            {
+              "key": "RuYds",
+              "value": 36,
+              "points": 3.6
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1290102",
+          "draftableId": "43836521",
+          "dkProjection": null
+        },
+        {
+          "name": "Emanuel Wilson",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "SEA",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1447759",
+          "draftableId": "43836580",
+          "dkProjection": null
+        },
+        {
+          "name": "Ameer Abdullah",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "590796",
+          "draftableId": "43836582",
+          "dkProjection": null
+        },
+        {
+          "name": "Jake Bobo",
+          "slot": "WR",
+          "dkScore": 4.3,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 13,
+              "points": 1.3
+            },
+            {
+              "key": "REC",
+              "value": 3,
+              "points": 3
+            },
+            {
+              "key": "Targets",
+              "value": 5,
+              "points": 0
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1121050",
+          "draftableId": "43836653",
+          "dkProjection": null
+        },
+        {
+          "name": "Hollywood Brown",
+          "slot": "WR",
+          "dkScore": 1.4,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 4,
+              "points": 0.4
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "976220",
+          "draftableId": "43836594",
+          "dkProjection": null
+        },
+        {
+          "name": "Jakobi Meyers",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "880151",
+          "draftableId": "43836540",
+          "dkProjection": null
+        },
+        {
+          "name": "Terrance Ferguson",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "1286179",
+          "draftableId": "43836558",
+          "dkProjection": null
+        },
+        {
+          "name": "Rasheen Ali",
+          "slot": "FLEX",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "BAL",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1229133",
+          "draftableId": "43836525",
+          "dkProjection": null
+        },
+        {
+          "name": "Rams",
+          "slot": "DST",
+          "dkScore": 6,
+          "dkStats": [
+            {
+              "key": "SACK",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "INT",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 1,
+              "points": 4
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "343",
+          "draftableId": "43836453",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1013,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:30:02.552Z",
+      "slots": [
+        {
+          "name": "Jalen Milroe",
+          "slot": "QB",
+          "dkScore": 5.04,
+          "dkStats": [
+            {
+              "key": "PaYds",
+              "value": 36,
+              "points": 1.44
+            },
+            {
+              "key": "RuYds",
+              "value": 36,
+              "points": 3.6
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1290102",
+          "draftableId": "43836521",
+          "dkProjection": null
+        },
+        {
+          "name": "Emanuel Wilson",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "SEA",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1447759",
+          "draftableId": "43836580",
+          "dkProjection": null
+        },
+        {
+          "name": "Ameer Abdullah",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "590796",
+          "draftableId": "43836582",
+          "dkProjection": null
+        },
+        {
+          "name": "Jake Bobo",
+          "slot": "WR",
+          "dkScore": 4.3,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 13,
+              "points": 1.3
+            },
+            {
+              "key": "REC",
+              "value": 3,
+              "points": 3
+            },
+            {
+              "key": "Targets",
+              "value": 5,
+              "points": 0
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1121050",
+          "draftableId": "43836653",
+          "dkProjection": null
+        },
+        {
+          "name": "Hollywood Brown",
+          "slot": "WR",
+          "dkScore": 1.4,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 4,
+              "points": 0.4
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "976220",
+          "draftableId": "43836594",
+          "dkProjection": null
+        },
+        {
+          "name": "Jakobi Meyers",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "880151",
+          "draftableId": "43836540",
+          "dkProjection": null
+        },
+        {
+          "name": "Terrance Ferguson",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "1286179",
+          "draftableId": "43836558",
+          "dkProjection": null
+        },
+        {
+          "name": "Rasheen Ali",
+          "slot": "FLEX",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "BAL",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1229133",
+          "draftableId": "43836525",
+          "dkProjection": null
+        },
+        {
+          "name": "Rams",
+          "slot": "DST",
+          "dkScore": 6,
+          "dkStats": [
+            {
+              "key": "SACK",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "INT",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 1,
+              "points": 4
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "343",
+          "draftableId": "43836453",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1016,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:49:34.970Z",
+      "slots": [
+        {
+          "name": null,
+          "slot": "QB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Devaughn Vele",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1164788",
+          "draftableId": "43836550"
+        },
+        {
+          "name": "Konata Mumpfield",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1289332",
+          "draftableId": "43836645"
+        },
+        {
+          "name": "CJ Williams",
+          "slot": "WR",
+          "dkScore": 4.8,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 28,
+              "points": 2.8
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 5,
+              "points": 0
+            }
+          ],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1381092",
+          "draftableId": "43836703"
+        },
+        {
+          "name": "Max Klare",
+          "slot": "TE",
+          "dkScore": 9.1,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 31,
+              "points": 3.1
+            },
+            {
+              "key": "REC",
+              "value": 6,
+              "points": 6
+            },
+            {
+              "key": "Targets",
+              "value": 7,
+              "points": 0
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "1401683",
+          "draftableId": "43836614"
+        },
+        {
+          "name": "Parker Washington",
+          "slot": "FLEX",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1229074",
+          "draftableId": "43836489"
+        },
+        {
+          "name": null,
+          "slot": "DST",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1016,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:56:57.780Z",
+      "slots": [
+        {
+          "name": null,
+          "slot": "QB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Devaughn Vele",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1164788",
+          "draftableId": "43836550"
+        },
+        {
+          "name": "Konata Mumpfield",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1289332",
+          "draftableId": "43836645"
+        },
+        {
+          "name": "CJ Williams",
+          "slot": "WR",
+          "dkScore": 4.8,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 28,
+              "points": 2.8
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 5,
+              "points": 0
+            }
+          ],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1381092",
+          "draftableId": "43836703"
+        },
+        {
+          "name": "Max Klare",
+          "slot": "TE",
+          "dkScore": 9.1,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 31,
+              "points": 3.1
+            },
+            {
+              "key": "REC",
+              "value": 6,
+              "points": 6
+            },
+            {
+              "key": "Targets",
+              "value": 7,
+              "points": 0
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "1401683",
+          "draftableId": "43836614"
+        },
+        {
+          "name": "Parker Washington",
+          "slot": "FLEX",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1229074",
+          "draftableId": "43836489"
+        },
+        {
+          "name": null,
+          "slot": "DST",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1016,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:25:44.968Z",
+      "slots": [
+        {
+          "name": "Joe Milton III",
+          "slot": "QB",
+          "dkScore": 9.28,
+          "dkStats": [
+            {
+              "key": "PaTD",
+              "value": 1,
+              "points": 4
+            },
+            {
+              "key": "PaYds",
+              "value": 107,
+              "points": 4.28
+            },
+            {
+              "key": "RuYds",
+              "value": 10,
+              "points": 1
+            }
+          ],
+          "teamKey": "DAL",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1112338",
+          "draftableId": "43836464",
+          "dkProjection": null
+        },
+        {
+          "name": "Rasheen Ali",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "BAL",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1229133",
+          "draftableId": "43836524",
+          "dkProjection": null
+        },
+        {
+          "name": "Will Shipley",
+          "slot": "RB",
+          "dkScore": 2.2,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 22,
+              "points": 2.2
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1287636",
+          "draftableId": "43836538",
+          "dkProjection": null
+        },
+        {
+          "name": "Devaughn Vele",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1164788",
+          "draftableId": "43836550",
+          "dkProjection": null
+        },
+        {
+          "name": "Konata Mumpfield",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1289332",
+          "draftableId": "43836645",
+          "dkProjection": null
+        },
+        {
+          "name": "CJ Williams",
+          "slot": "WR",
+          "dkScore": 4.8,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 28,
+              "points": 2.8
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 5,
+              "points": 0
+            }
+          ],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1381092",
+          "draftableId": "43836703",
+          "dkProjection": null
+        },
+        {
+          "name": "Max Klare",
+          "slot": "TE",
+          "dkScore": 10.7,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 37,
+              "points": 3.7
+            },
+            {
+              "key": "REC",
+              "value": 7,
+              "points": 7
+            },
+            {
+              "key": "Targets",
+              "value": 8,
+              "points": 0
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "1401683",
+          "draftableId": "43836614",
+          "dkProjection": null
+        },
+        {
+          "name": "Parker Washington",
+          "slot": "FLEX",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1229074",
+          "draftableId": "43836489",
+          "dkProjection": null
+        },
+        {
+          "name": "Cowboys",
+          "slot": "DST",
+          "dkScore": 7,
+          "dkStats": [
+            {
+              "key": "SACK",
+              "value": 3,
+              "points": 3
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 1,
+              "points": 4
+            }
+          ],
+          "teamKey": "DAL",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "331",
+          "draftableId": "43836458",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1016,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:30:02.552Z",
+      "slots": [
+        {
+          "name": "Joe Milton III",
+          "slot": "QB",
+          "dkScore": 9.28,
+          "dkStats": [
+            {
+              "key": "PaTD",
+              "value": 1,
+              "points": 4
+            },
+            {
+              "key": "PaYds",
+              "value": 107,
+              "points": 4.28
+            },
+            {
+              "key": "RuYds",
+              "value": 10,
+              "points": 1
+            }
+          ],
+          "teamKey": "DAL",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1112338",
+          "draftableId": "43836464",
+          "dkProjection": null
+        },
+        {
+          "name": "Rasheen Ali",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "BAL",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1229133",
+          "draftableId": "43836524",
+          "dkProjection": null
+        },
+        {
+          "name": "Will Shipley",
+          "slot": "RB",
+          "dkScore": 2.2,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 22,
+              "points": 2.2
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1287636",
+          "draftableId": "43836538",
+          "dkProjection": null
+        },
+        {
+          "name": "Devaughn Vele",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1164788",
+          "draftableId": "43836550",
+          "dkProjection": null
+        },
+        {
+          "name": "Konata Mumpfield",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1289332",
+          "draftableId": "43836645",
+          "dkProjection": null
+        },
+        {
+          "name": "CJ Williams",
+          "slot": "WR",
+          "dkScore": 4.8,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 28,
+              "points": 2.8
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 5,
+              "points": 0
+            }
+          ],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1381092",
+          "draftableId": "43836703",
+          "dkProjection": null
+        },
+        {
+          "name": "Max Klare",
+          "slot": "TE",
+          "dkScore": 10.7,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 37,
+              "points": 3.7
+            },
+            {
+              "key": "REC",
+              "value": 7,
+              "points": 7
+            },
+            {
+              "key": "Targets",
+              "value": 8,
+              "points": 0
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "1401683",
+          "draftableId": "43836614",
+          "dkProjection": null
+        },
+        {
+          "name": "Parker Washington",
+          "slot": "FLEX",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1229074",
+          "draftableId": "43836489",
+          "dkProjection": null
+        },
+        {
+          "name": "Cowboys",
+          "slot": "DST",
+          "dkScore": 7,
+          "dkStats": [
+            {
+              "key": "SACK",
+              "value": 3,
+              "points": 3
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 1,
+              "points": 4
+            }
+          ],
+          "teamKey": "DAL",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "331",
+          "draftableId": "43836458",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1035,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:49:34.970Z",
+      "slots": [
+        {
+          "name": "Ty Simpson",
+          "slot": "QB",
+          "dkScore": 3.2,
+          "dkStats": [
+            {
+              "key": "PaYds",
+              "value": 80,
+              "points": 3.2
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1378917",
+          "draftableId": "43836518"
+        },
+        {
+          "name": "Emari Demercado",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "KC",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1116817",
+          "draftableId": "43836474"
+        },
+        {
+          "name": "Ronnie Rivers",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "976804",
+          "draftableId": "43836530"
+        },
+        {
+          "name": "Tyler Scott",
+          "slot": "WR",
+          "dkScore": 2.3,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 13,
+              "points": 1.3
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1214112",
+          "draftableId": "43836731"
+        },
+        {
+          "name": "Trey Palmer",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1161739",
+          "draftableId": "43836759"
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "TE",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "FLEX",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "DST",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1035,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:56:57.780Z",
+      "slots": [
+        {
+          "name": "Ty Simpson",
+          "slot": "QB",
+          "dkScore": 3.2,
+          "dkStats": [
+            {
+              "key": "PaYds",
+              "value": 80,
+              "points": 3.2
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1378917",
+          "draftableId": "43836518"
+        },
+        {
+          "name": "Emari Demercado",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "KC",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1116817",
+          "draftableId": "43836474"
+        },
+        {
+          "name": "Ronnie Rivers",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "976804",
+          "draftableId": "43836530"
+        },
+        {
+          "name": "Tyler Scott",
+          "slot": "WR",
+          "dkScore": 2.3,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 13,
+              "points": 1.3
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1214112",
+          "draftableId": "43836731"
+        },
+        {
+          "name": "Trey Palmer",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1161739",
+          "draftableId": "43836759"
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "TE",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "FLEX",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "DST",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1035,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:25:44.968Z",
+      "slots": [
+        {
+          "name": "Ty Simpson",
+          "slot": "QB",
+          "dkScore": 15.5,
+          "dkStats": [
+            {
+              "key": "PaTD",
+              "value": 2,
+              "points": 8
+            },
+            {
+              "key": "PaYds",
+              "value": 190,
+              "points": 7.6
+            },
+            {
+              "key": "RuYds",
+              "value": -1,
+              "points": -0.1
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1378917",
+          "draftableId": "43836518",
+          "dkProjection": null
+        },
+        {
+          "name": "Emari Demercado",
+          "slot": "RB",
+          "dkScore": 0.9,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 9,
+              "points": 0.9
+            }
+          ],
+          "teamKey": "KC",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1116817",
+          "draftableId": "43836474",
+          "dkProjection": null
+        },
+        {
+          "name": "Ronnie Rivers",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "976804",
+          "draftableId": "43836530",
+          "dkProjection": null
+        },
+        {
+          "name": "Darius Cooper",
+          "slot": "WR",
+          "dkScore": 4.1,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 21,
+              "points": 2.1
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 5,
+              "points": 0
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1223318",
+          "draftableId": "43836723",
+          "dkProjection": null
+        },
+        {
+          "name": "Tyler Scott",
+          "slot": "WR",
+          "dkScore": 2.3,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 13,
+              "points": 1.3
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1214112",
+          "draftableId": "43836731",
+          "dkProjection": null
+        },
+        {
+          "name": "Trey Palmer",
+          "slot": "WR",
+          "dkScore": 7.3,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 33,
+              "points": 3.3
+            },
+            {
+              "key": "REC",
+              "value": 4,
+              "points": 4
+            },
+            {
+              "key": "Targets",
+              "value": 6,
+              "points": 0
+            }
+          ],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1161739",
+          "draftableId": "43836759",
+          "dkProjection": null
+        },
+        {
+          "name": "Johnny Mundt",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "PHI",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "740704",
+          "draftableId": "43836564",
+          "dkProjection": null
+        },
+        {
+          "name": "Will Shipley",
+          "slot": "FLEX",
+          "dkScore": 2.2,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 22,
+              "points": 2.2
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1287636",
+          "draftableId": "43836539",
+          "dkProjection": null
+        },
+        {
+          "name": "Seahawks",
+          "slot": "DST",
+          "dkScore": 3,
+          "dkStats": [
+            {
+              "key": "DFR",
+              "value": 1,
+              "points": 2
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "14-20 PA",
+              "value": 1,
+              "points": 1
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "361",
+          "draftableId": "43836456",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1035,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:30:02.552Z",
+      "slots": [
+        {
+          "name": "Ty Simpson",
+          "slot": "QB",
+          "dkScore": 15.5,
+          "dkStats": [
+            {
+              "key": "PaTD",
+              "value": 2,
+              "points": 8
+            },
+            {
+              "key": "PaYds",
+              "value": 190,
+              "points": 7.6
+            },
+            {
+              "key": "RuYds",
+              "value": -1,
+              "points": -0.1
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1378917",
+          "draftableId": "43836518",
+          "dkProjection": null
+        },
+        {
+          "name": "Emari Demercado",
+          "slot": "RB",
+          "dkScore": 0.9,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 9,
+              "points": 0.9
+            }
+          ],
+          "teamKey": "KC",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1116817",
+          "draftableId": "43836474",
+          "dkProjection": null
+        },
+        {
+          "name": "Ronnie Rivers",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "976804",
+          "draftableId": "43836530",
+          "dkProjection": null
+        },
+        {
+          "name": "Darius Cooper",
+          "slot": "WR",
+          "dkScore": 4.1,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 21,
+              "points": 2.1
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 5,
+              "points": 0
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1223318",
+          "draftableId": "43836723",
+          "dkProjection": null
+        },
+        {
+          "name": "Tyler Scott",
+          "slot": "WR",
+          "dkScore": 2.3,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 13,
+              "points": 1.3
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1214112",
+          "draftableId": "43836731",
+          "dkProjection": null
+        },
+        {
+          "name": "Trey Palmer",
+          "slot": "WR",
+          "dkScore": 7.3,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 33,
+              "points": 3.3
+            },
+            {
+              "key": "REC",
+              "value": 4,
+              "points": 4
+            },
+            {
+              "key": "Targets",
+              "value": 6,
+              "points": 0
+            }
+          ],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1161739",
+          "draftableId": "43836759",
+          "dkProjection": null
+        },
+        {
+          "name": "Johnny Mundt",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "PHI",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "740704",
+          "draftableId": "43836564",
+          "dkProjection": null
+        },
+        {
+          "name": "Will Shipley",
+          "slot": "FLEX",
+          "dkScore": 2.2,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 22,
+              "points": 2.2
+            }
+          ],
+          "teamKey": "PHI",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1287636",
+          "draftableId": "43836539",
+          "dkProjection": null
+        },
+        {
+          "name": "Seahawks",
+          "slot": "DST",
+          "dkScore": 3,
+          "dkStats": [
+            {
+              "key": "DFR",
+              "value": 1,
+              "points": 2
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "14-20 PA",
+              "value": 1,
+              "points": 1
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "361",
+          "draftableId": "43836456",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1042,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:49:34.970Z",
+      "slots": [
+        {
+          "name": null,
+          "slot": "QB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Mario Williams",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1286441",
+          "draftableId": "43836757"
+        },
+        {
+          "name": "Austin Trammell",
+          "slot": "WR",
+          "dkScore": 3.8,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 18,
+              "points": 1.8
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 3,
+              "points": 0
+            }
+          ],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1056660",
+          "draftableId": "43836765"
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "TE",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Audric Estime",
+          "slot": "FLEX",
+          "dkScore": 9.2,
+          "dkStats": [
+            {
+              "key": "RuTD",
+              "value": 1,
+              "points": 6
+            },
+            {
+              "key": "RecYds",
+              "value": -6,
+              "points": -0.6
+            },
+            {
+              "key": "RuYds",
+              "value": 28,
+              "points": 2.8
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "NO",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1321291",
+          "draftableId": "43836676"
+        },
+        {
+          "name": null,
+          "slot": "DST",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1042,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:56:57.780Z",
+      "slots": [
+        {
+          "name": null,
+          "slot": "QB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Mario Williams",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1286441",
+          "draftableId": "43836757"
+        },
+        {
+          "name": "Austin Trammell",
+          "slot": "WR",
+          "dkScore": 3.8,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 18,
+              "points": 1.8
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 3,
+              "points": 0
+            }
+          ],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1056660",
+          "draftableId": "43836765"
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "TE",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Audric Estime",
+          "slot": "FLEX",
+          "dkScore": 9.2,
+          "dkStats": [
+            {
+              "key": "RuTD",
+              "value": 1,
+              "points": 6
+            },
+            {
+              "key": "RecYds",
+              "value": -6,
+              "points": -0.6
+            },
+            {
+              "key": "RuYds",
+              "value": 28,
+              "points": 2.8
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "NO",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1321291",
+          "draftableId": "43836676"
+        },
+        {
+          "name": null,
+          "slot": "DST",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1042,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:25:44.968Z",
+      "slots": [
+        {
+          "name": "Joe Fagnano",
+          "slot": "QB",
+          "dkScore": 12.06,
+          "dkStats": [
+            {
+              "key": "PaTD",
+              "value": 1,
+              "points": 4
+            },
+            {
+              "key": "PaYds",
+              "value": 224,
+              "points": 8.96
+            },
+            {
+              "key": "RuYds",
+              "value": 1,
+              "points": 0.1
+            },
+            {
+              "key": "INT",
+              "value": 1,
+              "points": -1
+            }
+          ],
+          "teamKey": "BAL",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1169299",
+          "draftableId": "43836523",
+          "dkProjection": null
+        },
+        {
+          "name": "Velus Jones Jr.",
+          "slot": "RB",
+          "dkScore": 3.4,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": -5,
+              "points": -0.5
+            },
+            {
+              "key": "RuYds",
+              "value": 19,
+              "points": 1.9
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 2,
+              "points": 0
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "919304",
+          "draftableId": "43836637",
+          "dkProjection": null
+        },
+        {
+          "name": "Dontae McMillan",
+          "slot": "RB",
+          "dkScore": 4,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 40,
+              "points": 4
+            }
+          ],
+          "teamKey": "BAL",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1168745",
+          "draftableId": "43836689",
+          "dkProjection": null
+        },
+        {
+          "name": "Camden Brown",
+          "slot": "WR",
+          "dkScore": 21.2,
+          "dkStats": [
+            {
+              "key": "RecTD",
+              "value": 2,
+              "points": 12
+            },
+            {
+              "key": "RecYds",
+              "value": 62,
+              "points": 6.2
+            },
+            {
+              "key": "REC",
+              "value": 3,
+              "points": 3
+            },
+            {
+              "key": "Targets",
+              "value": 3,
+              "points": 0
+            }
+          ],
+          "teamKey": "DAL",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1389217",
+          "draftableId": "43836833",
+          "dkProjection": null
+        },
+        {
+          "name": "Mario Williams",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1286441",
+          "draftableId": "43836757",
+          "dkProjection": null
+        },
+        {
+          "name": "Austin Trammell",
+          "slot": "WR",
+          "dkScore": 3.8,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 18,
+              "points": 1.8
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 3,
+              "points": 0
+            }
+          ],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1056660",
+          "draftableId": "43836765",
+          "dkProjection": null
+        },
+        {
+          "name": "Nick Vannett",
+          "slot": "TE",
+          "dkScore": 2,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 10,
+              "points": 1
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "606488",
+          "draftableId": "43836620",
+          "dkProjection": null
+        },
+        {
+          "name": "Audric Estime",
+          "slot": "FLEX",
+          "dkScore": 9.2,
+          "dkStats": [
+            {
+              "key": "RuTD",
+              "value": 1,
+              "points": 6
+            },
+            {
+              "key": "RecYds",
+              "value": -6,
+              "points": -0.6
+            },
+            {
+              "key": "RuYds",
+              "value": 28,
+              "points": 2.8
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "NO",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1321291",
+          "draftableId": "43836676",
+          "dkProjection": null
+        },
+        {
+          "name": "Cowboys",
+          "slot": "DST",
+          "dkScore": 7,
+          "dkStats": [
+            {
+              "key": "SACK",
+              "value": 3,
+              "points": 3
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 1,
+              "points": 4
+            }
+          ],
+          "teamKey": "DAL",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "331",
+          "draftableId": "43836458",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1042,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:30:02.552Z",
+      "slots": [
+        {
+          "name": "Joe Fagnano",
+          "slot": "QB",
+          "dkScore": 12.06,
+          "dkStats": [
+            {
+              "key": "PaTD",
+              "value": 1,
+              "points": 4
+            },
+            {
+              "key": "PaYds",
+              "value": 224,
+              "points": 8.96
+            },
+            {
+              "key": "RuYds",
+              "value": 1,
+              "points": 0.1
+            },
+            {
+              "key": "INT",
+              "value": 1,
+              "points": -1
+            }
+          ],
+          "teamKey": "BAL",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "1169299",
+          "draftableId": "43836523",
+          "dkProjection": null
+        },
+        {
+          "name": "Velus Jones Jr.",
+          "slot": "RB",
+          "dkScore": 3.4,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": -5,
+              "points": -0.5
+            },
+            {
+              "key": "RuYds",
+              "value": 19,
+              "points": 1.9
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 2,
+              "points": 0
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "919304",
+          "draftableId": "43836637",
+          "dkProjection": null
+        },
+        {
+          "name": "Dontae McMillan",
+          "slot": "RB",
+          "dkScore": 4,
+          "dkStats": [
+            {
+              "key": "RuYds",
+              "value": 40,
+              "points": 4
+            }
+          ],
+          "teamKey": "BAL",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1168745",
+          "draftableId": "43836689",
+          "dkProjection": null
+        },
+        {
+          "name": "Camden Brown",
+          "slot": "WR",
+          "dkScore": 21.2,
+          "dkStats": [
+            {
+              "key": "RecTD",
+              "value": 2,
+              "points": 12
+            },
+            {
+              "key": "RecYds",
+              "value": 62,
+              "points": 6.2
+            },
+            {
+              "key": "REC",
+              "value": 3,
+              "points": 3
+            },
+            {
+              "key": "Targets",
+              "value": 3,
+              "points": 0
+            }
+          ],
+          "teamKey": "DAL",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1389217",
+          "draftableId": "43836833",
+          "dkProjection": null
+        },
+        {
+          "name": "Mario Williams",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1286441",
+          "draftableId": "43836757",
+          "dkProjection": null
+        },
+        {
+          "name": "Austin Trammell",
+          "slot": "WR",
+          "dkScore": 3.8,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 18,
+              "points": 1.8
+            },
+            {
+              "key": "REC",
+              "value": 2,
+              "points": 2
+            },
+            {
+              "key": "Targets",
+              "value": 3,
+              "points": 0
+            }
+          ],
+          "teamKey": "JAX",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1056660",
+          "draftableId": "43836765",
+          "dkProjection": null
+        },
+        {
+          "name": "Nick Vannett",
+          "slot": "TE",
+          "dkScore": 2,
+          "dkStats": [
+            {
+              "key": "RecYds",
+              "value": 10,
+              "points": 1
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "SEA",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "606488",
+          "draftableId": "43836620",
+          "dkProjection": null
+        },
+        {
+          "name": "Audric Estime",
+          "slot": "FLEX",
+          "dkScore": 9.2,
+          "dkStats": [
+            {
+              "key": "RuTD",
+              "value": 1,
+              "points": 6
+            },
+            {
+              "key": "RecYds",
+              "value": -6,
+              "points": -0.6
+            },
+            {
+              "key": "RuYds",
+              "value": 28,
+              "points": 2.8
+            },
+            {
+              "key": "REC",
+              "value": 1,
+              "points": 1
+            },
+            {
+              "key": "Targets",
+              "value": 1,
+              "points": 0
+            }
+          ],
+          "teamKey": "NO",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1321291",
+          "draftableId": "43836676",
+          "dkProjection": null
+        },
+        {
+          "name": "Cowboys",
+          "slot": "DST",
+          "dkScore": 7,
+          "dkStats": [
+            {
+              "key": "SACK",
+              "value": 3,
+              "points": 3
+            },
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 1,
+              "points": 4
+            }
+          ],
+          "teamKey": "DAL",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "331",
+          "draftableId": "43836458",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1043,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:49:34.970Z",
+      "slots": [
+        {
+          "name": "Matthew Stafford",
+          "slot": "QB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "323205",
+          "draftableId": "43836396"
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Chris Olave",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1122592",
+          "draftableId": "43836424"
+        },
+        {
+          "name": "Davante Adams",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "611417",
+          "draftableId": "43836486"
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Juwan Johnson",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "884609",
+          "draftableId": "43836440"
+        },
+        {
+          "name": "Kenneth Walker III",
+          "slot": "FLEX",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "KC",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1164402",
+          "draftableId": "43836413"
+        },
+        {
+          "name": "Chiefs",
+          "slot": "DST",
+          "dkScore": 7,
+          "dkStats": [
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 1,
+              "points": 7
+            }
+          ],
+          "teamKey": "KC",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "339",
+          "draftableId": "43836459"
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1043,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-15T21:56:57.780Z",
+      "slots": [
+        {
+          "name": "Matthew Stafford",
+          "slot": "QB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "323205",
+          "draftableId": "43836396"
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": null,
+          "slot": "RB",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Chris Olave",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1122592",
+          "draftableId": "43836424"
+        },
+        {
+          "name": "Davante Adams",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "611417",
+          "draftableId": "43836486"
+        },
+        {
+          "name": null,
+          "slot": "WR",
+          "dkScore": null,
+          "dkStats": null,
+          "teamKey": null,
+          "position": null,
+          "revealed": false,
+          "dkPlayerId": null,
+          "draftableId": null
+        },
+        {
+          "name": "Juwan Johnson",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "884609",
+          "draftableId": "43836440"
+        },
+        {
+          "name": "Kenneth Walker III",
+          "slot": "FLEX",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "KC",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1164402",
+          "draftableId": "43836413"
+        },
+        {
+          "name": "Chiefs",
+          "slot": "DST",
+          "dkScore": 7,
+          "dkStats": [
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 1,
+              "points": 7
+            }
+          ],
+          "teamKey": "KC",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "339",
+          "draftableId": "43836459"
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1043,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:25:44.968Z",
+      "slots": [
+        {
+          "name": "Matthew Stafford",
+          "slot": "QB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "323205",
+          "draftableId": "43836396",
+          "dkProjection": null
+        },
+        {
+          "name": "Javonte Williams",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "DAL",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1107881",
+          "draftableId": "43836414",
+          "dkProjection": null
+        },
+        {
+          "name": "Saquon Barkley",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "PHI",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "883302",
+          "draftableId": "43836406",
+          "dkProjection": null
+        },
+        {
+          "name": "Jaxon Smith-Njigba",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "SEA",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1214087",
+          "draftableId": "43836422",
+          "dkProjection": null
+        },
+        {
+          "name": "Chris Olave",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1122592",
+          "draftableId": "43836424",
+          "dkProjection": null
+        },
+        {
+          "name": "Davante Adams",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "611417",
+          "draftableId": "43836486",
+          "dkProjection": null
+        },
+        {
+          "name": "Juwan Johnson",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "884609",
+          "draftableId": "43836440",
+          "dkProjection": null
+        },
+        {
+          "name": "Kenneth Walker III",
+          "slot": "FLEX",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "KC",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1164402",
+          "draftableId": "43836413",
+          "dkProjection": null
+        },
+        {
+          "name": "Chiefs",
+          "slot": "DST",
+          "dkScore": 1,
+          "dkStats": [
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "14-20 PA",
+              "value": 1,
+              "points": 1
+            }
+          ],
+          "teamKey": "KC",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "339",
+          "draftableId": "43836459",
+          "dkProjection": null
+        }
+      ]
+    },
+    {
+      "ownerSeasonId": 1043,
+      "week": 102,
+      "isExhibition": true,
+      "dkDraftGroupId": "152064",
+      "capturedAt": "2026-08-16T06:30:02.552Z",
+      "slots": [
+        {
+          "name": "Matthew Stafford",
+          "slot": "QB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "QB",
+          "revealed": true,
+          "dkPlayerId": "323205",
+          "draftableId": "43836396",
+          "dkProjection": null
+        },
+        {
+          "name": "Javonte Williams",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "DAL",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1107881",
+          "draftableId": "43836414",
+          "dkProjection": null
+        },
+        {
+          "name": "Saquon Barkley",
+          "slot": "RB",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "PHI",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "883302",
+          "draftableId": "43836406",
+          "dkProjection": null
+        },
+        {
+          "name": "Jaxon Smith-Njigba",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "SEA",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1214087",
+          "draftableId": "43836422",
+          "dkProjection": null
+        },
+        {
+          "name": "Chris Olave",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "1122592",
+          "draftableId": "43836424",
+          "dkProjection": null
+        },
+        {
+          "name": "Davante Adams",
+          "slot": "WR",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "LAR",
+          "position": "WR",
+          "revealed": true,
+          "dkPlayerId": "611417",
+          "draftableId": "43836486",
+          "dkProjection": null
+        },
+        {
+          "name": "Juwan Johnson",
+          "slot": "TE",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "NO",
+          "position": "TE",
+          "revealed": true,
+          "dkPlayerId": "884609",
+          "draftableId": "43836440",
+          "dkProjection": null
+        },
+        {
+          "name": "Kenneth Walker III",
+          "slot": "FLEX",
+          "dkScore": 0,
+          "dkStats": [],
+          "teamKey": "KC",
+          "position": "RB",
+          "revealed": true,
+          "dkPlayerId": "1164402",
+          "draftableId": "43836413",
+          "dkProjection": null
+        },
+        {
+          "name": "Chiefs",
+          "slot": "DST",
+          "dkScore": 1,
+          "dkStats": [
+            {
+              "key": "0 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "1-6 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "7-13 PA",
+              "value": 0,
+              "points": 0
+            },
+            {
+              "key": "14-20 PA",
+              "value": 1,
+              "points": 1
+            }
+          ],
+          "teamKey": "KC",
+          "position": "DST",
+          "revealed": true,
+          "dkPlayerId": "339",
+          "draftableId": "43836459",
+          "dkProjection": null
+        }
+      ]
+    }
+  ]
+}

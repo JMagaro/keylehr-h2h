@@ -43,3 +43,6 @@ next-env.d.ts
 # Claude Code local settings (may contain tokens)
 .claude/settings.local.json
 .claude/memory/
+
+# database backups — contain owner emails and password hashes; this repo is public
+/backups/

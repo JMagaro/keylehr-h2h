@@ -402,7 +402,86 @@ conversation), where no value moved. Run the gate **twice** after a change to th
 the second run's snapshot reads the data the ground-truth replay just rewrote through the new
 code.
 
-## 7. Troubleshooting
+## 7. Backups and recovery
+
+> **The realistic threat is not hardware — it is a script.** The importers take `--season=` and
+> `--sheet=` arguments, `db:push` and `db:migrate` change schema, and `verify`'s ground-truth
+> replay writes to the database by design. A wrong flag damages real data. The
+> [snapshot gate](#6-the-snapshot-gate) *detects* history moving; it cannot undo it. **Dump
+> before anything that writes.**
+
+### What is actually at risk
+
+| Data | If the database were lost |
+| ---- | ------------------------- |
+| `lineup_snapshots`, `lineup_capture_runs` | **Gone forever.** DraftKings' authenticated roster endpoint is the only source and contests age out. Not re-fetchable at any price. |
+| `scores` from 2026 on | **Gone in practice** — same reason. `score_import_runs` keeps the raw payloads, but *in the same database*, so it is no protection against losing that database. |
+| `users`, `owners` | Small, but holds emails and bcrypt hashes. This is why a dump must never be committed. |
+| 2023–2025, everything | **Recoverable.** The importers are idempotent and read the commissioner's Google Sheets, and `scripts/fixtures/standings-baseline.json` already records every derived fact in git. |
+| `nfl_games`, `nfl_teams`, odds, model snapshots | Re-pullable from ESPN, or recomputable. |
+
+Note the asymmetry: the snapshot gate protects **frozen** seasons only. The season currently
+being played — the one writing irreplaceable DraftKings data every week — is deliberately
+excluded because it moves. So in-season, the data most at risk has the least protection. That
+is what the two commands below are for.
+
+### The two commands
+
+```
+npm run db:dump                     # full data-only backup → backups/<timestamp>/ (gitignored)
+npm run export:captures -- --write  # PII-free roster captures → scripts/fixtures/captures/ (COMMIT these)
+```
+
+**`db:dump`** writes every table as gzipped NDJSON plus a `manifest.json` naming the restore
+order. The whole database is around 120 kB compressed, so there is no reason to skip it. It
+needs nothing but the app's own dependencies — no `pg_dump`, no system packages — so it also
+works on a machine you have just picked up in an emergency. It contains **owner emails and
+password hashes**: never commit it, and remember this repository is public.
+
+**`export:captures`** is the off-Neon copy of the one thing that cannot be re-fetched. It writes
+one file per season-week (so a week lands once and git never rewrites it) containing the
+NORMALIZED rosters: NFL player names, positions, teams, DraftKings' own per-player scores and
+stat lines. It deliberately drops `dk_entry_key` and never exports `raw_payload`, because both
+identify league members' DraftKings accounts and this repo is public. Run it after the week's
+final sync, and commit the result.
+
+### When to run them
+
+| Moment | Command |
+| ------ | ------- |
+| Before `db:migrate`, `db:push`, or any importer | `npm run db:dump` |
+| After the week's final sync, in season | both |
+| Before re-baselining the snapshot gate | `npm run db:dump` |
+
+### Neon's own safety net — check this and record it
+
+Neon keeps a point-in-time restore window whose length depends on the plan. It is the fastest
+way back from "I just ran the wrong importer", but only inside the window and only if you notice
+in time.
+
+1. Neon console → your project → **Settings → Storage** (or **Branches**), find the
+   history/restore retention.
+2. Record it here so nobody has to guess mid-incident:
+
+   > **PITR retention: `____` (checked: `____`)** — project `ep-cool-union-ad0qzgkd`, `us-east-1`.
+
+3. To restore: Neon console → **Branches → Restore**, pick the timestamp. Or create a branch
+   *before* risky work — a Neon branch is a copy-on-write snapshot and is the cheapest possible
+   undo button.
+
+### Restoring from a dump
+
+The dump is data-only, which is sufficient because the schema lives in git as drizzle
+migrations:
+
+1. Create an empty database and point `DATABASE_URL` at it.
+2. `npm run db:migrate` — builds the schema.
+3. Load each table in the `restoreOrder` given by `manifest.json` (front to back, so foreign
+   keys are satisfied); each file is gzipped NDJSON, one row per line.
+4. `npm run verify` — 9/9, and the **historical snapshot** check proves the frozen seasons came
+   back byte-identical. That check is the restore's acceptance test.
+
+## 8. Troubleshooting
 
 | Symptom | Likely cause | Fix |
 | ------- | ------------ | --- |
