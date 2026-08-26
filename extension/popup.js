@@ -1322,9 +1322,19 @@ function renderLive(live) {
       (typeof ls.matched === 'number' ? ` (${ls.matched} matched)` : '')
     : 'no sync yet';
 
+  // Rosters refresh on their own schedule — only when the app says players have been revealed
+  // since the last capture, plus once at the end. Reported separately so a roster problem is
+  // never mistaken for a score problem: scores sync every poll regardless.
+  const rs = live.lastRosterSync;
+  const rosterNote = rs
+    ? `\nRosters: refreshed at ${fmtClock(rs.time)} — ${rs.matched}/${rs.expected} owners, ` +
+      `${rs.revealed}/${rs.slots} players revealed`
+    : '\nRosters: none needed yet — refreshed when DraftKings reveals new players';
+  const rosterErr = live.lastRosterError ? `\n⚠ Rosters: ${live.lastRosterError}` : '';
+
   if (live.phase === 'completed') {
     els.liveStatus.className = 'live-status done';
-    els.liveStatus.textContent = `✓ Completed — live sync stopped · ${synced}`;
+    els.liveStatus.textContent = `✓ Completed — live sync stopped · ${synced}${rosterNote}${rosterErr}`;
     return;
   }
   if (live.phase === 'paused') {
@@ -1341,7 +1351,7 @@ function renderLive(live) {
   }
   const errNote = live.lastError ? `\n⚠ ${live.lastError}` : '';
   els.liveStatus.className = 'live-status' + (live.lastError ? ' err' : ' on');
-  els.liveStatus.textContent = `● Live: ${synced}${next}${errNote}`;
+  els.liveStatus.textContent = `● Live: ${synced}${next}${errNote}${rosterNote}${rosterErr}`;
 }
 
 async function refreshLive() {

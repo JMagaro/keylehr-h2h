@@ -22,9 +22,12 @@
 > [§11](#11-endpoint-inventory--what-is-public-and-what-needs-auth).** Read it before designing
 > anything that talks to DraftKings.
 >
-> A third endpoint on the same bearer token, **`GET /api/current-week`** ([§13](#13-the-week-detection-endpoint-implemented)),
-> writes nothing: it tells the extension which week the NFL schedule says it is, so a contest is
-> never synced against the wrong one.
+> Two further endpoints on the same bearer token write nothing at all. **`GET /api/current-week`**
+> ([§13](#13-the-week-detection-endpoint-implemented)) tells the extension which week the NFL
+> schedule says it is, so a contest is never synced against the wrong one.
+> **`GET /api/live-status`** ([§14](#14-the-capture-staleness-endpoint-implemented)) tells it
+> whether re-reading all 32 rosters would reveal anything new, so Live Sync pays for a 32-request
+> fan-out only when a kickoff has made it worth something.
 
 > ⚠️ **Terms-of-Service caveat (read this).** DraftKings does **not** publish a public API. The
 > endpoints this design relies on are **unofficial, undocumented, and using them is against
@@ -619,3 +622,85 @@ extension reuses the one token it already stores.
 
 The route sets `runtime = 'nodejs'` (the Neon driver) and `dynamic = 'force-dynamic'`, because an
 answer about what time it is now must never be served from a cache.
+
+---
+
+## 14. The capture-staleness endpoint (implemented)
+
+`GET /api/live-status` (`src/app/api/live-status/route.ts`) is **read-only** — it writes nothing,
+runs the same read path as `/live`, and exists to answer one question for the extension: **would
+re-reading all 32 rosters actually change anything?**
+
+**Why it exists** is an asymmetry, and it is the reason the endpoint is worth a round-trip at all.
+Polling the DraftKings **leaderboard** is one request, and `scores` upserts on
+`(ownerSeasonId, week)`, so re-reading it costs nothing in traffic or storage. Polling **rosters**
+is the opposite on both counts: DraftKings has **no bulk roster endpoint**
+([§11](#11-endpoint-inventory--what-is-public-and-what-needs-auth)), so one refresh is one
+credentialed request **per entry** — 32 of them — and `lineup_snapshots` is append-only, so every
+refresh is 32 more rows kept forever. Doing that on each poll across a Sunday is on the order of
+**4,000 requests against the commissioner's own DraftKings account** and roughly **250 MB a
+season** of near-identical snapshots.
+
+What a refresh actually fixes is **concealment**: DraftKings hides a player until their game kicks
+off, so an early capture legitimately misses the late slate, and those players then score points
+the estimate cannot see because it does not know their names. Whether that has happened is a
+question only the **app** can answer — only the app knows the kickoff schedule and what the last
+capture contained. So the extension asks, every poll, and pays for rosters only when the answer is
+yes: roughly **6–8 refreshes a week**, landing within one poll of each kickoff, at identical
+freshness.
+
+**Auth and CORS are identical to `/api/current-week`** ([§13](#13-the-week-detection-endpoint-implemented))
+— `Authorization: Bearer <INGEST_TOKEN>` through the same `isAuthorized`, plus
+`Access-Control-Allow-Origin: *` and an `OPTIONS` preflight — so the extension reuses the one token
+it already stores. **No new permissions, no new configuration.**
+
+**Query parameters.**
+
+| Param    | Required | Notes                                                                       |
+| -------- | -------- | ---------------------------------------------------------------------------- |
+| `season` | yes      | `seasons.id`. A non-integer or non-positive value is `400 Pass ?season=<id>`. |
+| `week`   | yes      | `1`–`25` or `101`–`103` (bounded by `MAX_EXHIBITION_WEEK`). Anything else is `400 Pass ?week=<n>`. |
+
+**Response (200).**
+
+```json
+{
+  "shouldRecapture": true,
+  "reason": "3 game(s) kicked off since the capture, 12 slot(s) still concealed",
+  "hasCapture": true,
+  "capturedAt": "2026-09-13T17:04:11.000Z",
+  "concealedSlots": 12,
+  "gamesStartedSinceCapture": 3,
+  "gamesLoaded": 14,
+  "gamesTotal": 16,
+  "matchups": 16,
+  "missingCaptures": 0
+}
+```
+
+- **`shouldRecapture`** is the only field the extension branches on. `reason` is prose, meant for a
+  human reading a log or a popup, and must not be parsed.
+- **It introduces NO new predicate.** The staleness half is the already-tested
+  `assessCaptureStaleness` (`src/lib/live/staleness.ts`, 8 unit tests) that `/live` uses to render
+  *"These totals are low — re-sync to fix"*. A second, subtly different definition of "stale" is
+  exactly the kind of drift this project avoids.
+- **One case is added on top**, because staleness genuinely cannot express it: a week that has
+  **matchups but no capture at all**. There is no `capturedAt` to compare kickoffs against, so
+  `assessCaptureStaleness` correctly returns false — and from the extension's point of view that is
+  precisely when it should capture, since there is nothing yet. Hence
+  `shouldRecapture = matchups > 0 && (!hasCapture || staleness.shouldRecapture)`.
+- The remaining fields are diagnostics, not decisions: they let a log line say *why* without a
+  second request.
+
+**Errors.** `401 Unauthorized` · `400 Pass ?season=<id>` · `400 Pass ?week=<n>`.
+
+The route sets `runtime = 'nodejs'` (the Neon driver), `dynamic = 'force-dynamic'` (an answer about
+what is true *now* must never be cached) and `maxDuration = 30` — the ESPN index is usually warm,
+but a cold week fans out to ~16 summaries.
+
+> **The extension does not always ask.** On the **final** poll — when DraftKings reports the contest
+> complete — it refreshes rosters unconditionally. That is the one capture where every player is
+> revealed and DK's per-player numbers are final, which is what the scoring-drift audit reconciles
+> against. See
+> [`SCORING.md` §15](SCORING.md#keeping-the-capture-fresh-without-asking-anyone) and
+> [`../extension/README.md`](../extension/README.md#3-live-sync--optional--keep-draftkings-own-totals-fresh).

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "KeyLehr H2H — DraftKings Sync",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Sync the shared DraftKings contest — scores and everyone's lineups — from your logged-in session to the KeyLehr H2H app.",
   "permissions": ["activeTab", "scripting", "storage", "alarms"],
   "background": {

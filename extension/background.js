@@ -7,6 +7,11 @@
  *   capture+POST every N minutes so scores keep updating during games even after the popup is
  *   closed (as long as Chrome is running). It STOPS automatically when the contest is completed.
  *
+ *   Each poll ALWAYS posts the leaderboard (one request, and the server upserts, so it is free).
+ *   It also refreshes every owner's ROSTER when the app says that would reveal players /live is
+ *   currently missing — DraftKings conceals a player until their game kicks off — and always on
+ *   the final poll. See "roster refresh" below for why that is conditional rather than constant.
+ *
  * WHY A SERVICE-WORKER FETCH ISN'T ENOUGH
  *   The DK leaderboard endpoint needs the user's authenticated DK session. Only a fetch issued
  *   from the draftkings.com PAGE context (MAIN world) reliably carries the session cookies
@@ -44,6 +49,8 @@ const DK_TAB_GLOB = 'https://*.draftkings.com/contest/gamecenter/*';
  *   lastSync: { week, time, matched, total } | null,
  *   lastError: string | null,
  *   nextRunAt: number | null, // ms epoch of the next scheduled alarm
+ *   lastRosterSync: { time, matched, expected, revealed, slots, reason } | null,
+ *   lastRosterError: string | null, // roster half only; scores may still be syncing fine
  * }
  */
 
@@ -374,21 +381,19 @@ async function findDkTab(live) {
 /* POST to ingest                                                              */
 /* -------------------------------------------------------------------------- */
 
-async function postIngest(live, entries) {
-  const base = (live.appBaseUrl || '').replace(/\/+$/, '');
-  const url = `${base}/api/ingest/draftkings`;
-  const res = await fetch(url, {
+function appUrl(live, path) {
+  return `${(live.appBaseUrl || '').replace(/\/+$/, '')}${path}`;
+}
+
+/** POST JSON to an ingest route. Throws with the server's own message on a non-2xx. */
+async function postJson(live, path, body) {
+  const res = await fetch(appUrl(live, path), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${live.ingestToken}`,
     },
-    body: JSON.stringify({
-      seasonId: live.seasonId,
-      week: live.week,
-      contestId: live.contestId,
-      entries,
-    }),
+    body: JSON.stringify(body),
   });
   let json = null;
   try {
@@ -403,6 +408,130 @@ async function postIngest(live, entries) {
     throw err;
   }
   return json || {};
+}
+
+async function postIngest(live, entries) {
+  return postJson(live, '/api/ingest/draftkings', {
+    seasonId: live.seasonId,
+    week: live.week,
+    contestId: live.contestId,
+    entries,
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* roster refresh                                                              */
+/* -------------------------------------------------------------------------- */
+/*
+ * WHY THIS IS CONDITIONAL, AND NOT DONE EVERY POLL
+ *
+ * The leaderboard is ONE request and the server upserts one row per owner, so polling scores
+ * is free in both traffic and storage. Rosters are the opposite: DraftKings has no bulk roster
+ * endpoint (see page-hook.js), so a refresh costs one credentialed request PER ENTRY — 32 of
+ * them — and the server stores every capture. Doing that on each poll would be roughly 4,000
+ * requests against the commissioner's own DK account over a Sunday, almost all returning
+ * byte-identical rosters.
+ *
+ * What a refresh actually fixes is CONCEALMENT: DK hides a player until their game kicks off,
+ * so an early capture misses the late slate and those players then score points /live cannot
+ * see, because it does not know their names. Whether that has happened is a question only the
+ * app can answer — it knows the kickoff schedule and what the last capture contained — so we
+ * ask it (`/api/live-status`) and pay for rosters only when the answer is yes. In practice
+ * that lands within one poll of each kickoff: ~6-8 refreshes a week rather than ~1,000.
+ *
+ * The exception is the FINAL poll. When the contest completes we always refresh, because that
+ * is the one capture where every player is revealed and DraftKings' own per-player numbers are
+ * final — which is what the app's scoring-drift audit reconciles against. A capture taken
+ * mid-game would compare a half-finished DK number with a finished one and invent drift.
+ */
+
+/** Ask the app whether re-reading rosters would change anything. Never throws. */
+async function shouldRefreshRosters(live) {
+  try {
+    const url = appUrl(live, `/api/live-status?season=${live.seasonId}&week=${live.week}`);
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${live.ingestToken}` } });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const json = await res.json();
+    return { ok: true, should: Boolean(json.shouldRecapture), reason: json.reason || '' };
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
+}
+
+/**
+ * Ask the DK page for every entry's roster.
+ *
+ * Uses the SAME content-script bridge the popup's Sync button uses, rather than a second copy
+ * of the fan-out injected through chrome.scripting: one tested capture path, not two.
+ */
+function requestRosterCapture(tabId, contestId) {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tabId, { type: 'CAPTURE_ROSTERS', contestId }, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({
+            ok: false,
+            error:
+              'Could not talk to the DraftKings page (reload the contest tab). Detail: ' +
+              chrome.runtime.lastError.message,
+          });
+          return;
+        }
+        resolve(response || { ok: false, error: 'No response from the DraftKings page.' });
+      });
+    } catch (e) {
+      resolve({ ok: false, error: e && e.message ? e.message : String(e) });
+    }
+  });
+}
+
+/**
+ * Refresh rosters if the app says it is worth it. BEST EFFORT THROUGHOUT — this must never
+ * throw, never stop the poll timer, and never cast doubt on a score sync that already
+ * succeeded. Returns a summary for the popup, or null when nothing was done.
+ */
+async function maybeRefreshRosters(live, tabId, force) {
+  const verdict = force ? { ok: true, should: true, reason: 'contest complete — final capture' } : await shouldRefreshRosters(live);
+  if (!verdict.ok) return { skipped: true, error: `Could not ask the app: ${verdict.error}` };
+  if (!verdict.should) return { skipped: true, reason: verdict.reason };
+
+  const cap = await requestRosterCapture(tabId, live.contestId);
+  if (!cap || !cap.ok) {
+    return { error: (cap && cap.error) || 'Roster capture failed.', reason: verdict.reason };
+  }
+
+  const captured = cap.lineups || [];
+  if (!captured.length) return { error: 'No rosters returned.', reason: verdict.reason };
+
+  const slots = captured.reduce((n, l) => n + (l.slotCount || 0), 0);
+  const revealed = captured.reduce((n, l) => n + (l.revealedCount || 0), 0);
+
+  try {
+    const json = await postJson(live, '/api/ingest/lineups', {
+      seasonId: live.seasonId,
+      week: live.week,
+      contestId: cap.contestId || live.contestId,
+      draftGroupId: cap.draftGroupId,
+      capturedAt: cap.capturedAt,
+      sourceUrlTemplate: cap.sourceUrlTemplate,
+      // RAW, exactly as the popup posts them — the server owns the one tested normalizer.
+      rawLineups: captured.map((l) => ({
+        entryName: l.entryName,
+        entryKey: l.entryKey,
+        roster: l.roster,
+      })),
+    });
+    return {
+      time: Date.now(),
+      matched: typeof json.matched === 'number' ? json.matched : captured.length,
+      expected: cap.expected || captured.length,
+      revealed,
+      slots,
+      reason: verdict.reason,
+    };
+  } catch (e) {
+    return { error: `Saving rosters failed: ${e.message}`, reason: verdict.reason };
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -511,6 +640,18 @@ async function doPoll() {
 
   const lastSync = { week: live.week, time: Date.now(), matched, total };
 
+  // Scores are in. Now the roster half — only when the app says it would reveal players the
+  // estimate is currently missing, and always on the final poll. Best effort: whatever happens
+  // here, the score sync above already succeeded and the loop keeps its schedule.
+  const roster = await maybeRefreshRosters(live, tab.id, completed);
+  const rosterState = {};
+  if (roster && roster.time) {
+    rosterState.lastRosterSync = roster;
+    rosterState.lastRosterError = null;
+  } else if (roster && roster.error) {
+    rosterState.lastRosterError = roster.error;
+  }
+
   if (completed) {
     // Final sync done — stop the loop.
     await chrome.alarms.clear(ALARM_NAME);
@@ -520,6 +661,7 @@ async function doPoll() {
       lastSync,
       lastError: null,
       nextRunAt: null,
+      ...rosterState,
     });
     setBadge('✓', '#22c55e');
     notify('Live Sync complete', `Contest completed — final scores synced for Week ${live.week}.`);
@@ -529,7 +671,7 @@ async function doPoll() {
 
   // Still live — schedule the next poll.
   const nextRunAt = await scheduleNext(live);
-  await setLive({ phase: 'running', lastSync, lastError: null, nextRunAt });
+  await setLive({ phase: 'running', lastSync, lastError: null, nextRunAt, ...rosterState });
   setBadge('live', '#22c55e');
   broadcastState();
 }

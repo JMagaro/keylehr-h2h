@@ -1,11 +1,24 @@
 # KeyLehr H2H — DraftKings Sync (Chrome extension)
 
-**Current version: 1.4.0** (`manifest.json`). Since 1.3.0 it is **one button**: **Sync** now posts the week's
+**Current version: 1.5.0** (`manifest.json`). Since 1.3.0 it is **one button**: **Sync** now posts the week's
 scores *and* captures every owner's roster from a single DraftKings read — the separate "Capture
 lineups" button is gone. See [Lineups](#lineups-captured-automatically-by-sync). 1.2.0 added roster
 capture; 1.1.0 added the endpoint probe, now relabelled
 [Troubleshooting](#troubleshooting--draftkings-endpoints). The POST contracts are unchanged and
 **no new permissions** were added.
+
+> **New in 1.5.0: Live Sync now refreshes ROSTERS too, but only when that would change something.**
+> Every poll still posts the leaderboard, exactly as before. On top of that, the background worker
+> asks the app ([`/api/live-status`](#the-apilive-status-endpoint-should-i-re-read-the-rosters))
+> whether re-reading rosters would reveal players the `/live` estimate is currently missing — and
+> pays for the 32-request fan-out only when the answer is yes, plus **always** on the final poll
+> once DraftKings reports the contest complete. In practice that is **~6–8 refreshes a week instead
+> of ~1,000**, at the same freshness. The popup gained a **Rosters:** status line.
+> **No new permissions**; it is a GET on the token the popup already holds.
+>
+> **The point of it:** the "re-sync after the last kickoff" rule that `/live` has always nagged
+> about is now something the extension does for you while Live Sync is running. See
+> [Why the roster refresh is conditional](#why-the-roster-refresh-is-conditional-and-not-every-poll).
 
 > **New in 1.4.0:** the week and the **Preseason** toggle are now
 > **detected** from the app's synced NFL schedule
@@ -322,6 +335,49 @@ Full contract: [`../docs/DRAFTKINGS.md` §13](../docs/DRAFTKINGS.md#13-the-week-
 
 ---
 
+## The `/api/live-status` endpoint (should I re-read the rosters?)
+
+`GET <App Base URL>/api/live-status?season=<id>&week=<n>` — **same bearer token, same CORS as
+`/api/current-week`**, so there is nothing new to configure. **Read-only.** New in **v1.5.0**, and
+called by the background worker only — the popup never touches it.
+
+It answers exactly one question: *would re-reading all 32 rosters reveal anything the `/live`
+estimate does not already have?*
+
+```json
+{
+  "shouldRecapture": true,
+  "reason": "3 game(s) kicked off since the capture, 12 slot(s) still concealed",
+  "hasCapture": true,
+  "capturedAt": "2026-09-13T17:04:11.000Z",
+  "concealedSlots": 12,
+  "gamesStartedSinceCapture": 3,
+  "gamesLoaded": 14,
+  "gamesTotal": 16,
+  "matchups": 16,
+  "missingCaptures": 0
+}
+```
+
+- **`shouldRecapture`** is the only field the worker branches on. `reason` is prose for a human —
+  it is shown in logs, never parsed.
+- **The app is the right place to decide this**, not the extension: it knows the NFL kickoff
+  schedule and what the last capture contained. It reuses the same staleness test that makes
+  `/live` say *"These totals are low — re-sync to fix"*, so the page and the extension can never
+  disagree about whether a capture is stale.
+- It also returns `shouldRecapture: true` for a week that has matchups but **no capture at all** —
+  the one case staleness cannot speak to, since there is no capture time to compare kickoffs
+  against.
+
+`shouldRefreshRosters(live)` in `background.js` calls it and **never throws**: a failure comes back
+as `{ ok: false, error }`, the roster half is skipped for that poll, and the score sync is
+untouched. Losing this endpoint degrades Live Sync back to v1.4.0 behaviour, which is scores only —
+not to a broken sync.
+
+Full contract: [`../docs/DRAFTKINGS.md` §14](../docs/DRAFTKINGS.md#14-the-capture-staleness-endpoint-implemented).
+
+---
+
 ## Use — two sync paths
 
 Both POST normalized `entries` to `<App Base URL>/api/ingest/draftkings` with
@@ -370,14 +426,27 @@ Use this if Sync can't reach the endpoint (not logged in, DK changed something, 
 
 ### 3. Live Sync  *(optional — keep DraftKings' own totals fresh)*
 
-> **You probably don't need this.** The app's **`/live`** page computes its own running estimate
-> from public NFL stats and keeps moving with this computer switched off — that is the entire point
-> of capturing rosters. Turn Live Sync on only when you want DraftKings' **official** totals
-> refreshed during games too, and accept that it needs the machine awake and Chrome open.
+> **Still optional — `/live` does not depend on it.** The app's **`/live`** page computes its own
+> running estimate from public NFL stats and keeps moving with this computer switched off; that is
+> the entire point of capturing rosters. Live Sync buys you two things on top, both of which need
+> the machine awake and Chrome open:
+>
+> 1. DraftKings' **official** totals refreshed during games (every poll), and
+> 2. since **v1.5.0**, the *"re-sync after the last kickoff"* chore done for you — rosters are
+>    re-read automatically when a kickoff reveals players the estimate is missing, so `/live`'s
+>    **"These totals are low"** banner stops being something you have to notice and act on.
+>
+> Without it, everything still works — you just re-run **Sync** by hand after each kickoff wave.
 
 The one-click **Sync** above is a single snapshot. **Live Sync** re-runs that same capture+POST
 automatically every few minutes so the leaderboard keeps updating while games are in progress —
 and it **stops itself when the contest is final**.
+
+> **Since v1.5.0 it keeps the ROSTERS fresh too**, which is the half that feeds `/live`. Every poll
+> posts the leaderboard; a poll additionally re-reads all 32 rosters **only when the app says a
+> kickoff has revealed players the estimate is missing**, and unconditionally on the final poll.
+> [Why it is conditional](#why-the-roster-refresh-is-conditional-and-not-every-poll) is worth
+> reading before changing it.
 
 **How to start it:**
 
@@ -394,6 +463,20 @@ Once on, the popup shows live status and the toolbar icon gets a badge:
 - **`⏸`** badge · `⏸ Paused — open your DraftKings contest tab to resume.` — no DK contest tab
   was found; the loop keeps retrying and resumes the moment you reopen the tab.
 - **`✓`** badge · `✓ Completed — live sync stopped` — the contest finished; one final sync ran.
+
+Below that, from v1.5.0, a **separate** roster line — shown in the **`live`** and **`✓`** states
+(the **`⏸`** message stays a single line, since nothing is polling):
+
+- `Rosters: refreshed at HH:MM — 32/32 owners, 214/288 players revealed` — a refresh happened.
+- `Rosters: none needed yet — refreshed when DraftKings reveals new players` — nothing has kicked
+  off since the last capture, so re-reading them would return the same thing. **This is the normal
+  state most of the time and is not a failure.**
+- `⚠ Rosters: <reason>` — the roster half hit a problem.
+
+> **Why it is a separate line, and not folded into the status above.** Scores sync **every** poll
+> regardless of what rosters do. If a roster refresh fails, the official numbers are still landing,
+> and a single blended status line would make you doubt a score sync that worked perfectly. Same
+> principle as the **Lineups** card on the one-shot Sync path.
 
 You can stop it any time with the toggle or the **Stop Live Sync** button. State is persisted in
 `chrome.storage`, so reopening the popup reflects the current status, and the worker pushes updates
@@ -413,6 +496,52 @@ completed/final/finished/closed, **or** every entry showing **no time/points rem
 `pmr` / `timeRemaining` / points-remaining fields are `0` for all entries that carry them). On
 completion it does one final sync, clears the alarm, sets the **`✓`** badge, and shows
 **"✓ Completed — live sync stopped"**.
+
+### Why the roster refresh is conditional (and not every poll)
+
+This is the crux of v1.5.0. The obvious implementation — refresh rosters whenever you refresh
+scores — is wrong, and expensively so.
+
+**Scores and rosters are not the same kind of request.** The leaderboard is **one** call, and the
+app upserts one row per owner on `(ownerSeasonId, week)`, so polling it costs one HTTP request and
+creates no new rows. Rosters invert both properties:
+
+- DraftKings has **no bulk roster endpoint** (see the note at `page-hook.js`'s
+  `ROSTER_URL_TEMPLATE`, and [the data path above](#the-draftkings-data-path-this-targets)), so one
+  refresh is **one credentialed request per entry — 32 of them**.
+- The app stores captures **append-only** (every capture is kept, newest wins), so every refresh is
+  32 more rows that live forever.
+
+Refreshing on every poll across a Sunday works out to roughly **4,000 requests against the
+commissioner's own DraftKings account** and about **250 MB a season** of near-identical snapshots.
+Measured sizes: ~2.2 KB per entry per capture, so one 32-owner capture is ~71 KB of raw payload
+plus ~37 KB of stored snapshot.
+
+**And it would buy nothing.** A roster only changes when DraftKings *reveals* a player, and DK
+reveals a player exactly when their game kicks off. So the useful refreshes are the ones just after
+a kickoff wave — about **6–8 a week** — and every other one returns a byte-identical roster.
+
+**Only the app can tell which is which**, because only the app knows the kickoff schedule and what
+the last capture actually contained. So the worker asks it, every poll, and pays for the fan-out
+only when the answer is yes:
+[`GET /api/live-status`](#the-apilive-status-endpoint-should-i-re-read-the-rosters).
+
+> **The exception: the FINAL poll always refreshes.** When DraftKings reports the contest complete,
+> the worker re-reads rosters whether or not the app asked. That is the one capture where **every**
+> player is revealed and DraftKings' own per-player numbers are **final** — which is exactly what
+> the app's scoring-drift audit (Admin → Scoring) reconciles against. A mid-game capture would pit
+> a half-finished DraftKings number against a finished one and manufacture drift that isn't there.
+
+**The roster half is best-effort, throughout.** It must never throw, never stop the poll timer, and
+never cast doubt on a score sync that already succeeded — so every failure path returns a message
+instead of raising, and reports into the **Rosters:** line rather than the score line. The capture
+itself reuses the **same** `CAPTURE_ROSTERS` content-script bridge the popup's Sync button uses,
+rather than a second copy of the fan-out injected through `chrome.scripting`: **one tested capture
+path, not two.**
+
+Functions added in `background.js`: `appUrl`, `postJson` (generalised out of `postIngest`),
+`shouldRefreshRosters`, `requestRosterCapture`, `maybeRefreshRosters`. New persisted state keys:
+`lastRosterSync` and `lastRosterError`.
 
 > **Tip — testing.** A fast-resolving DraftKings **Madden** contest is ideal for exercising Live
 > Sync end-to-end (open tab → toggle on → watch it poll → auto-stop on completion) without waiting
@@ -484,6 +613,10 @@ That is a **complete** capture, not a broken one:
 
 **Re-capturing is the intended workflow**, not a repair: DK Classic allows late swap, every capture
 is stored as a new version keyed by its capture time, and the newest one wins.
+
+> **Since v1.5.0 you can stop doing it by hand.** Leave [Live Sync](#3-live-sync--optional--keep-draftkings-own-totals-fresh)
+> running and the extension re-captures for you as each kickoff wave reveals more players — plus
+> once more when the contest completes, which is the capture where everyone is finally visible.
 
 ### Result messages (Lineups card)
 
@@ -621,9 +754,9 @@ The app matches each `entryName` (case-insensitive, trimmed) to `owner_seasons.d
 
 | File                | Role                                                                       |
 | ------------------- | -------------------------------------------------------------------------- |
-| `manifest.json`     | MV3 manifest (permissions, content script, popup, background service worker). **Version lives here** — currently `1.4.0`. |
+| `manifest.json`     | MV3 manifest (permissions, content script, popup, background service worker). **Version lives here** — currently `1.5.0`. |
 | `popup.html/.css/.js` | The popup UI + the two sync paths + the **Lineups** status card + the Live Sync card + the **Troubleshooting** panel + result banners. `onSync()` drives both halves; `saveCapturedLineups(cap, season, week, contestId)` POSTs the already-fetched rosters and reports into the Lineups card. `postIngestTo(path, payload)` is the shared poster for both ingest endpoints and **always** produces an error message. **Week detection** lives here too: `fetchWeekInfo` / `refreshWeekInfo` / `renderWeekInfo` / `formatDateRange` fill the `#weekInfo` line from [`/api/current-week`](#the-apicurrent-week-endpoint-week-detection). |
-| `background.js`     | MV3 service worker. Drives **Live Sync**: a `chrome.alarms` poll that runs the credentialed capture in an open DK tab's MAIN world (`chrome.scripting.executeScript`), POSTs to ingest, and auto-stops when the contest is completed. Reflects state via `chrome.storage` + badge. |
+| `background.js`     | MV3 service worker. Drives **Live Sync**: a `chrome.alarms` poll that runs the credentialed capture in an open DK tab's MAIN world (`chrome.scripting.executeScript`), POSTs to ingest, and auto-stops when the contest is completed. Reflects state via `chrome.storage` + badge. **v1.5.0:** also refreshes rosters when [`/api/live-status`](#the-apilive-status-endpoint-should-i-re-read-the-rosters) says it would reveal something, and always on the final poll — `appUrl`, `postJson`, `shouldRefreshRosters`, `requestRosterCapture`, `maybeRefreshRosters`. The roster half is best-effort and reuses the popup's `CAPTURE_ROSTERS` bridge rather than a second fan-out. |
 | `content-script.js` | Injects the page hook; bridges popup ⇄ hook through a generic tagged round-trip (`askPage`), used by `CAPTURE_LEADERBOARD`, `PROBE_ROSTER_ENDPOINT` (45s — it hits several DK URLs in sequence) and `CAPTURE_ROSTERS` (180s — one request per entry, so it is the longest round-trip the popup makes); reads the contest name from the gamecenter DOM (`DETECT_CONTEST`). |
 | `page-hook.js`      | Runs in the page's MAIN world. Authenticated fetch of the embed endpoint + robust entry extraction; the passive `api.draftkings.com` **request recorder** and `probeRosterEndpoint()` (v1.1.0); and (v1.2.0) `captureRosters()` / `fetchRoster()` / `slotIsRevealed()` behind `ROSTER_URL_TEMPLATE`. **v1.3.0:** `captureRosters()` returns the leaderboard `entries` alongside `lineups`, which is what lets one read serve both halves of Sync. |
 
@@ -632,3 +765,9 @@ The app matches each `entryName` (case-insensitive, trimmed) to `owner_seasons.d
 entry keys from the last sync, used **only** by the roster-endpoint probe), and `lastLineupCapture`
 (v1.2.0 — `{ week, time, matched, expected, revealed, slots }` from the last roster capture, shown
 as the "Last capture" line).
+
+**Live Sync state** (`chrome.storage`, written by `background.js`): `phase`, `lastSync`,
+`lastError`, `nextRunAt`, plus — new in **v1.5.0** — `lastRosterSync`
+(`{ time, matched, expected, revealed, slots, reason }`) and `lastRosterError`. The roster pair is
+**deliberately separate from `lastSync` / `lastError`**: scores sync on every poll and rosters do
+not, so merging them would let a skipped-on-purpose roster refresh read as a failed score sync.
