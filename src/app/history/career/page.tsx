@@ -294,10 +294,12 @@ export default async function OwnerCareerPage({
     );
   }
 
-  // Distinct crests worn, newest season first — a career at a glance.
-  const crests = career.seasons.filter(
-    (s, i, arr) => arr.findIndex((o) => o.teamKey === s.teamKey) === i,
-  );
+  // ONE BADGE PER SEASON, newest first — deliberately NOT deduplicated by team.
+  // Each badge is labelled with its year, so keeping the same NFL team two years running
+  // must still produce two badges. An earlier version deduped on teamKey and kept the
+  // newest, which silently dropped the older year: Andrew Lepore held the Titans in 2024
+  // and 2023 and his 2023 badge vanished. Dedupe by team OR label by year — not both.
+  const crests = career.seasons;
 
   return (
     <Container width="wide" as="div" className="flex flex-col gap-10 py-10">
@@ -325,7 +327,7 @@ export default async function OwnerCareerPage({
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             {crests.map((s) => (
-              <span key={s.teamKey} className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2 py-1">
+              <span key={s.seasonId} className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2 py-1">
                 <TeamLogo src={s.logoEspn} alt={`${s.teamName} logo`} size={20} />
                 <span className="text-xs font-medium text-muted">{s.year}</span>
               </span>
