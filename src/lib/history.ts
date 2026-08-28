@@ -1728,3 +1728,347 @@ export async function getNetEarnings(): Promise<NetEarningsLeader[]> {
     })
     .sort((a, b) => b.netCents - a.netCents);
 }
+
+/* -------------------------------------------------------------------------- */
+/* One owner's career — the consolidated per-person view                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * NOTE ON THE EXHIBITION FILTER: nothing below adds a new `scores`/`matchups` read.
+ * `getOwnerCareer` composes the all-time aggregates above, each of which already carries
+ * `eq(scores.isExhibition, false)` / `eq(matchups.isExhibition, false)`, and the one extra
+ * query here reads `playoff_matchups`, which has no exhibition rows at all. That is
+ * deliberate: composing filtered readers is how this view avoids re-litigating the filter
+ * rule documented in the module header.
+ */
+
+/** One season line on an owner's career table. */
+export interface OwnerCareerSeason {
+  seasonId: number;
+  year: number;
+  seasonName: string;
+  teamKey: string;
+  teamName: string;
+  logoEspn: string | null;
+  wins: number;
+  losses: number;
+  ties: number;
+  pointsFor: number;
+  pointsAgainst: number;
+  /** 1-based finish under the league's FULL tiebreaker chain (not a local re-sort). */
+  finish: number;
+  /** How many owners were in the league that year, so "4th" can be shown as "4th of 32". */
+  fieldSize: number;
+  madePlayoffs: boolean;
+  isChampion: boolean;
+}
+
+/** A single regular-season meeting, from the owner's own perspective. */
+export interface OwnerCareerGame {
+  year: number;
+  week: number;
+  points: number;
+  oppPoints: number;
+  opponent: OwnerIdentity;
+}
+
+/** One opponent's all-time line, from the owner's own perspective. */
+export interface OwnerCareerRival {
+  opponent: OwnerIdentity;
+  wins: number;
+  losses: number;
+  ties: number;
+  meetings: number;
+}
+
+/** Everything /history/career shows for one person. */
+export interface OwnerCareer {
+  owner: OwnerIdentity;
+  seasonsPlayed: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  winPct: number;
+  pointsFor: number;
+  pointsAgainst: number;
+  /** Per game, so uneven games played (byes) don't distort a comparison. */
+  pointsForPerGame: number;
+  pointsAgainstPerGame: number;
+  pointsDiffPerGame: number;
+  bestWeek: { week: number; points: number; year: number } | null;
+  championships: number;
+  championYears: number[];
+  playoffAppearances: number;
+  playoffWins: number;
+  playoffLosses: number;
+  weeklyHighs: number;
+  /** Actual vs expected wins. Positive luck = a kinder schedule than the scores earned. */
+  luck: { actualWins: number; expectedWins: number; luck: number } | null;
+  longestWinStreak: StreakRecord | null;
+  longestLossStreak: StreakRecord | null;
+  missedLineups: number;
+  /**
+   * Best (lowest) season finish and the year it happened. A finish is a whole-season
+   * result, so unlike a per-game rate it stays meaningful at a three-season sample.
+   */
+  bestFinish: { finish: number; fieldSize: number; year: number } | null;
+  /** Mean finish across seasons played, on the same 1..fieldSize scale. */
+  averageFinish: number | null;
+  /** Worst all-time record against (min 3 meetings). */
+  nemesis: OwnerCareerRival | null;
+  /** Best all-time record against (min 3 meetings). */
+  favouriteVictim: OwnerCareerRival | null;
+  /** Most-played opponents, descending. */
+  topRivals: OwnerCareerRival[];
+  /** Highest-scoring LOSS — the week they did everything right and lost anyway. */
+  robbery: OwnerCareerGame | null;
+  /** Lowest-scoring WIN — the week they got away with one. */
+  heist: OwnerCareerGame | null;
+  /** Newest season first. Seasons that have not been played yet are omitted. */
+  seasons: OwnerCareerSeason[];
+}
+
+/**
+ * Every owner who has ever been assigned a team, with their most-recent team identity,
+ * sorted by name. This is the career page's picker: it must list EVERYONE, because the
+ * whole point of the page is that an owner outside the top-10 leaderboards can still find
+ * themselves.
+ */
+export async function getOwnerDirectory(): Promise<OwnerIdentity[]> {
+  const rows = await db
+    .select({
+      ownerId: owners.id,
+      ownerName: sql<string>`coalesce(${ownerSeasons.displayName}, ${owners.name})`,
+      seasonYear: seasons.year,
+      teamKey: nflTeams.key,
+      teamName: nflTeams.name,
+      logoEspn: nflTeams.logoEspn,
+    })
+    .from(ownerSeasons)
+    .innerJoin(owners, eq(ownerSeasons.ownerId, owners.id))
+    .innerJoin(seasons, eq(ownerSeasons.seasonId, seasons.id))
+    .innerJoin(nflTeams, eq(ownerSeasons.nflTeamId, nflTeams.id));
+
+  const byOwner = new Map<number, OwnerIdentity>();
+  const latestYear = new Map<number, number>();
+  for (const r of rows) {
+    const seen = latestYear.get(r.ownerId);
+    if (seen === undefined || r.seasonYear >= seen) {
+      latestYear.set(r.ownerId, r.seasonYear);
+      byOwner.set(r.ownerId, {
+        ownerId: r.ownerId,
+        ownerName: r.ownerName,
+        teamKey: r.teamKey,
+        teamName: r.teamName,
+        logoEspn: r.logoEspn ?? null,
+      });
+    }
+  }
+  return [...byOwner.values()].sort((a, b) => a.ownerName.localeCompare(b.ownerName));
+}
+
+/** seasonId set per owner for seasons in which they appeared in at least one playoff game. */
+async function loadPlayoffSeasonsByOwner(): Promise<Map<number, Set<number>>> {
+  const [pmRows, osRows] = await Promise.all([
+    db
+      .select({
+        seasonId: playoffMatchups.seasonId,
+        highOwnerSeasonId: playoffMatchups.highOwnerSeasonId,
+        lowOwnerSeasonId: playoffMatchups.lowOwnerSeasonId,
+      })
+      .from(playoffMatchups),
+    db
+      .select({ ownerSeasonId: ownerSeasons.id, ownerId: ownerSeasons.ownerId })
+      .from(ownerSeasons),
+  ]);
+  const ownerByOwnerSeason = new Map(osRows.map((r) => [r.ownerSeasonId, r.ownerId]));
+  const out = new Map<number, Set<number>>();
+  const mark = (osId: number | null, seasonId: number) => {
+    if (osId === null) return;
+    const ownerId = ownerByOwnerSeason.get(osId);
+    if (ownerId === undefined) return;
+    let set = out.get(ownerId);
+    if (!set) { set = new Set(); out.set(ownerId, set); }
+    set.add(seasonId);
+  };
+  for (const p of pmRows) {
+    mark(p.highOwnerSeasonId, p.seasonId);
+    mark(p.lowOwnerSeasonId, p.seasonId);
+  }
+  return out;
+}
+
+const MIN_RIVALRY_MEETINGS = 3;
+
+/**
+ * One person's whole career, consolidated. Returns `null` for an owner id that has never
+ * been assigned a team.
+ *
+ * Composed from the all-time aggregates above rather than from fresh SQL — see the note at
+ * the top of this section for why. Season lines come from `getRankedSeasonStandings`, so the
+ * finish shown is the league's real tiebreaker order and matches /standings and the bracket.
+ */
+export async function getOwnerCareer(ownerId: number): Promise<OwnerCareer | null> {
+  const [
+    directory,
+    options,
+    leaders,
+    champions,
+    playoffStats,
+    weeklyHighs,
+    streaks,
+    luckRows,
+    missedRows,
+    rivalries,
+    playoffSeasons,
+  ] = await Promise.all([
+    getOwnerDirectory(),
+    getSeasonOptions(),
+    getAllTimeLeaders(),
+    getChampionLeaders(),
+    getPlayoffStats(),
+    getWeeklyHighScores(),
+    getStreakLeaders(),
+    getScheduleLuck(),
+    getMissedSubmissions(),
+    getAllTimeRivalries(),
+    loadPlayoffSeasonsByOwner(),
+  ]);
+
+  const owner = directory.find((o) => o.ownerId === ownerId) ?? null;
+  if (!owner) return null;
+
+  const championEntry = champions.find((c) => c.ownerId === ownerId) ?? null;
+  const championYears = championEntry ? [...championEntry.years].sort((a, b) => b - a) : [];
+  const championYearSet = new Set(championYears);
+  const myPlayoffSeasons = playoffSeasons.get(ownerId) ?? new Set<number>();
+
+  // Season-by-season, newest first. A season nobody has played yet contributes nothing —
+  // an 0-0 row for an upcoming season is noise, and mirrors how the season cards on
+  // /history treat weeksPlayed === 0.
+  const perSeason = await Promise.all(
+    options.map(async (opt) => {
+      const [identities, ranked] = await Promise.all([
+        loadOwnerIdentities(opt.id),
+        getRankedSeasonStandings(opt.id),
+      ]);
+      if (ranked.weeksPlayed === 0) return null;
+      const idx = ranked.rows.findIndex((r) => identities.get(r.ownerSeasonId)?.ownerId === ownerId);
+      if (idx === -1) return null;
+      const row = ranked.rows[idx];
+      const identity = identities.get(row.ownerSeasonId)!;
+      const season: OwnerCareerSeason = {
+        seasonId: opt.id,
+        year: opt.year,
+        seasonName: opt.name,
+        teamKey: identity.teamKey,
+        teamName: identity.teamName,
+        logoEspn: identity.logoEspn,
+        wins: row.wins,
+        losses: row.losses,
+        ties: row.ties,
+        pointsFor: row.pointsFor,
+        pointsAgainst: row.pointsAgainst,
+        finish: idx + 1,
+        fieldSize: ranked.rows.length,
+        madePlayoffs: myPlayoffSeasons.has(opt.id),
+        isChampion: championYearSet.has(opt.year),
+      };
+      return season;
+    }),
+  );
+  const seasonRows = perSeason
+    .filter((s): s is OwnerCareerSeason => s !== null)
+    .sort((a, b) => b.year - a.year);
+
+  const wins = seasonRows.reduce((n, s) => n + s.wins, 0);
+  const losses = seasonRows.reduce((n, s) => n + s.losses, 0);
+  const ties = seasonRows.reduce((n, s) => n + s.ties, 0);
+  const pointsFor = seasonRows.reduce((n, s) => n + s.pointsFor, 0);
+  const pointsAgainst = seasonRows.reduce((n, s) => n + s.pointsAgainst, 0);
+  const games = wins + losses + ties;
+
+  // Rivals, from the owner's own perspective (the stored pair is in canonical A/B order).
+  const rivals: OwnerCareerRival[] = [];
+  let robbery: OwnerCareerGame | null = null;
+  let heist: OwnerCareerGame | null = null;
+  for (const rv of rivalries.rivalries) {
+    const isA = rv.ownerA.ownerId === ownerId;
+    const isB = rv.ownerB.ownerId === ownerId;
+    if (!isA && !isB) continue;
+    const opponent = isA ? rv.ownerB : rv.ownerA;
+    rivals.push({
+      opponent,
+      wins: isA ? rv.aWins : rv.bWins,
+      losses: isA ? rv.bWins : rv.aWins,
+      ties: rv.ties,
+      meetings: rv.meetings,
+    });
+    for (const g of rv.games) {
+      const points = isA ? g.aPoints : g.bPoints;
+      const oppPoints = isA ? g.bPoints : g.aPoints;
+      const game: OwnerCareerGame = { year: g.year, week: g.week, points, oppPoints, opponent };
+      if (points < oppPoints && (robbery === null || points > robbery.points)) robbery = game;
+      if (points > oppPoints && (heist === null || points < heist.points)) heist = game;
+    }
+  }
+
+  // Nemesis / favourite victim need a minimum sample: a 1-0 record against someone is not a
+  // rivalry, and surfacing it as one would make the most-played opponents look arbitrary.
+  const decided = rivals.filter((r) => r.meetings >= MIN_RIVALRY_MEETINGS && r.wins + r.losses > 0);
+  const share = (r: OwnerCareerRival) => (r.wins + r.ties * 0.5) / r.meetings;
+  const ranked = [...decided].sort((a, b) => share(a) - share(b) || b.meetings - a.meetings);
+  const nemesis = ranked.length > 0 && share(ranked[0]) < 0.5 ? ranked[0] : null;
+  const best = ranked[ranked.length - 1] ?? null;
+  const favouriteVictim = best && share(best) > 0.5 ? best : null;
+
+  const leader = leaders.leaders.find((l) => l.ownerId === ownerId) ?? null;
+  const playoffs = playoffStats.find((p) => p.ownerId === ownerId) ?? null;
+  const luckRow = luckRows.find((l) => l.ownerId === ownerId) ?? null;
+
+  // Best / average finish, from the season lines already assembled above.
+  const bestSeason = seasonRows.reduce<OwnerCareerSeason | null>(
+    (best, s) => (best === null || s.finish < best.finish ? s : best),
+    null,
+  );
+
+  return {
+    owner,
+    seasonsPlayed: seasonRows.length,
+    wins,
+    losses,
+    ties,
+    winPct: games === 0 ? 0 : (wins + ties * 0.5) / games,
+    pointsFor,
+    pointsAgainst,
+    pointsForPerGame: games === 0 ? 0 : pointsFor / games,
+    pointsAgainstPerGame: games === 0 ? 0 : pointsAgainst / games,
+    pointsDiffPerGame: games === 0 ? 0 : (pointsFor - pointsAgainst) / games,
+    bestWeek: leader?.bestWeek ?? null,
+    championships: championYears.length,
+    championYears,
+    playoffAppearances: playoffs?.appearances ?? 0,
+    playoffWins: playoffs?.playoffWins ?? 0,
+    playoffLosses: playoffs?.playoffLosses ?? 0,
+    weeklyHighs: weeklyHighs.find((w) => w.ownerId === ownerId)?.count ?? 0,
+    luck: luckRow
+      ? { actualWins: luckRow.actualWins, expectedWins: luckRow.expectedWins, luck: luckRow.luck }
+      : null,
+    longestWinStreak: streaks.longestWinStreak.find((s) => s.ownerId === ownerId) ?? null,
+    longestLossStreak: streaks.longestLossStreak.find((s) => s.ownerId === ownerId) ?? null,
+    missedLineups: missedRows.find((m) => m.ownerId === ownerId)?.count ?? 0,
+    bestFinish: bestSeason
+      ? { finish: bestSeason.finish, fieldSize: bestSeason.fieldSize, year: bestSeason.year }
+      : null,
+    averageFinish:
+      seasonRows.length === 0
+        ? null
+        : seasonRows.reduce((n, s) => n + s.finish, 0) / seasonRows.length,
+    nemesis,
+    favouriteVictim,
+    topRivals: [...rivals].sort((a, b) => b.meetings - a.meetings).slice(0, 5),
+    robbery,
+    heist,
+    seasons: seasonRows,
+  };
+}

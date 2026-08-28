@@ -7,7 +7,7 @@
  */
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart, Star, TrendingUp, TrendingDown, AlertCircle, Shuffle, Medal, Target, Zap, Scale } from "lucide-react";
+import { ScrollText, Trophy, Crown, Flame, Swords, Users, LineChart, Star, TrendingUp, TrendingDown, AlertCircle, Shuffle, Medal, Target, Zap, Scale, UserRound } from "lucide-react";
 
 import { Container } from "@/components/container";
 import { PageHeader } from "@/components/page-header";
@@ -633,6 +633,24 @@ export default async function HistoryPage() {
         />
       ) : (
         <>
+          {/* Owner career entry point. Sits ABOVE the leaderboards on purpose: the tables
+              below are top-10 capped, so a mid-pack owner appears in none of them and this
+              is the only route to their own numbers. */}
+          <Link
+            href="/history/career"
+            className="group flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-border-strong hover:bg-surface"
+          >
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="font-semibold text-foreground group-hover:text-accent">
+                Look up any owner&apos;s career →
+              </span>
+              <span className="text-sm text-muted">
+                Every season they&apos;ve played, their titles, rivalries, best week and career record — all in one place.
+              </span>
+            </div>
+            <UserRound className="size-6 shrink-0 text-accent" aria-hidden="true" />
+          </Link>
+
           {/* Champions & seasons */}
           <section aria-label="Champions and seasons" className="flex flex-col gap-5">
             <div className="flex items-center gap-3">
