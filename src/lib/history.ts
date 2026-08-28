@@ -1761,6 +1761,12 @@ export interface OwnerCareerSeason {
   fieldSize: number;
   madePlayoffs: boolean;
   isChampion: boolean;
+  /**
+   * Led the league in regular-season Points For that year — the season the $400
+   * most-points prize pays out on. Sourced from the same `computeStandings` pointsFor the
+   * award uses, so this cannot disagree with the ledger.
+   */
+  wonPointsTitle: boolean;
 }
 
 /** A single regular-season meeting, from the owner's own perspective. */
@@ -1814,6 +1820,29 @@ export interface OwnerCareer {
   bestFinish: { finish: number; fieldSize: number; year: number } | null;
   /** Mean finish across seasons played, on the same 1..fieldSize scale. */
   averageFinish: number | null;
+  /** Seasons leading the league in regular-season Points For, and which years. */
+  pointsTitles: number;
+  pointsTitleYears: number[];
+  /**
+   * Current playoff run, counted in SEASONS THE OWNER PLAYED — not calendar years. An owner
+   * who sat out a season did not extend a drought through it, and saying otherwise would
+   * invent a miss they were never eligible for.
+   *
+   * `berth` = that many consecutive appearances, most recent season first.
+   * `drought` = that many consecutive misses since `lastBerthYear`.
+   * `none` = has never reached the postseason; `count` is seasons played.
+   */
+  playoffRun: {
+    kind: 'berth' | 'drought' | 'none';
+    count: number;
+    lastBerthYear: number | null;
+    /**
+     * For a `berth` run, the year the run STARTED — read off the season line rather than
+     * derived as `lastBerthYear - count + 1`, because seasons played are not necessarily
+     * consecutive calendar years and that subtraction would invent a year the owner sat out.
+     */
+    runStartYear: number | null;
+  };
   /** Worst all-time record against (min 3 meetings). */
   nemesis: OwnerCareerRival | null;
   /** Best all-time record against (min 3 meetings). */
@@ -1957,6 +1986,10 @@ export async function getOwnerCareer(ownerId: number): Promise<OwnerCareer | nul
       if (idx === -1) return null;
       const row = ranked.rows[idx];
       const identity = identities.get(row.ownerSeasonId)!;
+      // Points title = most regular-season Points For. Compared against the max rather than
+      // by re-sorting, so an exact tie awards it to both — matching how the awards ledger
+      // splits the prize instead of picking an arbitrary winner.
+      const maxPointsFor = ranked.rows.reduce((m, r) => (r.pointsFor > m ? r.pointsFor : m), 0);
       const season: OwnerCareerSeason = {
         seasonId: opt.id,
         year: opt.year,
@@ -1973,6 +2006,7 @@ export async function getOwnerCareer(ownerId: number): Promise<OwnerCareer | nul
         fieldSize: ranked.rows.length,
         madePlayoffs: myPlayoffSeasons.has(opt.id),
         isChampion: championYearSet.has(opt.year),
+        wonPointsTitle: ranked.rows.length > 0 && row.pointsFor === maxPointsFor,
       };
       return season;
     }),
@@ -2032,6 +2066,35 @@ export async function getOwnerCareer(ownerId: number): Promise<OwnerCareer | nul
     null,
   );
 
+  const pointsTitleYears = seasonRows.filter((s) => s.wonPointsTitle).map((s) => s.year);
+
+  // Playoff run. seasonRows is newest-first, so the leading run of like results IS the
+  // current streak; counting over played seasons is what keeps a year spent out of the
+  // league from being scored as a miss.
+  const everMade = seasonRows.some((s) => s.madePlayoffs);
+  let playoffRun: OwnerCareer['playoffRun'];
+  if (seasonRows.length === 0 || !everMade) {
+    playoffRun = { kind: 'none', count: seasonRows.length, lastBerthYear: null, runStartYear: null };
+  } else if (seasonRows[0].madePlayoffs) {
+    let n = 0;
+    while (n < seasonRows.length && seasonRows[n].madePlayoffs) n += 1;
+    playoffRun = {
+      kind: 'berth',
+      count: n,
+      lastBerthYear: seasonRows[0].year,
+      runStartYear: seasonRows[n - 1].year,
+    };
+  } else {
+    let n = 0;
+    while (n < seasonRows.length && !seasonRows[n].madePlayoffs) n += 1;
+    playoffRun = {
+      kind: 'drought',
+      count: n,
+      lastBerthYear: seasonRows.find((s) => s.madePlayoffs)?.year ?? null,
+      runStartYear: null,
+    };
+  }
+
   return {
     owner,
     seasonsPlayed: seasonRows.length,
@@ -2064,6 +2127,9 @@ export async function getOwnerCareer(ownerId: number): Promise<OwnerCareer | nul
       seasonRows.length === 0
         ? null
         : seasonRows.reduce((n, s) => n + s.finish, 0) / seasonRows.length,
+    pointsTitles: pointsTitleYears.length,
+    pointsTitleYears,
+    playoffRun,
     nemesis,
     favouriteVictim,
     topRivals: [...rivals].sort((a, b) => b.meetings - a.meetings).slice(0, 5),

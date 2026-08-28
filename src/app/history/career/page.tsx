@@ -77,6 +77,27 @@ function ordinal(n: number): string {
   }
 }
 
+/**
+ * The playoff run, in words. Counted in seasons PLAYED — see `playoffRun` in
+ * src/lib/history.ts for why a season spent out of the league is not a miss.
+ */
+function playoffRunValue(run: OwnerCareer["playoffRun"]): string {
+  if (run.kind === "none") return "Never";
+  return run.kind === "berth" ? `${run.count} straight` : `${run.count} season${run.count === 1 ? "" : "s"}`;
+}
+
+function playoffRunHint(run: OwnerCareer["playoffRun"]): string {
+  if (run.kind === "none") {
+    return run.count === 0 ? "No seasons played" : "Has never reached the postseason";
+  }
+  if (run.kind === "berth") {
+    return run.count === 1
+      ? `Reached the postseason in ${run.lastBerthYear}`
+      : `Postseason every season since ${run.runStartYear}`;
+  }
+  return run.lastBerthYear ? `Last berth ${run.lastBerthYear}` : "Has never reached the postseason";
+}
+
 function signed(n: number, digits = 1): string {
   return `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(digits)}`;
 }
@@ -345,7 +366,7 @@ export default async function OwnerCareerPage({
           <h2 className="text-xl font-bold tracking-tight text-foreground">Records &amp; notes</h2>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {career.luck ? (
             <StatTile
               label="Schedule luck"
@@ -383,6 +404,25 @@ export default async function OwnerCareerPage({
                 ? `${career.bestFinish.year} · ${career.averageFinish.toFixed(1)} average across ${career.seasonsPlayed} season${career.seasonsPlayed === 1 ? "" : "s"}`
                 : "No seasons finished yet"
             }
+          />
+          {/* Label flips with the result: a drought and a run are not the same headline,
+              and one tile reading "Playoff streak: 3" for three straight MISSES would be
+              actively misleading. */}
+          <StatTile
+            label={career.playoffRun.kind === "drought" ? "Playoff drought" : "Playoff berths"}
+            value={playoffRunValue(career.playoffRun)}
+            hint={playoffRunHint(career.playoffRun)}
+            icon={Trophy}
+          />
+          <StatTile
+            label="Points titles"
+            value={career.pointsTitles}
+            hint={
+              career.pointsTitleYears.length > 0
+                ? `Led the league in points: ${career.pointsTitleYears.join(" · ")}`
+                : "Never led the league in regular-season points"
+            }
+            icon={Flame}
           />
         </div>
 
