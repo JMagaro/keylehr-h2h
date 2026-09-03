@@ -11,7 +11,7 @@ import { redirect } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { db, owners } from '@/db';
+import { db, owners, ownerSeasons } from '@/db';
 import { requireAdmin } from '@/lib/auth-helpers';
 
 /** Shape returned to `useActionState` for inline error rendering. */
@@ -105,6 +105,34 @@ export async function updateOwner(
 
   revalidatePath('/admin/owners');
   redirect('/admin/owners');
+}
+
+/**
+ * Flip one owner's entry-fee payment for ONE season.
+ *
+ * Keyed on `ownerSeasons.id`, so it can only ever touch the season the page rendered —
+ * there is no way to express "mark this person paid" without naming which year, which is
+ * the whole reason the flag lives on `owner_seasons` and not on `owners`.
+ *
+ * A commissioner's checklist, nothing more: no ledger, no reconciliation against
+ * `season_awards`, and nothing in the scoring chain reads `paidAt`.
+ */
+export async function togglePaid(formData: FormData): Promise<void> {
+  await requireAdmin();
+
+  const ownerSeasonId = Number(formData.get('ownerSeasonId'));
+  if (!Number.isInteger(ownerSeasonId) || ownerSeasonId <= 0) return;
+
+  // The button posts the state it rendered; we write the opposite. Reading the row first
+  // would be one extra round-trip on the Neon HTTP driver for a value the page just had.
+  const wasPaid = String(formData.get('paid')) === 'true';
+
+  await db
+    .update(ownerSeasons)
+    .set({ paidAt: wasPaid ? null : new Date() })
+    .where(eq(ownerSeasons.id, ownerSeasonId));
+
+  revalidatePath('/admin/owners');
 }
 
 export async function deleteOwner(formData: FormData): Promise<void> {

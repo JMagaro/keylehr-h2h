@@ -205,6 +205,19 @@ export const ownerSeasons = pgTable(
      * the per-season name; season-scoped views show `coalesce(displayName, owners.name)`.
      */
     displayName: varchar({ length: 160 }),
+    /**
+     * When this owner paid THIS SEASON's entry fee; null = outstanding. A commissioner's
+     * checklist, not an accounting ledger — nothing reads it but the admin Owners tab.
+     *
+     * It lives here rather than on `owners` because the fee is per season. A flag on the
+     * global owner row would stay true once everyone had paid, so a new season would open
+     * with all 32 already ticked and need clearing by hand; a new season creates new rows
+     * here, so the checklist resets itself and no one has to remember to.
+     *
+     * A timestamp rather than a boolean for the same reason `createdAt` is: it costs the
+     * same and answers "when" as well as "whether".
+     */
+    paidAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

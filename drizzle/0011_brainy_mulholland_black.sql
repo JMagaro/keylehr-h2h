@@ -1,0 +1,1 @@
+ALTER TABLE "owner_seasons" ADD COLUMN "paid_at" timestamp with time zone;
