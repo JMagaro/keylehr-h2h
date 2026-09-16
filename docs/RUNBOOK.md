@@ -230,19 +230,63 @@ contains and it is parsed structurally, so the exact shape does not matter. Supp
 only when the payload is a single roster with nobody named in it, and fill in **Source URL** when
 you know which DraftKings URL produced it.
 
-Two things to know before trying it:
+Three things to know before trying it:
 
 - **Re-capturing later in the week is not a mistake.** DraftKings Classic allows late swap, every
   capture is kept, and the newest one wins per owner-week.
-- **A paste is not enriched.** The extension sends the DK draft-group id, which is what lets the
-  server resolve each `draftableId` to a name and team; the paste form does not, so a pasted capture
-  keeps only whatever names and teams the payload itself carried.
+- **Fill in the DK draft group id — recommended, not mandatory.** Most payloads name each player's
+  team themselves and this week's earlier captures fill any gaps, so a blank field is **not**
+  automatically fatal any more. It is still the fallback that resolves whatever is left, and it is
+  what gives every player a **position**. The extension sends it automatically; the paste form has
+  a field for it.
+- **Read the result banner for the OUTCOME, not for which source did the work.** The form reports
+  how many players ended up with **no team** (those genuinely cannot be scored) and otherwise says
+  so plainly — including the case where the draft group returned nothing but every player was
+  resolved from the payload anyway, which is a **healthy** capture.
 
 Unmatched DraftKings entry names are listed back to you rather than dropped — by the extension's
 result banner and by the paste form alike. Fix them the same way as a score mismatch: set the
 owner's **DK entry name** in Admin → Assignments, then capture again.
 
 See [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score).
+
+#### Repairing a capture that stored no teams
+
+**Symptom: a week that captured cleanly renders with every owner at 0.00 and every slot
+*unresolved*.** The rosters are there; what is missing is the **team** on each player, and a slot
+with no team can never be matched to an ESPN boxscore. This is not fixable by capturing again —
+DraftKings expires the draftables for an old draft group, so by the time anyone notices, the lookup
+that would have answered no longer does.
+
+**One bad capture is enough.** `/live` reads only the **newest** capture per owner, so a single
+failed late capture supersedes every good one taken earlier that day. That is exactly how 2026
+week 1 happened: three good Sunday captures, one empty draftables fetch on the Tuesday, 288
+unresolved slots.
+
+**How to spot it.** The Admin → Lineups audit table shows the run as **partial** with the reason in
+its error — *"N revealed slot(s) stored with no team and cannot be scored"*, or *"draftables index
+for draft group N returned nothing"*. Before that reporting existed the run read `success`, which
+is why a week of zeros went unnoticed.
+
+**The fix** is `scripts/repair-lineup-identities.ts`. **Run `npm run db:dump` first**: the repair
+writes to captured history, and there is no undo.
+
+```bash
+npx tsx scripts/repair-lineup-identities.ts                         # dry run — reports, writes nothing
+npx tsx scripts/repair-lineup-identities.ts --write                 # apply
+npx tsx scripts/repair-lineup-identities.ts --season=1 --week=1 --write
+```
+
+It refills `name` / `teamKey` / `position` from three sources in order — the capture's **own stored
+raw payload**, sibling captures of the same week, then DK's public draftables endpoint — writes only
+`lineup_snapshots.slots`, only ever **fills nulls**, and is idempotent, so the dry run is free and a
+second pass reports nothing left to do. Anything it still cannot identify is printed by name and id.
+It reads `DATABASE_URL` from `.env.local` like every other script here, so **check which database
+you are pointed at** before `--write`.
+
+Afterwards, reload `/live` and open [Admin → Scoring](#checking-that-our-scoring-still-agrees-with-draftkings)
+to confirm the week now compares. Full account of the failure:
+[`SCORING.md` §15](SCORING.md#when-identity-fails-the-whole-week-fails).
 
 ### Checking that our scoring still agrees with DraftKings
 
@@ -276,10 +320,13 @@ numbers: a spotless verdict over a sample of nine is not a clean bill of health.
 **When to look.** After a completed week, once a post-game capture exists. There is nothing to
 watch mid-Sunday: almost everything will read *Skipped*, correctly.
 
-**What it says today.** Season 1 week 102: 54 slots, 54 agree, 0 rule bugs, max difference 0.00
-across 6 owners — the same result as the hand-done reconciliation that closed the live-scoring
-work, reproduced by a page load. Full rationale, including the verdict definitions and the one
-approximation involved:
+**What it says today.** Season 1 week 102 (preseason): 54 slots, 54 agree, 0 rule bugs, max
+difference 0.00 across 6 owners — the same result as the hand-done reconciliation that closed the
+live-scoring work, reproduced by a page load. Season 1 **week 1** (2026, a full regular-season
+Sunday): **288 slots, 288 agree, 0 rule bugs, 0 unknown stats, 0 no-ESPN-match, 0 skipped, max
+difference 0.00 across 32 owners.** That second one is the check that matters — it is the whole
+slate, not six owners on a preseason contest — and **our scoring rules came through it unchanged**.
+Full rationale, including the verdict definitions and the one approximation involved:
 [`SCORING.md` §15](SCORING.md#does-the-estimate-agree-with-draftkings--the-drift-audit).
 
 ### Playoff weeks
@@ -450,6 +497,7 @@ final sync, and commit the result.
 | Moment | Command |
 | ------ | ------- |
 | Before `db:migrate`, `db:push`, or any importer | `npm run db:dump` |
+| Before `repair-lineup-identities.ts --write` | `npm run db:dump` — it rewrites captured rosters, and there is no undo |
 | After the week's final sync, in season | both |
 | Before re-baselining the snapshot gate | `npm run db:dump` |
 
@@ -496,9 +544,11 @@ migrations:
 | The Week box fills, but with no date line under it | The app could not answer `/api/current-week` — no synced schedule for that season, or the app is unreachable — so the popup fell back to the old contest-name / `currentWeek` guesses | **Do not trust the number.** Pull the schedule (Admin → Schedule) so detection can work, or set the week by hand after checking which week you actually mean. |
 | **Admin → Lineups** errors on a missing relation (`lineup_snapshots` / `lineup_capture_runs`) | Migration `0010` has not been applied to *that* database (production has it) | `npm run db:migrate`. Nothing else depends on it; scoring is unaffected either way. |
 | A capture reads **32/32 owners but only a few players revealed** | Not a fault — DraftKings conceals each player until their game kicks off | Nothing to do. Re-capture after later kickoffs; no points are missing, only names. |
-| A capture reports **0 enriched slots** with revealed players | DK's public draftables lookup for that draft group failed, so no team keys were resolved — the snapshot is stored but not scorable | Re-run **Sync**. Confirm the draft group id resolves at `api.draftkings.com/contests/v1/contests/{contestId}?format=json`. |
+| A capture reports **0 enriched slots** with revealed players | Normally fine: the team came straight out of DraftKings' own payload, so the draftables lookup had nothing left to add. It is no longer a failure signal on its own | Check the capture run's **status** instead — `success` means every revealed slot has a team. See the next row. |
+| A capture run reads **partial** with a team-related error | Either DK's draftables lookup returned nothing, or revealed slots were stored with **no team** — and a slot with no team can never be scored | Re-run **Sync** while the contest is still live. If the week has passed, repair it: [Repairing a capture that stored no teams](#repairing-a-capture-that-stored-no-teams). Confirm the draft group id resolves at `api.draftkings.com/contests/v1/contests/{contestId}?format=json`. |
 | **Sync** reports scores fine but the Lineups card shows a failure | Expected behaviour, not a bug: the roster half is best-effort and reports separately so it cannot cast doubt on the scores | Re-run **Sync**. If it keeps failing, DraftKings may have moved the roster endpoint — use the popup's **Troubleshooting — DraftKings endpoints** panel and send the output to whoever maintains the app. |
 | `/live` shows players as **unresolved** | Those players' games did not load from ESPN — the page says `N/M games loaded` | Usually transient; reload. Unresolved is never scored as 0, so a total showing unresolved slots is a **floor**, not a wrong number. |
+| `/live` shows **every** owner at 0.00 with **every** slot unresolved | A different fault entirely: the newest capture stored no team on any player, and `/live` reads only the newest capture per owner — so one bad capture hides every good one | [Repair the capture](#repairing-a-capture-that-stored-no-teams). Re-syncing will not fix it once DraftKings has expired that draft group. |
 | `/live` shows an owner's total as **—** | No roster was captured for them that week | Run **Sync** from the extension. The page names them rather than showing `0.00`, because zero would be indistinguishable from a forfeit. |
 | `/live` says **"These totals are low — re-sync to fix"** | Games have kicked off since the last capture, so DraftKings would now reveal players it was hiding — those players are scoring and the estimate is excluding them | Hit **Sync** in the extension. This is the expected mid-Sunday workflow, not a fault — see [One capture is not enough](#-one-capture-is-not-enough--sync-again-after-the-last-kickoff). |
 | Totals on `/live` look too low but there's **no** warning | Nothing has kicked off since your capture, so re-capturing would reveal nothing | Not a staleness problem. Check `N/M games loaded` and the unresolved count instead. |

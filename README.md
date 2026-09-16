@@ -92,6 +92,7 @@ npm run dev             # http://localhost:3000
 | `npm run db:push`        | `drizzle-kit push`            | Push the schema directly (dev convenience, no migration file).          |
 | `npm run db:studio`      | `drizzle-kit studio`          | Open Drizzle Studio (DB browser).                                       |
 | `npm run db:seed`        | `tsx src/db/seed/index.ts`    | Seed NFL teams + the current season (idempotent).                       |
+| `npm run db:dump`        | `tsx scripts/db-dump.ts`      | Data-only backup of every table → `backups/<timestamp>/` (gitignored). Run it before anything that writes. See [`docs/RUNBOOK.md` §7](docs/RUNBOOK.md#7-backups-and-recovery). |
 | `npm run admin:hash`     | `tsx scripts/hash-password.ts`| Hash an admin password for `ADMIN_PASSWORD_HASH`.                       |
 | `npm run admin:create`   | `tsx scripts/create-admin.ts` | Create/update a commissioner login in the `users` table.                |
 | `npm run schedule:pull`  | `tsx scripts/pull-schedule.ts`| Pull the NFL schedule from ESPN and generate owner matchups.            |
@@ -102,6 +103,7 @@ npm run dev             # http://localhost:3000
 | `npm run verify:ground-truth` | `tsx scripts/import-season3.ts` | Replay the 2025 season vs the league's published standings.        |
 | `npm run snapshot:standings` | `tsx scripts/snapshot-standings.ts` | **Read-only.** Print what the engine currently derives for the frozen seasons (records, ranked order, seeds, awards). |
 | `npm run verify:baseline`| `tsx scripts/snapshot-standings.ts --write` | **Re-baseline** `scripts/fixtures/standings-baseline.json`. Needs sign-off — 2023–2025 are frozen. See [`docs/RUNBOOK.md`](docs/RUNBOOK.md#6-the-snapshot-gate). |
+| `npm run export:captures`| `tsx scripts/export-captures.ts` | Export the PII-free normalized roster captures to `scripts/fixtures/captures/` (**commit these**) — the one thing DraftKings cannot re-serve once a contest ages out. `-- --write` to actually write. |
 | `npm run import:season`  | `tsx scripts/import-season.ts` | Backfill a season's regular season from its Google Sheet (`--year --sheet --name`). |
 | `npm run import:playoffs`| `tsx scripts/import-playoffs.ts`| Backfill a season's playoff bracket from its sheet (`--season --sheet`).             |
 | `npm run playoffs:import-2025` | `tsx scripts/import-playoffs-2025.ts` | The 2025-specific bracket importer (hardcoded validation); kept alongside the generic one. |
@@ -137,6 +139,7 @@ DailyFantasy/
 │  ├─ pull-schedule.ts          # CLI: ESPN schedule sync + matchup generation
 │  ├─ dfs-selftest.ts           # CLI: DK scoring engine vs Sleeper PPR, a whole week at a time
 │  ├─ live-check.ts             # CLI: score in-progress games from ESPN (the /live engine, no DB)
+│  ├─ repair-lineup-identities.ts # CLI: refill team/name/position a roster capture stored as null
 │  └─ fixtures/                 # Frozen ESPN + DK payloads, and the standings baseline (verify's snapshot gate)
 ├─ src/
 │  ├─ app/                      # Next.js App Router (layout, page, globals.css)

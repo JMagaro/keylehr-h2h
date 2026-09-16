@@ -407,10 +407,13 @@ lineup_capture_runs  (audit)                               │     extractGame  
 
 The join between the two halves — matching a captured DK player to an ESPN athlete — is
 `playerStatKey(name, teamKey)` in `src/lib/live/stats.ts`. Both parts are mandatory: name alone
-collides on real players league-wide. DK's roster payload names nobody and no team, only a
-`draftableId`, so `enrich.ts` resolves that against the **public** draftables endpoint at capture
-time (DK expires draftables for old draft groups, so a snapshot must stand alone). That is what puts
-the `(name, teamKey)` pair on the snapshot the index matches against.
+collides on real players league-wide. DK's roster payload carries a display name but **no team**,
+so the team is resolved at capture time from three sources in order — DK's own `competition` block
+(`normalize.ts`), the **public** draftables endpoint (`enrich.ts`), then the week's earlier captures
+(`ingest.ts`) — because DK expires draftables for old draft groups and a snapshot must stand alone.
+That is what puts the `(name, teamKey)` pair on the snapshot the index matches against, and **a
+snapshot that misses it is unscorable forever**: see
+[`SCORING.md` §15](SCORING.md#when-identity-fails-the-whole-week-fails).
 
 **The projection layer is pure too, and derived rather than stored.** `minutes.ts` turns ESPN's
 `period` + `displayClock` (now carried through `extractGame` into `LiveStatIndex.teamState`) into
@@ -533,6 +536,9 @@ already agree.
   invents drift.
 
 Both modules are covered by `no-write.test.ts` automatically, since the scan discovers files under
-`src/lib/live` rather than enumerating them. **The page and the route are not** — the scan covers
-`src/app/live`, not every consumer — so both carry an explicit read-only header instead. Full
-rationale: [`SCORING.md` §15](SCORING.md#does-the-estimate-agree-with-draftkings--the-drift-audit).
+`src/lib/live` rather than enumerating them. **The page and the route are covered too**, via the
+test's `guardedRouteDirs` — `src/app/live`, `src/app/api/live-status` and
+`src/app/admin/(panel)/scoring` — because a server component can reach the database directly, so
+"the lib layer is clean" would be an incomplete proof. Route dirs are enumerated rather than
+discovered, so **a new live-scoring surface has to be added to that list by hand**. Full rationale:
+[`SCORING.md` §15](SCORING.md#does-the-estimate-agree-with-draftkings--the-drift-audit).

@@ -462,13 +462,13 @@ paths are diagnosed the same way. Written by `ingestLineups` (`src/lib/lineups/i
 | `seasonId`            | integer FK      | NOT NULL → `seasons.id`, `onDelete: cascade`.               |
 | `week`                | integer         | NOT NULL. Same namespaces as `scores`.                      |
 | `dkContestId`         | varchar(64)     | Nullable.                                                   |
-| `status`              | `import_status` | NOT NULL. `success` when every entry matched an owner, `partial` when any did not. |
+| `status`              | `import_status` | NOT NULL. `success` only when every entry matched an owner **and** the capture stored nothing unscorable. `partial` when an entry went unmatched, **or** the draftables index came back empty, **or** any revealed slot was stored with no `teamKey` — the reason is in `error`. `failed` if the snapshot upserts throw. |
 | `entriesTotal`        | integer         | NOT NULL, default 0. Lineups seen in the payload.           |
 | `entriesMatched`      | integer         | NOT NULL, default 0. Resolved to an owner.                  |
 | `entriesUnmatched`    | integer         | NOT NULL, default 0. Reported by name, never written.       |
 | `triggeredBy`         | varchar(64)     | Free-form; today `extension` (the ingest API) or `admin:paste` (the Admin → Lineups form). |
 | `sourceUrlTemplate`   | text            | Nullable. **Which DraftKings URL actually returned rosters.** DK's roster endpoint is undocumented and can only be found from a logged-in browser, so recording the winning template here documents it in the database rather than in someone's memory. Surfaced in the Admin → Lineups audit table. The extension sends its `ROSTER_URL_TEMPLATE` automatically; the paste form has an optional **Source URL** field. See [`DRAFTKINGS.md` §11](DRAFTKINGS.md#11-endpoint-inventory--what-is-public-and-what-needs-auth). |
-| `error`               | text            | Nullable failure detail, written when the snapshot upserts throw — see the note below. |
+| `error`               | text            | Nullable. Two writers: the **degradation** reason recorded alongside a `partial` capture (empty draftables index, or revealed slots stored with no team), and the exception message if the snapshot upserts throw — see the note below. |
 | `rawPayload`          | jsonb           | Raw roster payload retained for debugging/replay.           |
 | `createdAt`           | timestamptz     | NOT NULL, default `now()`.                                  |
 
@@ -515,10 +515,15 @@ One owner's captured DraftKings lineup for one week. **Append-only, versioned by
 
 > **Why `name`/`teamKey`/`position` are denormalized into `slots`.** DK's draftables for a past
 > draft group expire, so a snapshot has to stay self-sufficient without a live DraftKings read.
-> DraftKings' roster payload carries **none of those three** — only a `draftableId` — so
-> `ingestLineups` resolves them against the public draftables endpoint (`src/lib/lineups/enrich.ts`)
-> **before** the row is written. A snapshot with `teamKey: null` on revealed players is not
-> scorable: scoring joins to ESPN on `(name, teamKey)`.
+> DraftKings' roster payload carries a `displayName` but **no `teamAbbreviation` and no position**,
+> so `ingestLineups` resolves them **before** the row is written, from three sources in order: DK's
+> own `competition` block (`src/lib/lineups/normalize.ts`, **team only**), the public draftables
+> endpoint (`src/lib/lineups/enrich.ts`, the only source of `position`), and the week's earlier
+> captures. A snapshot with `teamKey: null` on
+> revealed players is **not scorable** — scoring joins to ESPN on `(name, teamKey)` — and that state
+> is not fixable by re-capturing once the draft group has expired. Repair it with
+> `scripts/repair-lineup-identities.ts`; the whole failure mode is in
+> [`SCORING.md` §15](SCORING.md#when-identity-fails-the-whole-week-fails).
 
 > **Why `revealed` is stored rather than inferred.** DraftKings conceals a player from opponents
 > until that player's game kicks off — the row arrives as `draftableId: 0` with no name. A concealed
@@ -548,8 +553,10 @@ One owner's captured DraftKings lineup for one week. **Append-only, versioned by
 >   when they are not.
 > - **`dkStats` keys are DraftKings' own abbreviations, verbatim, and must stay that way.** The
 >   audit's `DK_TO_OUR_KEY` map was built from real captured payloads (`PaYds PaTD INT RuYds RuTD
->   REC RecYds RecTD SACK DFR Targets`, plus points-allowed tier rows like `7-13 PA`). Normalizing
->   them at write time would destroy the only evidence of what DraftKings actually paid for.
+>   REC RecYds RecTD FUM SACK DFR DefTD BLK 2PT Targets`, the yardage-bonus keys `300+Pass`
+>   `100+Rush` `100+Rec`, and points-allowed tier rows like `7-13 PA` — DK ships the whole ladder,
+>   not just the tier it awarded). Normalizing them at write time would destroy the only evidence of
+>   what DraftKings actually paid for.
 >
 > See [`SCORING.md` §15](SCORING.md#does-the-estimate-agree-with-draftkings--the-drift-audit).
 

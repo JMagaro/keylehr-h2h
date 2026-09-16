@@ -4,12 +4,17 @@ A running "where things stand" doc so a fresh Claude/context window (or contribu
 without re-deriving everything. Update the **Snapshot**, **Recent work** and **Known open items**
 sections as you go; **[Start here](#start-here-fresh-session)** is the entry point.
 
-_Last updated: 2026-08-23 (**three things landed and are NOT yet committed** — see
-[Recent work](#recent-work-newest-first): a **mobile rebuild of `/live`** (presentation only, no
-logic change), **Live Sync now refreshes rosters conditionally** via the new
-**`GET /api/live-status`** (**extension 1.4.0 → 1.5.0**), and a **scoring-drift audit** at
-**Admin → Scoring** that reconciles our per-player numbers against DraftKings' own. `verify` 9/9,
-**349 tests**, typecheck + lint clean. Before that: **live in-progress scoring, Phases 0–5** — the
+_Last updated: 2026-09-16 (**one thing landed and is NOT yet committed** — see
+[Recent work](#recent-work-newest-first): **roster-capture identity made failure-proof**, after
+2026 week 1 rendered as 288 unresolved slots. The DK scoring engine was audited player-by-player
+against DraftKings' own numbers and found **exactly correct** — 288/288 slots and 32/32 owner
+totals, max |delta| 0.00, and **`pointsAllowedMode: 'raw'` settled** against the ATL/PIT game that
+separates the two modes. The defect was identity,
+not arithmetic. `verify` 9/9, **369 tests**, typecheck + lint clean. The 2026-08-23 work below —
+the mobile `/live` rebuild, the conditional roster refresh (**extension 1.5.0**) and the
+**scoring-drift audit** — **is now committed** (`b11d448`, `18a8b95`, `28ce62b`); so is the backup tooling
+(`5c4c1d9`) and the `/history` career work after it. Before that: **live in-progress scoring,
+Phases 0–5** — the
 pure DK engine + ESPN adapter, roster capture/storage with migration `0010` **applied**, the
 `draftableId` → identity bridge, `src/lib/live/` incl. **capture-staleness detection**, the
 **`/live`** + **`/live/[matchupId]`** pages, one-button Sync in the extension, `liveTag` wired to
@@ -31,17 +36,20 @@ tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model
   Phase 0–5 write-up — on top of the earlier 12-commit run `d0ba364` … `e2a3f1a`. **Those commit
   messages are the real design record** — read them before touching the scoring, live or playoff
   paths; each one states the bug, the decision and what was rejected.
-  > **Push check.** ⚠️ **The 2026-08-23 work is UNCOMMITTED** — the mobile `/live` rebuild, the
-  > Live Sync roster refresh (extension **1.5.0**) and the scoring-drift audit are all in the
-  > working tree, not in a commit and not deployed. `git status` is the check; `git diff HEAD`
-  > shows the lot. Everything before it is pushed: `54fcc22..0b2f686` went to `origin/main` on
-  > 2026-08-16 and Vercel deployed it, verified in production (`/live` 200,
-  > `/live/[matchupId]` 200, `/api/current-week` 200 — the local `INGEST_TOKEN` works against prod,
-  > same value — and `/preseason` correctly 404). Always re-check with
+  > **Push check.** ⚠️ **The 2026-09-16 identity work is UNCOMMITTED** — ten modified files under
+  > `src/lib/{dfs,lineups,live}` and `src/app/admin/(panel)/lineups/`, plus the new
+  > `scripts/repair-lineup-identities.ts`, in the working tree
+  > and not deployed. `git status` is the check; `git diff HEAD` shows the lot. The 2026-08-23 work
+  > that used to sit here **is committed** (`28ce62b` the drift audit, `dc483ec` the projection
+  > fix), as is everything after it up to `41bcd22`. Always re-check with
   > `git log origin/main..main`; anything listed is unpushed work from a later session.
   >
-  > **Nothing new needs a migration.** The audit adds no table and the endpoint adds no column —
-  > both read what is already stored. Deploying is a push; there is no `db:migrate` step.
+  > **Nothing new needs a migration.** The identity work changes no schema — it writes the same
+  > `lineup_snapshots.slots` jsonb — and the drift audit adds no table. Deploying is a push; there
+  > is no `db:migrate` step. **The production data repair has already been applied**, though:
+  > `scripts/repair-lineup-identities.ts --season=1 --week=1 --write` fixed 288 slots across 32
+  > snapshots, with a pre-repair backup of all **128** season-1 week-1 snapshot rows kept at
+  > `backups/lineup-snapshots-s1w1-preRepair.json` (gitignored — see `.gitignore`).
 
 ## 🛑 Two structural ideas — do not undo either
 
@@ -429,7 +437,75 @@ Sleeper PPR as a free proxy).
 
 ## Recent work (newest first)
 
-- **Scoring-drift audit: Admin → Scoring** (⚠️ **uncommitted**). Tests 333 → **349**. New pure
+- **Roster-capture identity made failure-proof; the DK engine audited and found CORRECT**
+  (⚠️ **uncommitted**, 2026-09-16). Tests 356 → **369**; `verify` 9/9 including the production
+  build and the frozen-season byte-identical snapshot. Files: `src/lib/lineups/{normalize,enrich,
+  ingest}.ts`, `src/lib/live/reconcile.ts`, and the new `scripts/repair-lineup-identities.ts`.
+  Written up in [`SCORING.md` §15](SCORING.md#when-identity-fails-the-whole-week-fails).
+  - **🛑 THE HEADLINE: the scoring rules were never wrong.** 2026 week 1 was audited
+    player-by-player against DraftKings' own captured per-player scores and stat lines. With
+    identity restored, **all 288 slots and all 32 owner totals reproduce DraftKings to the cent**
+    — max |delta| **0.00**. **No scoring rule was changed.** Do not go looking for one.
+  - **`pointsAllowedMode: 'raw'` is SETTLED, against the case that actually separates the modes.**
+    **Atlanta's DST conceded 20 to Pittsburgh and 7 of those points — a defensive TD plus the extra
+    point — were scored by PITTSBURGH'S DEFENSE against Atlanta's own offense.** Carve-out ⇒ 13
+    allowed ⇒ `7-13 PA`, +4; DraftKings' own captured row reads **`14-20 PA = 1(1)`**, the raw 20,
+    +1. We scored ATL 5.00 vs DK 5.00. Every DST agreed: 32 DST slots over **11 distinct rostered
+    defenses** (JAX MIA PHI PIT TEN NYJ ATL LV HOU LAC CLE), including a 36-points-allowed game in
+    the bottom `35+ PA` = **−4** tier — but note **exactly one** of those games tested the
+    carve-out. Rationale now lives in the `PointsAllowedMode` doc comment in `src/lib/dfs/rules.ts`.
+  - **The defect was IDENTITY, not arithmetic**, and the chain is the lesson. A capture identifies
+    players by `draftableId` only; team came solely from DK's public draftables endpoint at capture
+    time; `fetchDraftableIndex` **swallows errors and returns an EMPTY MAP**; `enrichLineups` then
+    passed lineups through untouched, so the week's 4th capture stored every slot with
+    `teamKey: null`; a slot with no team can never match an ESPN boxscore; and **`/live` scores the
+    NEWEST capture per owner only**, so that one bad capture **discarded three good ones**. The run
+    logged `status: 'success'`. The week rendered as **288 unresolved slots, every owner 0.00**.
+  - **DraftKings had the team all along: `competition.nameDisplay[].isEmphasized`.** The fragments
+    belonging to the player's own side are flagged — `{value:"NO",isEmphasized:true}` in
+    `"NO 30 @ DET 31"`. `readCompetitionTeam` (`normalize.ts`) reads it, and it is now the
+    **primary** source, which takes the network out of the critical path. Validated: matched the
+    independently-enriched team on **all 286 slots that had one, zero mismatches**, and resolved the
+    2 slots enrichment never reached. It accepts **only a single emphasized 2–4 letter alphabetic
+    fragment** and otherwise refuses to guess — a wrong guess puts a player on the wrong defense's
+    schedule. An explicit `teamAbbreviation` still wins when DK sends one. ⚠️ The frozen preseason
+    fixture has **no** `nameDisplay`, so the field is not guaranteed; it is a chain, not a
+    replacement.
+  - **Three more layers, each closing a different link.** `EnrichResult.indexUnavailable`
+    distinguishes "the lookup failed" from "nothing needed enriching" (previously identical
+    results) · `backfillIdentities` in `ingest.ts` carries identity forward from the same week's
+    earlier captures by `draftableId`, so **a newer capture can never be worse than an older one**,
+    and only ever fills nulls · `ingestLineups` counts `slotsWithoutTeam` and records the run
+    **`partial` with an `error`** when the index was unavailable or any revealed slot stored with no
+    team. `IngestLineupsResult` gains `backfilledSlots`, `draftablesUnavailable`, `slotsWithoutTeam`
+    — **the HTTP response shape of `/api/ingest/lineups` is deliberately unchanged.**
+  - **The audit itself had two bugs, and both blamed correct rules.** `DK_TO_OUR_KEY` gained DK's
+    three yardage-bonus keys (`300+Pass` `100+Rush` `100+Rec`) — without them a bonus produced
+    **two** phantom findings, `unmapped` on DK's row *and* an unpaid-for component on ours. Bonuses
+    now compare by **points only** (`BONUS_OUR_KEYS`), because DK counts the bonus as 1 while we
+    record the yardage that earned it. And `isUnawardedTierRow` skips DK's **unawarded**
+    points-allowed rows: DK ships the whole ladder (`0 PA=0(0) 1-6 PA=0(0) 7-13 PA=1(4)`), so every
+    DST was reporting 2–3 phantom differences.
+  - **`scripts/repair-lineup-identities.ts` — RUN AGAINST PRODUCTION.** Refills team/name/position
+    a capture stored as null, from the capture's own raw payload → sibling captures → the public
+    draftables endpoint. Writes only `lineup_snapshots.slots`, only fills nulls, idempotent, dry-run
+    by default. Repaired **288 slots across 32 snapshots** for 2026 week 1; pre-repair backup of all
+    **128** season-1 week-1 snapshot rows at `backups/lineup-snapshots-s1w1-preRepair.json`
+    (gitignored). Afterwards the
+    drift audit reads **288 agree, 0 ruleDrift, 0 statDrift, 0 unmapped, 0 unmatched,
+    0 notComparable, max |delta| 0.00**. Operational detail:
+    [`RUNBOOK.md`](RUNBOOK.md#repairing-a-capture-that-stored-no-teams).
+  - **Admin → Lineups now reports the OUTCOME, not which source did the work.** Both of its old
+    warnings were wrong in the new world: `!draftGroupId` no longer implies an unscorable capture,
+    and `enrichedSlots === 0` is a **healthy** result when the payload arrived complete. `actions.ts`
+    branches on `result.slotsWithoutTeam` instead, with a secondary branch for
+    `result.draftablesUnavailable` that says the capture is still scorable. The draft-group hint in
+    `lineups-form.tsx` is now "recommended" rather than "needed to score this capture" — it remains
+    the **only** source of a player's `position`.
+  - **The generalisable rule: a swallowed error is only safe if the caller can tell it happened.**
+    Returning an empty map instead of throwing was the right call. Giving the caller no way to know
+    was not — and it cost a whole week of live scoring, behind four green capture runs.
+- **Scoring-drift audit: Admin → Scoring** (committed in `28ce62b`). Tests 333 → **349**. New pure
   module `src/lib/live/reconcile.ts` (`reconcileSlot` / `reconcileWeek`,
   `RECONCILE_TOLERANCE = 0.01`; 14 tests) and its read-only DB half `reconcile-query.ts`
   (`reconcileWeekFromDb`, `buildReconciliation`, `getReconcilableSeasons`, `getCapturedWeeks`).
@@ -472,8 +548,8 @@ Sleeper PPR as a free proxy).
     re-engineered from **append-only to update-in-place**, plus per-game state recorded on each
     slot, to correct a discrepancy measured at **0.00**. This audit is how we would find out if
     that ever stops being true — **only then** is it worth reopening.
-- **Live Sync now refreshes rosters, conditionally; `GET /api/live-status`** (⚠️ **uncommitted**,
-  extension **1.4.0 → 1.5.0**). New route `src/app/api/live-status/route.ts` — bearer
+- **Live Sync now refreshes rosters, conditionally; `GET /api/live-status`** (committed in
+  `18a8b95`, extension **1.4.0 → 1.5.0**). New route `src/app/api/live-status/route.ts` — bearer
   `INGEST_TOKEN`, CORS mirroring `/api/current-week`, returns
   `{ shouldRecapture, reason, hasCapture, capturedAt, concealedSlots, gamesStartedSinceCapture,
   gamesLoaded, gamesTotal, matchups, missingCaptures }`. Contract in
@@ -503,7 +579,7 @@ Sleeper PPR as a free proxy).
     New persisted state: `lastRosterSync`, `lastRosterError`. `popup.js` `renderLive()` shows them.
     The capture reuses the popup's **existing** `CAPTURE_ROSTERS` bridge — one tested capture path,
     not two.
-- **Mobile rebuild of `/live` — no logic change** (⚠️ **uncommitted**). Presentation only; the data
+- **Mobile rebuild of `/live` — no logic change** (committed in `b11d448`). Presentation only; the data
   path, the five slot states and every number are untouched.
   - **`matchup-detail.tsx`:** the mirrored `grid-cols-[1fr_auto_1fr]` layout is now **`sm:` and up
     only**. Below `sm` the same data renders **STACKED** — one block per roster slot with both
@@ -832,12 +908,15 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
 
 **Needs a decision or a fix**
 
-- **`pointsAllowedMode` is still unsettled.** It ships `'raw'`; DK has historically excluded points
-  its DST was not on the field for. The 0.00 reconciliation was on a **preseason** contest with 6
-  owners, which barely exercises the DST tiers. `dkStats` is the instrument — and **Admin → Scoring
-  is now the tool that reads it**: a wrong mode lands a DST exactly one tier off, which surfaces as
-  a **rule bug** on that DST row with the points-allowed component named. Settle it on a
-  regular-season week with a defensive or return TD.
+- ✅ **`pointsAllowedMode` is SETTLED — `'raw'`, measured (2026-09-16).** This entry used to ask for
+  a regular-season week with a defensive or return TD. Week 1 supplied it: **Atlanta's DST conceded
+  20 to Pittsburgh, 7 of them scored by PITTSBURGH'S DEFENSE against Atlanta's own offense.**
+  Carve-out ⇒ 13 allowed ⇒ `7-13 PA`, +4. DraftKings' own captured row: **`14-20 PA = 1(1)`** — the
+  raw 20, +1. We scored that DST 5.00 against DK's 5.00. **Do not "fix" this to
+  `exclude_scores_against_offense` because the rules page reads that way** — the measurement says
+  otherwise. The `PointsAllowedMode` doc comment in `src/lib/dfs/rules.ts` is the authority, and
+  re-checking is now a page load: a wrong mode shows up in Admin → Scoring as a DST one tier off.
+  (`npm run dfs:selftest` still will not catch it — QB/RB/WR/TE only.)
 - **⚠️ No capture has ever carried `dkProjection`, so projections and win probability have never
   run on real data.** All 216 stored slots across the four week-102 captures have it `null`.
   **Diagnosed 2026-08-25 — the parser is NOT at fault, and this is now well understood:**
@@ -869,28 +948,35 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
   claiming we expected them to finish exactly where they stood. `LineupProjection` now carries
   `projectedSlots`; the detail page renders nothing when it is `0`, and marks a partial
   projection as a floor (`proj 141.20+`) rather than passing it off as complete.
-- **The capture that proved the path was preseason, on one season.** Season 1 / week 102, 6 owners,
-  54 slots. A full 32-owner regular-season Sunday has not been exercised end to end, and **a ~16-game
-  cold render has never been tested against `maxDuration = 30`** (the fan-out runs at concurrency 6;
-  the proving capture needed a fraction of that). If a cold Sunday render times out, start here.
+- ✅ **A full 32-owner regular-season Sunday HAS now been exercised end to end** (2026 week 1: 288
+  slots, 288 agree, max |delta| 0.00) — the old "it was only preseason, 6 owners, 54 slots" caveat
+  is discharged. What that week did **not** settle: **a ~16-game cold render has never been tested
+  against `maxDuration = 30`** (the fan-out runs at concurrency 6). If a cold Sunday render times
+  out, start here.
   ✅ **Append-only versioning is no longer on this list** — week 102 now holds three capture
   versions per owner, newest winning, nothing overwritten.
 - **The drift audit's coverage grows with the seasons, and two of its limits are worth knowing.**
   `DK_TO_OUR_KEY` in `src/lib/live/reconcile.ts` was built from **observed** payloads, so a stat
   DraftKings has never paid for in a captured week reads as `unmapped` the first time it appears —
-  by design, but it means "0 unmapped" is not a completeness proof. And
-  `ASSUMED_GAME_LENGTH_MS = 4h` in `reconcile-query.ts` can only make the sample **smaller**, never
-  wrong; read the "N of M compared" line, not just the verdict counts.
+  by design, but it means "0 unmapped" is not a completeness proof. 2026 week 1 is the proof of
+  that: the first real slate added the three yardage-bonus keys and DK's points-allowed **ladder**,
+  neither of which a preseason contest had ever produced, and until they were handled the audit
+  reported phantom findings against correct rules. And `ASSUMED_GAME_LENGTH_MS = 4h` in
+  `reconcile-query.ts` can only make the sample **smaller**, never wrong; read the "N of M
+  compared" line, not just the verdict counts.
 - ✅ **Two live-scoring surfaces outside `no-write.test.ts`'s scan — FIXED before the push.**
   `src/app/api/live-status/route.ts` and `src/app/admin/(panel)/scoring/page.tsx` are now scanned
   alongside `src/lib/{dfs,lineups,live}` and `src/app/live`, and **each route dir is asserted
   individually** — a guard that silently scans nothing passes, so a typo'd path had to be made
   impossible to miss. 24 → 30 assertions.
-- **A pasted capture is never enriched.** Admin → Lineups sends no `draftGroupId`, so
-  `ingestLineups` skips `enrichLineups` and the snapshot keeps only whatever names/teams DK's payload
-  carried — which for a real DK roster payload is *none*. That makes a pasted capture unscorable by
-  design. Either thread a draft-group id through the form or accept the paste box as a
-  store-the-evidence fallback only.
+- ✅ **"A pasted capture is never enriched" — CLOSED, and this entry was stale.** Admin → Lineups
+  has a **DK draft group id** field (`lineups-form.tsx` → `actions.ts`) and threads it into
+  `ingestLineups`, so a paste enriches exactly like an extension capture. Left blank it skips the
+  draftables step, but since 2026 week 1 that is **not** automatically fatal — the team is read from
+  DK's `competition` block first, and only `position` is genuinely lost. The form's banner now
+  reports the **outcome** (`slotsWithoutTeam`) instead of inferring failure from a missing draft
+  group id or from `enrichedSlots === 0`, both of which are healthy results on a payload that
+  arrived complete. See [`SCORING.md` §15](SCORING.md#when-identity-fails-the-whole-week-fails).
 - ✅ **`dkProjection` NaN on legacy snapshots — FIXED in `0b2f686`.** `slots` is jsonb, so the
   field needed no migration and older rows simply lack the key; `undefined` slipped past an
   `=== null` guard and turned the projection arithmetic into `NaN`. Now hydrated on read via
@@ -994,15 +1080,18 @@ driver means one query = one round-trip, so batch writes.
 
 ## ▶ Next session: start here
 
-Live scoring is **built and deployed**; the 2026-08-23 work on top of it (mobile `/live`, the
-conditional roster refresh, the drift audit) is **written, verified and uncommitted**. The
-remaining work is confirmation, not construction.
+Live scoring is **built and deployed**, and as of 2026-09-16 it has been checked against a real
+regular-season week and found exact. The **2026-09-16 identity work is written, verified and
+uncommitted**; everything before it is committed through `41bcd22`.
 
-**0. Commit and push the working tree.** `git status` lists nine modified files and four new ones.
-`npm run verify` is 9/9 and 349 tests pass as it stands. **No migration is involved** — the audit
-adds no table and `/api/live-status` adds no column. Read
-[Recent work](#recent-work-newest-first) for what each piece decided and what was rejected; that is
-the design record until these land as commits.
+**0. Commit and push the working tree.** `git status` lists **ten modified files** under
+`src/lib/{dfs,lineups,live}` and `src/app/admin/(panel)/lineups/`, plus the new
+`scripts/repair-lineup-identities.ts`. `npm run verify` is
+9/9 and **369 tests** pass as it stands. **No migration is involved** — the identity work writes
+the same `lineup_snapshots.slots` jsonb. Note the **production data repair has already been
+applied** (288 slots, 32 snapshots, season 1 week 1), so the database is ahead of the code until
+this lands. Read [Recent work](#recent-work-newest-first) for what each piece decided and what was
+rejected; that is the design record until these become commits.
 
 **1. ✅ CLOSED — the second week-102 capture has landed.** Older notes here asked for it. The
 database now holds **four** captures for season 1 / week 102: two mid-slate on 2026-08-15
@@ -1034,11 +1123,13 @@ item 2 above, which is about the value never being *present*), the paste path no
 (fixed — the form takes a draft group id), and DraftKings' PMR "different rule" (it was a stale
 `eTag` row, not a rule).
 
-**What is genuinely still open** is the risks in *Open items* below: `pointsAllowedMode`
-unconfirmed (**Admin → Scoring is now the instrument for settling it** — a wrong mode lands a DST
-one tier off and surfaces as a rule bug on that row), `dkProjection` never captured, a 16-game cold
-render untested against `maxDuration = 30`, and the win-probability standard deviation being an
-assumed constant. None blocks use; all of them want a real regular-season week.
+**What is genuinely still open** is the risks in *Open items* below. Two of them **closed on
+2026-09-16**: `pointsAllowedMode: 'raw'` is now **settled** — measured against the ATL/PIT game
+where the carve-out would have given a different tier, and DraftKings paid the raw one — and
+the engine has now been reconciled against DraftKings on a **full 32-owner regular-season Sunday**
+at max |delta| 0.00. Still open: `dkProjection` never captured, a 16-game cold render untested
+against `maxDuration = 30`, and the win-probability standard deviation being an assumed constant.
+None blocks use.
 
 ## Map of the important code
 
@@ -1099,9 +1190,11 @@ assumed constant. None blocks use; all of them want a real regular-season week.
   [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). Shared
   helper: `src/lib/nfl/team-keys.ts` (`normalizeTeamKey`, one copy for DK + Sleeper + ESPN)
 - Roster **capture** for that estimate: `src/lib/lineups/` — `normalize.ts` (pure, structural,
-  30 tests) · `enrich.ts` (`draftableId` → name/team/position, 7 tests) · `ingest.ts`
-  (`ingestLineups`) · `query.ts` (`getCaptureStatus`, `DISTINCT ON`) ·
-  **`no-write.test.ts` (the invariant, enforced)**. Routes: `src/app/api/ingest/lineups/` +
+  37 tests; also reads the team off DK's `competition` block) · `enrich.ts` (`draftableId` →
+  name/team/position, 8 tests) · `ingest.ts` (`ingestLineups`, + identity backfill from the week's
+  earlier captures) · `query.ts` (`getCaptureStatus`, `DISTINCT ON`) ·
+  **`no-write.test.ts` (the invariant, enforced)**. Repair tool:
+  `scripts/repair-lineup-identities.ts`. Routes: `src/app/api/ingest/lineups/` +
   `src/app/admin/(panel)/lineups/`. Tables `lineup_snapshots` / `lineup_capture_runs`
   (migration 0010, applied). Shared with the score ingest:
   `src/lib/ingest/{auth,week-schema}.ts` + `src/lib/scores/owner-match.ts`. The capture side of the
@@ -1113,10 +1206,10 @@ assumed constant. None blocks use; all of them want a real regular-season week.
   home of the five slot states) · `staleness.ts` (**pure**, `assessCaptureStaleness` /
   `countConcealedSlots`, 8 tests — the "re-sync, your totals are low" detector) · `minutes.ts`
   (**pure**, `minutesLeftInGame` / `lineupMinutes`, 12 tests — how much football is left) ·
-  `projection.ts` (**pure**, `projectSlot` / `projectLineup` / `winProbability`, 14 tests —
+  `projection.ts` (**pure**, `projectSlot` / `projectLineup` / `winProbability`, 20 tests —
   DraftKings' own projection formula plus a labelled win-probability **model**) ·
-  `reconcile.ts` (**pure**, `reconcileSlot` / `reconcileWeek`, 14 tests — do we agree with
-  DraftKings, player by player) · `reconcile-query.ts` (**reads only**: `reconcileWeekFromDb`,
+  `reconcile.ts` (**pure**, `reconcileSlot` / `reconcileWeek`, 19 tests — do we agree with
+  DraftKings, player by player; knows DK's bonus keys and its points-allowed ladder) · `reconcile-query.ts` (**reads only**: `reconcileWeekFromDb`,
   `buildReconciliation`, `getReconcilableSeasons`, `getCapturedWeeks`; holds
   `ASSUMED_GAME_LENGTH_MS`, the feature's one approximation) · `query.ts`
   (**reads only**: `getLiveWeekData`, `getDefaultLiveWeek`, `getMatchupLocation`). Routes:

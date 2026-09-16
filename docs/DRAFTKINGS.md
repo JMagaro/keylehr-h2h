@@ -378,21 +378,87 @@ with no name. Three consequences, all easy to misread as bugs:
 A real captured entry is frozen at `scripts/fixtures/dk-roster-entry.json` (contest `193778304`,
 draft group `152064`, captured 2026-08-15). Note what a *revealed* row does carry: `displayName`,
 `rosterPosition`, `draftableId`, DK's own `score`, a `stats[]` breakdown and a `competition` block —
-but **no team and no position**.
+but **no `teamAbbreviation` and no position**.
+
+> **DraftKings does name the player's team — in `competition.nameDisplay[]`.** It went unnoticed
+> because the obvious field simply does not exist, so nobody looked further. The regular-season
+> payload ships the fixture as display fragments, and the ones belonging to the **player's own
+> side** are flagged `isEmphasized`:
+>
+> ```json
+> "competition": {
+>   "name": "NO 30 @ DET 31",
+>   "nameDisplay": [
+>     { "value": "NO", "isEmphasized": true },
+>     { "value": " 30" },
+>     { "value": " @ " },
+>     { "value": "DET" },
+>     { "value": " 31" }
+>   ]
+> }
+> ```
+>
+> `readCompetitionTeam` in `src/lib/lineups/normalize.ts` reads it, and it is now the **primary**
+> team source — which takes the network out of a capture's critical path entirely. The value goes
+> through the same `normalizeTeamKey` as every other provider abbreviation (DK's `WAS` → `WSH`).
+> Validated on 2026 week 1: the emphasized abbreviation matched the independently-enriched team on
+> **all 286 slots that had one, zero mismatches**, and resolved the two slots enrichment never
+> reached.
+>
+> **Only a SINGLE emphasized 2–4 letter alphabetic fragment is accepted.** Score fragments (`" 30"`)
+> are emphasized too on some payloads; and a fixture that emphasises both sides, or neither, says
+> nothing about which side the player is on — guessing there would put a player on the wrong
+> defense's schedule. Anything ambiguous falls through to the draftables lookup instead.
+>
+> ⚠️ **The frozen fixture above predates this and does NOT carry `nameDisplay`** — its
+> `competition` block has only `name`, `timeStatus` and the score attributes. So the field is
+> **not guaranteed**, which is exactly why it is a fallback chain and not a replacement. Why any of
+> this matters more than it sounds:
+> [`SCORING.md` §15](SCORING.md#when-identity-fails-the-whole-week-fails).
 
 > **`stats[]` is worth keeping.** It is DraftKings' own per-stat account of the game
 > (`{ key: "RecYds", value, points }`), and it exists **only at capture time** — the authenticated
 > roster endpoint is the only place it appears, and it is gone once the contest ages out. Stored as
 > `slots[].dkStats`, it is the sharpest available check on the ESPN extractor: a matching *total*
-> can hide two compensating errors, a per-stat diff cannot. It is also how `pointsAllowedMode`
-> ([`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score)) gets
-> settled empirically instead of by guesswork. It is never used to score.
+> can hide two compensating errors, a per-stat diff cannot. It is also what **settled**
+> `pointsAllowedMode` ([`SCORING.md` §15](SCORING.md#what-ships-today--the-engine-phase-1)) instead
+> of leaving it to a reading of DK's rules page: in 2026 week 1 Atlanta's DST conceded 20 to
+> Pittsburgh with **7 of those points scored by Pittsburgh's defense against Atlanta's own
+> offense**, and DK's own captured row reads `14-20 PA = 1(1)` — the **raw** 20, not the 13 the
+> carve-out would give. `'raw'` it is. It is never used to score.
+>
+> **The key vocabulary, as observed on a full regular-season slate (2026 week 1):**
+>
+> ```text
+> offense   PaYds  PaTD  INT  RuYds  RuTD  REC  RecYds  RecTD  FUM  2PT  Targets
+> defense   SACK  INT  DFR  DefTD  BLK   + the points-allowed tier ladder ("7-13 PA")
+> bonuses   300+Pass   100+Rush   100+Rec
+> ```
+>
+> Four of those need care. The first two produced **phantom** findings in the drift audit until
+> they were handled, each one blaming scoring rules that were correct:
+>
+> - **A yardage bonus is its own row with `value: 1`** — `{ key: "100+Rec", value: 1, points: 3 }`
+>   — never a component of the yardage that earned it.
+> - **DraftKings ships the ENTIRE points-allowed ladder, not just the tier it awarded.** A defense
+>   that conceded 13 arrives as `0 PA` (value 0, 0 pts), `1-6 PA` (value 0, 0 pts), `7-13 PA`
+>   (**value 1**, 4 pts). Only the row with `value: 1` is the award; the rest are "not this tier".
+> - **`INT` is one key for two stats** — thrown by a quarterback, caught by a defense — separable
+>   only by whose slot it sits on.
+> - **`Targets` carries 0 points**, because DK Classic does not pay for targets.
+>
+> How each is treated is in
+> [`SCORING.md` §15](SCORING.md#the-verdicts-and-why-they-are-separate).
 
-**The payload identifies players by `draftableId` alone** — no team abbreviation, no player
-position. Scoring reaches ESPN by `(normalizeName, teamKey)`, so a raw capture is not scorable
-until those ids are resolved against the **public** draftables endpoint above. That bridge is
-`src/lib/lineups/enrich.ts`, and it runs at **capture** time because DK expires draftables for old
-draft groups — see [§12](#12-the-roster-ingest-endpoint-implemented).
+**The payload identifies players by `draftableId` alone** — no `teamAbbreviation`, no player
+position. Scoring reaches ESPN by `(normalizeName, teamKey)`, so a slot with no team is not
+scorable at all. Identity is therefore pinned at **capture** time, from three sources in order: the
+payload's own `competition` block (above), the **public** draftables endpoint
+(`src/lib/lineups/enrich.ts`), then the week's earlier captures. It happens at capture because DK
+expires draftables for old draft groups and a snapshot has to stand alone months later. See
+[§12](#12-the-roster-ingest-endpoint-implemented) — and
+[`SCORING.md` §15](SCORING.md#when-identity-fails-the-whole-week-fails) for what a whole week looks
+like when only one of those three sources exists and it fails silently.
 
 The extension still ships that probe panel (added in v1.1.0, relabelled **Troubleshooting —
 DraftKings endpoints** in v1.3.0) — it walks candidate URL templates from inside the DK page and,
@@ -466,9 +532,12 @@ boxscore during games. It writes only `lineup_snapshots` / `lineup_capture_runs`
 > **Who calls it.** The Chrome extension posts `rawLineups` here — from the **Capture lineups**
 > button in v1.2.0, and from the single **Sync** button since v1.3.0, which does scores and rosters
 > off one leaderboard read. The **Admin → Lineups** paste box does *not* go through this endpoint — it calls the same
-> `ingestLineups` directly from a server action with `triggeredBy = 'admin:paste'`, and it sends no
-> `draftGroupId`, so **a pasted capture is never enriched**: it keeps only the names and teams DK's
-> own payload happened to carry.
+> `ingestLineups` directly from a server action with `triggeredBy = 'admin:paste'`. It has its own
+> **DK draft group id** field and passes it through, so **a pasted capture is enriched exactly like
+> an extension one when that field is filled in.** Leaving it blank skips the draftables step but no
+> longer implies an unscorable capture — the payload usually names each player's team itself. The
+> form reports the **outcome**: how many players ended with no team, and, when the draft group
+> returned nothing but everything resolved anyway, that the capture is still scorable.
 
 **Auth.** `Authorization: Bearer <INGEST_TOKEN>` — the same token and the same constant-time
 comparison as §10, now shared via `src/lib/ingest/auth.ts`. Missing header, wrong token, or a server
@@ -504,12 +573,16 @@ plus a slot or a name — and walks the tree for them. Posting DK's payload verb
 though nobody has typed its schema, and keeping that parsing on the server means one tested
 implementation instead of a second copy inside the extension.
 
-**`draftableId` → identity happens here, at capture time.** DK's roster payload carries no team
-abbreviation and no player position. When `draftGroupId` is supplied, `ingestLineups` calls
-`enrichLineups` (`src/lib/lineups/enrich.ts`), which indexes the **public** draftables endpoint by
-`draftableId` and fills in `name` / `teamKey` / `position` before the snapshot is written. Values
-already present in DK's own payload always win. This runs on capture rather than on read because DK
-expires draftables for old draft groups — a snapshot has to stand alone months later.
+**`draftableId` → identity happens here, at capture time — from three sources.** DK's roster
+payload carries no `teamAbbreviation` and no player position, and a slot with no team is never
+scorable. `ingestLineups` therefore fills `name` / `teamKey` / `position` before the snapshot is
+written, trying, in order: **(1)** what `normalizeRosterPayload` already read out of DK's own
+`competition` block ([§11](#the-roster-endpoint-found--this-is-the-one)); **(2)** the **public**
+draftables endpoint, via `enrichLineups` (`src/lib/lineups/enrich.ts`), when `draftGroupId` is
+supplied; **(3)** this week's earlier captures, keyed by `draftableId`, so a later capture can never
+know *less* than an earlier one. Values already present in DK's own payload always win, and source
+3 only ever fills nulls. This runs on capture rather than on read because DK expires draftables for
+old draft groups — a snapshot has to stand alone months later.
 
 **`dkProjection` is captured for the same reason.** DK's roster payload nests a `projection` object
 carrying both a `pregameProjection` and a `realTimeProjection`; `normalizeSlotObject` keeps the
@@ -544,12 +617,22 @@ never written, and usually a stale `owner_seasons.dkEntryName`. `normalizedFromR
 `skippedFromRaw` describe what the normalizer made of the raw payloads (skipped = roster groups with
 no entry name, or no usable players).
 
-`enrichedSlots` is how many slots gained a team key they did not have, and
-`unresolvedDraftableIds` lists revealed ids the draft group did not know — surfaced, never silently
-zeroed. **`enrichedSlots: 0` with a `draftGroupId` set and revealed players present means DK's slate
-lookup failed**: the capture stored, but it is not yet scorable, so re-run it rather than trust it.
-Both numbers are expected to be far below `9 × matched` early in a week — concealed players have no
-id to resolve ([§11](#11-endpoint-inventory--what-is-public-and-what-needs-auth)).
+`enrichedSlots` is how many slots gained a team key they did not have **from the draftables
+lookup**, and `unresolvedDraftableIds` lists revealed ids the draft group did not know — surfaced,
+never silently zeroed. Both numbers are expected to be far below `9 × matched` early in a week —
+concealed players have no id to resolve
+([§11](#11-endpoint-inventory--what-is-public-and-what-needs-auth)).
+
+> ⚠️ **`enrichedSlots: 0` is no longer a failure signal.** It used to mean DK's slate lookup had
+> failed. Now it usually means there was nothing left to enrich, because the team came straight out
+> of DK's own payload (source 1 above) — a capture that arrives already complete is perfectly
+> scorable. Admin → Lineups stopped reporting off it for exactly that reason; it branches on
+> `slotsWithoutTeam` instead. **The authoritative signal is the capture run itself**:
+> `ingestLineups` records `status: 'partial'` with the reason in `error` when the draftables index
+> came back empty **or** any revealed slot was stored with no team — both visible in the
+> Admin → Lineups audit table. The underlying counts (`backfilledSlots`, `draftablesUnavailable`,
+> `slotsWithoutTeam`) are fields on `IngestLineupsResult`, deliberately **not** added to this HTTP
+> response. Rationale: [`SCORING.md` §15](SCORING.md#when-identity-fails-the-whole-week-fails).
 
 **Errors.** `401 Unauthorized` · `400 Invalid JSON body` · `400 Validation failed` (with Zod
 `issues`) · `400` when no usable lineups survive normalization (the message names the skipped count
