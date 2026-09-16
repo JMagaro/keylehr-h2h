@@ -255,3 +255,118 @@ describe('reconcileWeek', () => {
     expect(s.needsAttention).toBe(false);
   });
 });
+
+/**
+ * DraftKings' yardage bonuses and its points-allowed LADDER.
+ *
+ * Both were observed in real 2026 week-1 captures and both used to make the audit accuse
+ * correct scoring rules of being wrong — the failure mode this module exists to avoid.
+ */
+describe('reconcileSlot — DraftKings’ bonus rows and tier ladder', () => {
+  /** A 182-yard receiver: DK bills the bonus as its own row, we bill it off the yardage. */
+  const bonusReceiver = (over: Partial<LiveSlot> = {}): LiveSlot =>
+    slot({
+      slot: 'WR',
+      name: 'Jalen Coker',
+      position: 'WR',
+      points: 36.8,
+      components: [
+        { key: 'receptions', label: 'Receptions', quantity: 10, points: 10 },
+        { key: 'recYards', label: 'Receiving yards', quantity: 182, points: 18.2 },
+        { key: 'recTd', label: 'Receiving TD', quantity: 1, points: 6 },
+        { key: 'bonus.recYards', label: '100+ receiving yards', quantity: 182, points: 3 },
+      ],
+      dkScore: 36.8,
+      dkStats: [
+        { key: 'REC', value: 10, points: 10 },
+        { key: 'RecYds', value: 182, points: 18.2 },
+        { key: 'RecTD', value: 1, points: 6 },
+        { key: '100+Rec', value: 1, points: 3 },
+        { key: 'Targets', value: 14, points: 0 },
+      ],
+      ...over,
+    });
+
+  it('agrees on a line carrying a 100+ receiving bonus', () => {
+    const r = reconcileSlot(bonusReceiver(), true);
+    expect(r.verdict).toBe('agree');
+    expect(r.differences).toEqual([]);
+  });
+
+  it('does not call a bonus "unmapped" when the totals disagree for another reason', () => {
+    // One reception short on our side — a genuine stat disagreement. The bonus must not be
+    // blamed for it, and must not be reported as a key the audit cannot place.
+    const r = reconcileSlot(
+      bonusReceiver({
+        points: 35.8,
+        components: [
+          { key: 'receptions', label: 'Receptions', quantity: 9, points: 9 },
+          { key: 'recYards', label: 'Receiving yards', quantity: 182, points: 18.2 },
+          { key: 'recTd', label: 'Receiving TD', quantity: 1, points: 6 },
+          { key: 'bonus.recYards', label: '100+ receiving yards', quantity: 182, points: 3 },
+        ],
+      }),
+      true,
+    );
+    expect(r.verdict).toBe('statDrift');
+    expect(r.differences.map((d) => d.dkKey)).toEqual(['REC']);
+  });
+
+  it('compares a bonus by POINTS, never by count — DK says 1, we say the yardage', () => {
+    const r = reconcileSlot(bonusReceiver(), true);
+    // 182 !== 1, and that must not register as a difference.
+    expect(r.differences.find((d) => d.ourKey === 'bonus.recYards')).toBeUndefined();
+  });
+
+  it('ignores points-allowed tiers DraftKings listed but did not award', () => {
+    const dst = slot({
+      slot: 'DST',
+      position: 'DST',
+      name: 'Steelers',
+      teamKey: 'PIT',
+      points: 18,
+      components: [
+        { key: 'sacks', label: 'Sacks', quantity: 4, points: 4 },
+        { key: 'interceptions', label: 'Interceptions', quantity: 2, points: 4 },
+        { key: 'defensiveTds', label: 'Defensive TD', quantity: 1, points: 6 },
+        { key: 'pointsAllowed', label: 'Points allowed', quantity: 13, points: 4 },
+      ],
+      dkScore: 18,
+      dkStats: [
+        { key: 'SACK', value: 4, points: 4 },
+        { key: 'INT', value: 2, points: 4 },
+        { key: 'DefTD', value: 1, points: 6 },
+        { key: '0 PA', value: 0, points: 0 },
+        { key: '1-6 PA', value: 0, points: 0 },
+        { key: '7-13 PA', value: 1, points: 4 },
+      ],
+    });
+    const r = reconcileSlot(dst, true);
+    expect(r.verdict).toBe('agree');
+    expect(r.differences).toEqual([]);
+  });
+
+  it('still reports a genuinely wrong tier award', () => {
+    const dst = slot({
+      slot: 'DST',
+      position: 'DST',
+      name: 'Falcons',
+      teamKey: 'ATL',
+      points: 7,
+      components: [
+        { key: 'sacks', label: 'Sacks', quantity: 2, points: 2 },
+        // We priced the tier at 4; DraftKings paid 1.
+        { key: 'pointsAllowed', label: 'Points allowed', quantity: 20, points: 4 },
+      ],
+      dkScore: 3,
+      dkStats: [
+        { key: 'SACK', value: 2, points: 2 },
+        { key: '0 PA', value: 0, points: 0 },
+        { key: '14-20 PA', value: 1, points: 1 },
+      ],
+    });
+    const r = reconcileSlot(dst, true);
+    expect(r.verdict).toBe('ruleDrift');
+    expect(r.differences.map((d) => d.dkKey)).toEqual(['14-20 PA']);
+  });
+});

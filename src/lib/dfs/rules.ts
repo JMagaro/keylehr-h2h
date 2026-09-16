@@ -20,14 +20,25 @@
 /**
  * How to compute the DST's "points allowed" figure.
  *
- * DraftKings' published rule has historically carved out points that the DST itself was not
- * on the field for — most visibly a pick-six thrown by *your own* offense. Neither ESPN's
- * header score nor any free feed implements that carve-out, so we ship the honest default
- * (`raw` = the opponent's final score) and leave the alternative implementable.
+ * DraftKings' published rule has historically read as though it carves out points the DST
+ * itself was not on the field for — most visibly a pick-six thrown by *your own* offense.
+ * Neither ESPN's header score nor any free feed implements that carve-out, so we shipped the
+ * honest default (`raw` = the opponent's final score) and left the alternative implementable.
  *
- * The empirical signature of getting this wrong is a DST that lands exactly one tier off in
- * a game containing a defensive/return touchdown. `npm run dfs:selftest` will NOT catch it — it
- * compares QB/RB/WR/TE only — so it has to be checked against a finished DK contest by hand.
+ * SETTLED EMPIRICALLY — `raw` IS WHAT DRAFTKINGS DOES. 2026 week 1 contained the exact case
+ * that separates the two modes: **Atlanta's DST conceded 20 to Pittsburgh, and 7 of those
+ * points (a defensive touchdown plus the extra point) were scored by PITTSBURGH'S DEFENSE
+ * against Atlanta's offense.** Under the carve-out Atlanta allows 13 and DraftKings pays the
+ * `7-13 PA` tier, +4. DraftKings' own captured stat line awarded `14-20 PA`, **+1** — the raw
+ * 20. Our engine scored that DST at 5.00 against DraftKings' 5.00.
+ *
+ * So do not "fix" this to `exclude_scores_against_offense` on the strength of the rules page.
+ * The measurement disagrees with that reading, and it was taken against DK's own numbers.
+ *
+ * Re-checking it is cheap and does not need a hand audit any more: Admin → Scoring reconciles
+ * every captured slot against DraftKings' own stat line, and a wrong mode shows up there as a
+ * DST landing exactly one tier off in a game containing a defensive or return touchdown.
+ * (`npm run dfs:selftest` still will NOT catch it — that compares QB/RB/WR/TE only.)
  */
 export type PointsAllowedMode = 'raw' | 'exclude_scores_against_offense';
 

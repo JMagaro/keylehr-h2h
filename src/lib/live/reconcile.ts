@@ -103,7 +103,25 @@ const DK_TO_OUR_KEY: Record<string, string> = {
   BLK: 'blockedKicks',
   DefTD: 'defensiveTds',
   STTD: 'specialTeamsTds',
+  // Yardage bonuses. DK bills each as its own stat row with value 1 — "1 300+Pass, 3 pts" —
+  // while our engine emits them as `bonus.*` components off the same yardage. Without these
+  // three the audit cannot see a bonus at all: DK's row reads as an unrecognised scoring
+  // stat (verdict `unmapped`), AND our matching component looks like something DraftKings
+  // never paid for, so a single 100-yard receiver produced two phantom findings and an
+  // instruction to go fix rules that were correct. All three observed in 2026 week 1.
+  '300+Pass': 'bonus.passYards',
+  '100+Rush': 'bonus.rushYards',
+  '100+Rec': 'bonus.recYards',
 };
+
+/**
+ * Bonus rows compare by POINTS only.
+ *
+ * DK counts the bonus ("1" of them); we record what earned it (`quantity` is the yardage,
+ * e.g. 182). Both mean the same thing and the values will never agree, so comparing them
+ * would report drift on every bonus ever awarded.
+ */
+const BONUS_OUR_KEYS = new Set(['bonus.passYards', 'bonus.rushYards', 'bonus.recYards']);
 
 /**
  * DK keys that carry no points and exist only as colour on the roster card.
@@ -116,6 +134,19 @@ const DK_IGNORED_KEYS = new Set(['Targets']);
 /** True for DK's points-allowed tier rows, which are named for their range: "7-13 PA". */
 function isPointsAllowedKey(key: string): boolean {
   return /\bPA$/.test(key.trim());
+}
+
+/**
+ * True for a points-allowed row DK listed but did NOT award.
+ *
+ * DK ships the tier LADDER, not just the tier that hit: a defense that conceded 13 arrives as
+ * `0 PA=0(0) 1-6 PA=0(0) 7-13 PA=1(4)`. Only the row with value 1 is the award; the others
+ * are "not this tier" markers. Comparing them against our single `pointsAllowed` component
+ * reports the same defense as disagreeing two or three times over — every DST in 2026 week 1
+ * carried at least two such rows.
+ */
+function isUnawardedTierRow(stat: DkStat): boolean {
+  return isPointsAllowedKey(stat.key) && stat.value === 0 && stat.points === 0;
 }
 
 /**
@@ -195,6 +226,8 @@ export function reconcileSlot(slot: LiveSlot, comparable: boolean): SlotReconcil
 
   for (const dkStat of slot.dkStats ?? []) {
     if (DK_IGNORED_KEYS.has(dkStat.key)) continue;
+    // A tier DK listed and did not award says nothing about our number.
+    if (isUnawardedTierRow(dkStat)) continue;
 
     // Points-allowed is a tier award: DK's row is a flag (value 1) named for the range, while
     // ours records the actual points conceded. Only the POINTS are comparable.
@@ -231,7 +264,9 @@ export function reconcileSlot(slot: LiveSlot, comparable: boolean): SlotReconcil
     const ours = ourByKey.get(ourKey);
     const ourValue = ours ? ours.quantity : 0;
     const ourPoints = ours ? ours.points : 0;
-    const valueDiffers = Math.abs(ourValue - dkStat.value) > RECONCILE_TOLERANCE;
+    // A bonus is a flag on DK's side and a yardage on ours — see BONUS_OUR_KEYS.
+    const valueDiffers =
+      !BONUS_OUR_KEYS.has(ourKey) && Math.abs(ourValue - dkStat.value) > RECONCILE_TOLERANCE;
     const pointsDiffer = Math.abs(ourPoints - dkStat.points) > RECONCILE_TOLERANCE;
     if (valueDiffers) sawStatMismatch = true;
     if (valueDiffers || pointsDiffer) {
@@ -250,7 +285,7 @@ export function reconcileSlot(slot: LiveSlot, comparable: boolean): SlotReconcil
   // loop above, which only walks DK's rows. Bonuses are the likely case.
   const dkKeys = new Set(
     (slot.dkStats ?? [])
-      .filter((s) => !DK_IGNORED_KEYS.has(s.key))
+      .filter((s) => !DK_IGNORED_KEYS.has(s.key) && !isUnawardedTierRow(s))
       .map((s) => (isPointsAllowedKey(s.key) ? 'pointsAllowed' : resolveOurKey(s.key, dst)))
       .filter((k): k is string => k !== null),
   );
