@@ -111,16 +111,24 @@ export async function pasteLineupsAction(
     }
     // Say plainly when a capture landed but is not scorable, rather than reporting success
     // and letting it surface much later as every player "unresolved" on /live.
-    const revealed = lineups.reduce((n, l) => n + l.slots.filter((s) => s.revealed).length, 0);
-    if (!draftGroupId && revealed > 0) {
+    //
+    // The test is the OUTCOME — how many revealed slots ended up with no team — not whether
+    // any one source contributed. A missing draft group id no longer implies an unscorable
+    // capture: DK's payload names each player's team itself, and this week's earlier captures
+    // fill the rest (see src/lib/lineups/normalize.ts and ingest.ts). Reporting failure off
+    // `enrichedSlots === 0` was the same mistake in reverse — a capture that arrived already
+    // complete needs no enrichment and is perfectly scorable.
+    if (result.slotsWithoutTeam > 0) {
       parts.push(
-        'No draft group id given, so players were not resolved to teams — this capture is ' +
-          'stored but cannot be scored. Add the draft group id and paste again.',
+        `${result.slotsWithoutTeam} player(s) could not be resolved to a team and cannot be ` +
+          (draftGroupId
+            ? `scored — check draft group ${draftGroupId}, or DraftKings may have expired that slate.`
+            : 'scored. Add the draft group id and paste again.'),
       );
-    } else if (result.enrichedSlots === 0 && revealed > 0) {
+    } else if (result.draftablesUnavailable) {
       parts.push(
-        `Draft group ${draftGroupId} resolved no players — check the id, or DraftKings may ` +
-          'have expired that slate.',
+        `Draft group ${draftGroupId} returned nothing, but every player was resolved from the ` +
+          'payload itself — this capture is scorable.',
       );
     }
     return {

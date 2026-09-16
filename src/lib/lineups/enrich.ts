@@ -23,6 +23,18 @@ export interface EnrichResult {
   enriched: number;
   /** Revealed draftableIds absent from the index — surfaced, never silently zeroed. */
   unresolvedIds: string[];
+  /**
+   * True when the draftables index came back EMPTY, i.e. the lookup was unavailable rather
+   * than merely incomplete.
+   *
+   * This is the difference between "DK didn't know one player" and "we learned nothing at
+   * all", and it used to be indistinguishable: `fetchDraftableIndex` swallows its errors and
+   * returns an empty map, so a failed fetch produced `enriched: 0, unresolvedIds: []` — the
+   * exact same result as a capture that needed no enrichment. The capture was then stored
+   * team-less and logged as a success. 2026 week 1 lost a whole week that way. Callers must
+   * treat this as a degraded capture and say so.
+   */
+  indexUnavailable: boolean;
 }
 
 /**
@@ -65,7 +77,7 @@ export function applyDraftableIndex(
     }),
   }));
 
-  return { lineups: out, enriched, unresolvedIds: [...unresolved] };
+  return { lineups: out, enriched, unresolvedIds: [...unresolved], indexUnavailable: false };
 }
 
 /**
@@ -74,12 +86,17 @@ export function applyDraftableIndex(
  * Never throws: `fetchDraftableIndex` already swallows network errors and returns an empty
  * map, which passes lineups through untouched. A capture that stores names without teams is
  * far better than a capture that fails — the teams can be backfilled from a later run.
+ *
+ * An empty index is reported as `indexUnavailable` rather than passed off as a no-op, so the
+ * caller can record a degraded capture instead of logging a silent success.
  */
 export async function enrichLineups(
   lineups: LineupInput[],
   draftGroupId: string,
 ): Promise<EnrichResult> {
   const index = await fetchDraftableIndex(draftGroupId);
-  if (index.size === 0) return { lineups, enriched: 0, unresolvedIds: [] };
+  if (index.size === 0) {
+    return { lineups, enriched: 0, unresolvedIds: [], indexUnavailable: true };
+  }
   return applyDraftableIndex(lineups, index);
 }

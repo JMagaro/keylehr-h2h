@@ -50,7 +50,7 @@ export function PasteLineupsForm({ seasonId, week }: { seasonId: number; week: n
       <Field
         label="DK draft group id"
         htmlFor="lineupDraftGroupId"
-        hint="Needed to score this capture. DraftKings' roster payload gives only player ids — no team, no position — so without the draft group there is nothing to resolve them against. It is the number in the roster URL: scores/v2/entries/152064/… → 152064."
+        hint="Recommended. Most payloads name each player's team themselves, and anything missing is filled from this week's earlier captures — but the draft group is the fallback that resolves the rest, and it is what gives every player a position. It is the number in the roster URL: scores/v2/entries/152064/… → 152064."
       >
         <Input
           id="lineupDraftGroupId"

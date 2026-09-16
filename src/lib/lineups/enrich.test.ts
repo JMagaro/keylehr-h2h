@@ -126,6 +126,14 @@ describe('applyDraftableIndex', () => {
     expect(lineups[0].slots).toEqual(before[0].slots);
   });
 
+  it('reports an APPLIED index as available, however little it resolved', () => {
+    // `indexUnavailable` must mean "the lookup failed", not "nothing needed enriching" —
+    // `enrichLineups` is what distinguishes the two, and it is the flag the capture run
+    // records. An index that was applied is available by definition.
+    expect(applyDraftableIndex(capture(), new Map()).indexUnavailable).toBe(false);
+    expect(applyDraftableIndex(capture(), INDEX).indexUnavailable).toBe(false);
+  });
+
   it('does not mutate its input', () => {
     const before = capture();
     const snapshot = JSON.parse(JSON.stringify(before));

@@ -156,6 +156,14 @@ const SCORE_KEYS = ['score', 'Score', 'fantasyPoints', 'FantasyPoints'] as const
 
 /** DK nests projections under `projection`; take the PREGAME one — see `dkProjection`. */
 const PROJECTION_CONTAINER_KEYS = ['projection', 'Projection'] as const;
+
+/**
+ * DK nests the player's game under `competition`, and marks THEIR side of it.
+ * See `readCompetitionTeam` for why that is the most reliable team we get.
+ */
+const COMPETITION_KEYS = ['competition', 'Competition'] as const;
+const NAME_DISPLAY_KEYS = ['nameDisplay', 'NameDisplay'] as const;
+const EMPHASIS_KEYS = ['isEmphasized', 'IsEmphasized'] as const;
 const PREGAME_PROJECTION_KEYS = ['pregameProjection', 'PregameProjection'] as const;
 
 /** DK's per-stat breakdown array, and the fields inside one of its rows. */
@@ -251,6 +259,58 @@ function readDkStats(obj: Bag): DkStat[] | null {
   return out;
 }
 
+/**
+ * The player's own team, read out of DraftKings' `competition` block.
+ *
+ * WHY THIS IS THE PRIMARY SOURCE. DK's roster payload carries no `teamAbbreviation`, which is
+ * why teams were historically resolved against the public draftables endpoint at capture time
+ * (see ./enrich). That fetch is a second point of failure, and when it fails it fails
+ * SILENTLY and PERMANENTLY: `fetchDraftableIndex` swallows the error, `enrichLineups` passes
+ * the lineups through untouched, and the snapshot is stored with no team at all. A slot with
+ * no team cannot be matched to ESPN, so every such slot scores as `unresolved` — and because
+ * /live always takes the NEWEST capture per owner, one failed fetch on Tuesday discards three
+ * good captures and renders the entire week as nothing. That is exactly what happened to
+ * 2026 week 1: 288 of 288 slots unresolved from a single empty index.
+ *
+ * DK does tell us, though, just not where anyone looked. Each scorecard carries the fixture
+ * as `competition.nameDisplay` — an array of display fragments in which the segments
+ * belonging to the player's OWN team are flagged `isEmphasized`:
+ *
+ *     "competition": {
+ *       "name": "NO 30 @ DET 31",
+ *       "nameDisplay": [ { "value": "NO", "isEmphasized": true }, { "value": " 30" },
+ *                        { "value": " @ " }, { "value": "DET" }, { "value": " 31" } ]
+ *     }
+ *
+ * Verified against 2026 week 1: the emphasized abbreviation matched the independently
+ * enriched team for all 286 slots that had one, with zero mismatches, and it also resolved
+ * the two slots enrichment never reached. Reading it here makes a capture self-sufficient —
+ * no network call, nothing to expire, and no way for a later capture to be worse than an
+ * earlier one.
+ *
+ * Only a SINGLE emphasized fragment is accepted. A fixture that emphasises both sides (or
+ * neither) tells us nothing about which one the player is on, and guessing would put a
+ * player on the wrong defense's schedule; the caller falls back to enrichment instead.
+ */
+function readCompetitionTeam(obj: Bag): string | null {
+  const competition = firstValue(obj, COMPETITION_KEYS);
+  if (!isBag(competition)) return null;
+  const display = firstValue(competition, NAME_DISPLAY_KEYS);
+  if (!Array.isArray(display)) return null;
+
+  const emphasized: string[] = [];
+  for (const part of display) {
+    if (!isBag(part)) continue;
+    if (firstValue(part, EMPHASIS_KEYS) !== true) continue;
+    const value = toStr(part.value ?? part.Value);
+    // Score fragments (" 30") are emphasized too on some payloads; a team abbreviation is
+    // letters. Anything else is display chrome and must not be read as a team.
+    if (value && /^[A-Za-z]{2,4}$/.test(value)) emphasized.push(value);
+  }
+
+  return emphasized.length === 1 ? emphasized[0] : null;
+}
+
 /** DraftKings' pregame projection, from the nested `projection` object. */
 function readProjection(obj: Bag): number | null {
   const container = firstValue(obj, PROJECTION_CONTAINER_KEYS);
@@ -267,7 +327,8 @@ function toIdStr(v: unknown): string | null {
 
 /** Normalize one drafted-player object. */
 export function normalizeSlotObject(obj: Bag): LineupSlotInput {
-  const team = toStr(firstValue(obj, TEAM_KEYS));
+  // An explicit abbreviation wins when DK sends one; otherwise read it off the fixture.
+  const team = toStr(firstValue(obj, TEAM_KEYS)) ?? readCompetitionTeam(obj);
   const position = normalizeSlot(toStr(firstValue(obj, POSITION_KEYS)));
   // DK sometimes gives only a position and no explicit roster slot; fall back so a lineup is
   // still usable (FLEX is then indistinguishable from its base position, which is fine —

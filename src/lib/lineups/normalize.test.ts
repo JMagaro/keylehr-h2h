@@ -360,3 +360,95 @@ describe('normalizeRosterPayload — robustness', () => {
     }
   });
 });
+
+/**
+ * The team DraftKings ships inside the roster payload itself.
+ *
+ * This is the regression guard for the 2026 week-1 failure: the draftables fetch came back
+ * empty, every slot stored with `teamKey: null`, and /live scored the entire week as 288
+ * unresolved slots because the newest capture is the only one it reads. Reading the team off
+ * `competition.nameDisplay` removes the network from the critical path entirely.
+ */
+describe('normalizeSlotObject — the team inside DraftKings’ own payload', () => {
+  /** A scorecard shaped exactly like DK's `scores/v2/entries` roster rows. */
+  function scorecard(over: Record<string, unknown> = {}) {
+    return {
+      draftableId: 44070441,
+      displayName: 'Tyler Shough',
+      rosterPosition: 'QB',
+      score: 29.2,
+      competition: {
+        name: 'NO 30 @ DET 31',
+        nameDisplay: [
+          { value: 'NO', isEmphasized: true },
+          { value: ' 30' },
+          { value: ' @ ' },
+          { value: 'DET' },
+          { value: ' 31' },
+        ],
+      },
+      ...over,
+    };
+  }
+
+  it('reads the emphasized side of the fixture as the player’s own team', () => {
+    expect(normalizeSlotObject(scorecard()).teamKey).toBe('NO');
+  });
+
+  it('normalizes it like any other team abbreviation (DK "WAS" -> "WSH")', () => {
+    const slot = normalizeSlotObject(
+      scorecard({
+        competition: {
+          nameDisplay: [{ value: 'WAS', isEmphasized: true }, { value: ' @ ' }, { value: 'PHI' }],
+        },
+      }),
+    );
+    expect(slot.teamKey).toBe('WSH');
+  });
+
+  it('prefers an explicit team abbreviation when DraftKings sends one', () => {
+    expect(normalizeSlotObject(scorecard({ teamAbbreviation: 'DET' })).teamKey).toBe('DET');
+  });
+
+  it('ignores emphasized SCORE fragments, which are not team abbreviations', () => {
+    const slot = normalizeSlotObject(
+      scorecard({
+        competition: {
+          nameDisplay: [
+            { value: 'NO', isEmphasized: true },
+            { value: ' 30', isEmphasized: true },
+          ],
+        },
+      }),
+    );
+    expect(slot.teamKey).toBe('NO');
+  });
+
+  it('refuses to guess when both sides — or neither — are emphasized', () => {
+    for (const nameDisplay of [
+      [{ value: 'NO', isEmphasized: true }, { value: 'DET', isEmphasized: true }],
+      [{ value: 'NO' }, { value: 'DET' }],
+      [],
+    ]) {
+      expect(normalizeSlotObject(scorecard({ competition: { nameDisplay } })).teamKey).toBeNull();
+    }
+  });
+
+  it('survives a competition block of any other shape', () => {
+    for (const competition of [null, undefined, 'NO @ DET', 42, {}, { nameDisplay: 'nope' }]) {
+      expect(() => normalizeSlotObject(scorecard({ competition }))).not.toThrow();
+      expect(normalizeSlotObject(scorecard({ competition })).teamKey).toBeNull();
+    }
+  });
+
+  it('leaves a concealed slot alone — it has no competition and no identity', () => {
+    const slot = normalizeSlotObject({
+      draftableId: 0,
+      rosterPosition: 'WR',
+      yetToPlay: true,
+      isSwappable: true,
+    });
+    expect(slot.revealed).toBe(false);
+    expect(slot.teamKey).toBeNull();
+  });
+});

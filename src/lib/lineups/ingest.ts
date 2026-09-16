@@ -11,13 +11,14 @@
  * feed an ESTIMATE; the authoritative weekly number stays the DraftKings leaderboard.
  * See docs/SCORING.md §15.
  */
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import { db, lineupCaptureRuns, lineupSnapshots } from '@/db';
 import { isExhibitionWeek } from '@/lib/schedule/preseason';
 import { loadOwnerNameMap, normalizeEntryName } from '@/lib/scores/owner-match';
 
 import { enrichLineups } from './enrich';
+import { hydrateStoredSlots } from './normalize';
 import type { LineupInput, LineupSlotInput } from './normalize';
 
 export interface IngestLineupsParams {
@@ -52,6 +53,89 @@ export interface IngestLineupsResult {
   enrichedSlots: number;
   /** Revealed draftableIds the draft group didn't know — surfaced, never silently zeroed. */
   unresolvedDraftableIds: string[];
+  /** Slots whose identity was recovered from an earlier capture of the same week. */
+  backfilledSlots: number;
+  /** True when the draftables lookup returned nothing at all — a degraded capture. */
+  draftablesUnavailable: boolean;
+  /** Revealed slots stored with no team key, and therefore unscorable. Should be 0. */
+  slotsWithoutTeam: number;
+}
+
+/**
+ * Identity already known for a `draftableId`, from this week's earlier captures.
+ *
+ * Keyed by draftableId because that is the only identifier DK's roster payload always carries
+ * — see ./normalize. Values are whatever a previous capture managed to resolve.
+ */
+type IdentityMap = Map<string, { name: string | null; teamKey: string | null; position: string | null }>;
+
+/**
+ * Everything this week's earlier captures already worked out about each draftableId.
+ *
+ * Captures are append-only versions of the same nine slots, so an identity resolved once is
+ * true for the rest of the week: a draftableId names one player on one team in one slate.
+ */
+async function loadKnownIdentities(seasonId: number, week: number): Promise<IdentityMap> {
+  const rows = await db
+    .select({ slots: lineupSnapshots.slots })
+    .from(lineupSnapshots)
+    .where(and(eq(lineupSnapshots.seasonId, seasonId), eq(lineupSnapshots.week, week)));
+
+  const known: IdentityMap = new Map();
+  for (const row of rows) {
+    for (const slot of hydrateStoredSlots(row.slots)) {
+      if (!slot.draftableId) continue;
+      const prior = known.get(slot.draftableId);
+      known.set(slot.draftableId, {
+        name: prior?.name ?? slot.name,
+        teamKey: prior?.teamKey ?? slot.teamKey,
+        position: prior?.position ?? slot.position,
+      });
+    }
+  }
+  return known;
+}
+
+/**
+ * Fill identity gaps from what this week already knows. Returns the lineups and a count.
+ *
+ * WHY A NEWER CAPTURE MUST NEVER BE WORSE THAN AN OLDER ONE. /live scores the NEWEST capture
+ * per owner and nothing else, so a later capture that resolved fewer teams does not degrade
+ * the estimate — it replaces it. In 2026 week 1 three good captures were superseded by a
+ * fourth whose draftables fetch came back empty, and the week rendered as 288 unresolved
+ * slots. Carrying identity forward makes captures monotonic: a slot that was ever identified
+ * stays identified, whatever the network does afterwards.
+ *
+ * Only ever FILLS NULLS. A value on the incoming capture always wins, because DK's live
+ * payload is closer to the truth than our memory of it — a player really can be re-listed.
+ */
+function backfillIdentities(
+  lineups: LineupInput[],
+  known: IdentityMap,
+): { lineups: LineupInput[]; backfilled: number } {
+  if (known.size === 0) return { lineups, backfilled: 0 };
+  let backfilled = 0;
+
+  const out = lineups.map((lineup) => ({
+    ...lineup,
+    slots: lineup.slots.map((slot): LineupSlotInput => {
+      if (!slot.revealed || !slot.draftableId) return slot;
+      if (slot.name !== null && slot.teamKey !== null && slot.position !== null) return slot;
+
+      const hit = known.get(slot.draftableId);
+      if (!hit) return slot;
+      if (slot.teamKey === null && hit.teamKey !== null) backfilled += 1;
+
+      return {
+        ...slot,
+        name: slot.name ?? hit.name,
+        teamKey: slot.teamKey ?? hit.teamKey,
+        position: slot.position ?? hit.position,
+      };
+    }),
+  }));
+
+  return { lineups: out, backfilled };
 }
 
 /** How many snapshot rows to write per round-trip. */
@@ -82,13 +166,32 @@ export async function ingestLineups(
 
   // Resolve draftableIds to (name, team, position) BEFORE storing. DK expires draftables for
   // old draft groups, so a snapshot that doesn't carry teams is unscorable forever after.
+  //
+  // Three sources, in order of trust, and the capture only needs ONE of them to work:
+  //   1. The payload itself — DK's `competition` block names the player's side (./normalize).
+  //   2. The public draftables endpoint, below.
+  //   3. This week's earlier captures, which already resolved most of these ids.
   const {
-    lineups: resolved,
+    lineups: enrichedLineups,
     enriched: enrichedSlots,
     unresolvedIds: unresolvedDraftableIds,
+    indexUnavailable: draftablesUnavailable,
   } = draftGroupId
     ? await enrichLineups(lineups, draftGroupId)
-    : { lineups, enriched: 0, unresolvedIds: [] as string[] };
+    : { lineups, enriched: 0, unresolvedIds: [] as string[], indexUnavailable: false };
+
+  const { lineups: resolved, backfilled: backfilledSlots } = backfillIdentities(
+    enrichedLineups,
+    await loadKnownIdentities(seasonId, week),
+  );
+
+  // A revealed slot with no team cannot be matched to a boxscore, so it scores as
+  // `unresolved` on /live forever. Count them so the capture run records the damage instead
+  // of reporting an unqualified success.
+  const slotsWithoutTeam = resolved.reduce(
+    (n, l) => n + l.slots.filter((s) => s.revealed && s.teamKey === null).length,
+    0,
+  );
 
   const { byName } = await loadOwnerNameMap(seasonId);
 
@@ -106,7 +209,20 @@ export async function ingestLineups(
   }
 
   const matched = byOwnerSeason.size;
-  const status = unmatched.length === 0 ? 'success' : 'partial';
+
+  // A capture that stored unscorable slots is NOT a success, however cleanly it was matched.
+  // Logging it as one is what let 2026 week 1 fail in total silence: four runs, all green,
+  // and the last one had thrown every team away.
+  const degraded: string[] = [];
+  if (draftablesUnavailable) {
+    degraded.push(`draftables index for draft group ${draftGroupId} returned nothing`);
+  }
+  if (slotsWithoutTeam > 0) {
+    degraded.push(`${slotsWithoutTeam} revealed slot(s) stored with no team and cannot be scored`);
+  }
+
+  const status = unmatched.length === 0 && degraded.length === 0 ? 'success' : 'partial';
+  const runError = degraded.length > 0 ? degraded.join('; ') : null;
 
   // Record the audit run first so snapshots can reference its id.
   const [run] = await db
@@ -121,6 +237,7 @@ export async function ingestLineups(
       entriesUnmatched: unmatched.length,
       triggeredBy: triggeredBy ?? null,
       sourceUrlTemplate: sourceUrlTemplate ?? null,
+      error: runError,
       rawPayload: (rawPayload ?? lineups) as object,
     })
     .returning({ id: lineupCaptureRuns.id });
@@ -185,6 +302,9 @@ export async function ingestLineups(
     captureRunId: run.id,
     enrichedSlots,
     unresolvedDraftableIds,
+    backfilledSlots,
+    draftablesUnavailable,
+    slotsWithoutTeam,
   };
 }
 
