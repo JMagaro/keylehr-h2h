@@ -4,7 +4,7 @@ A running "where things stand" doc so a fresh Claude/context window (or contribu
 without re-deriving everything. Update the **Snapshot**, **Recent work** and **Known open items**
 sections as you go; **[Start here](#start-here-fresh-session)** is the entry point.
 
-_Last updated: 2026-09-16 (**one thing landed and is NOT yet committed** — see
+_Last updated: 2026-09-16 (**committed as `6c16de6`…`1996311`, NOT yet pushed** — see
 [Recent work](#recent-work-newest-first): **roster-capture identity made failure-proof**, after
 2026 week 1 rendered as 288 unresolved slots. The DK scoring engine was audited player-by-player
 against DraftKings' own numbers and found **exactly correct** — 288/288 slots and 32/32 owner
@@ -36,13 +36,18 @@ tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model
   Phase 0–5 write-up — on top of the earlier 12-commit run `d0ba364` … `e2a3f1a`. **Those commit
   messages are the real design record** — read them before touching the scoring, live or playoff
   paths; each one states the bug, the decision and what was rejected.
-  > **Push check.** ⚠️ **The 2026-09-16 identity work is UNCOMMITTED** — ten modified files under
-  > `src/lib/{dfs,lineups,live}` and `src/app/admin/(panel)/lineups/`, plus the new
-  > `scripts/repair-lineup-identities.ts`, in the working tree
-  > and not deployed. `git status` is the check; `git diff HEAD` shows the lot. The 2026-08-23 work
-  > that used to sit here **is committed** (`28ce62b` the drift audit, `dc483ec` the projection
-  > fix), as is everything after it up to `41bcd22`. Always re-check with
+  > **Push check.** ⚠️ **The 2026-09-16 identity work is COMMITTED BUT UNPUSHED** — three commits
+  > on `main`, `6c16de6` (read the team from DK's payload), `71e34eb` (the drift audit stops
+  > blaming correct rules) and `1996311` (the repair script + docs). Not deployed. Check with
   > `git log origin/main..main`; anything listed is unpushed work from a later session.
+  >
+  > **The production DATA was already repaired**, which is the one thing a push does not do and
+  > does not undo: `scripts/repair-lineup-identities.ts --season=1 --week=1 --write` ran against
+  > prod and fixed 288 slots across 32 snapshots, so week 1 reconciles 288/288 today whether or
+  > not this code is deployed. Re-running it is safe and reports nothing to do.
+  >
+  > The 2026-08-23 work that used to sit here **is committed** (`28ce62b` the drift audit,
+  > `dc483ec` the projection fix), as is everything after it up to `41bcd22`.
   >
   > **Nothing new needs a migration.** The identity work changes no schema — it writes the same
   > `lineup_snapshots.slots` jsonb — and the drift audit adds no table. Deploying is a push; there
@@ -438,7 +443,7 @@ Sleeper PPR as a free proxy).
 ## Recent work (newest first)
 
 - **Roster-capture identity made failure-proof; the DK engine audited and found CORRECT**
-  (⚠️ **uncommitted**, 2026-09-16). Tests 356 → **369**; `verify` 9/9 including the production
+  (`6c16de6`…`1996311`, unpushed, 2026-09-16). Tests 356 → **369**; `verify` 9/9 including the production
   build and the frozen-season byte-identical snapshot. Files: `src/lib/lineups/{normalize,enrich,
   ingest}.ts`, `src/lib/live/reconcile.ts`, and the new `scripts/repair-lineup-identities.ts`.
   Written up in [`SCORING.md` §15](SCORING.md#when-identity-fails-the-whole-week-fails).
@@ -1081,8 +1086,9 @@ driver means one query = one round-trip, so batch writes.
 ## ▶ Next session: start here
 
 Live scoring is **built and deployed**, and as of 2026-09-16 it has been checked against a real
-regular-season week and found exact. The **2026-09-16 identity work is written, verified and
-uncommitted**; everything before it is committed through `41bcd22`.
+regular-season week and found exact. The **2026-09-16 identity work is committed and unpushed**
+(`6c16de6`…`1996311`); everything before it is committed through `41bcd22`. The production data
+repair it describes has already run.
 
 **0. Commit and push the working tree.** `git status` lists **ten modified files** under
 `src/lib/{dfs,lineups,live}` and `src/app/admin/(panel)/lineups/`, plus the new
