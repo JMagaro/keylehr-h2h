@@ -363,12 +363,37 @@ export function extractGame(summary: EspnSummaryResponse): ExtractedGame {
     ...(summary.drives?.previous ?? []),
     ...(summary.drives?.current ? [summary.drives.current] : []),
   ];
+
+  /**
+   * DEDUPE BY PLAY ID. `drives.current` is not a separate drive — it is ALSO the last entry
+   * of `drives.previous`, so concatenating them replays the drive in progress.
+   *
+   * Measured on a live slate: all 6 in-progress games duplicated, 58 of 58 current-drive
+   * plays counted twice. Everything read out of play text is worth 2 points a piece, so a
+   * two-point conversion scored on the drive in progress paid +4 until that drive ended, and
+   * a blocked kick gave the defense +4. It healed itself once the next drive started, which
+   * is exactly what makes it the kind of bug nobody reports: wrong only while you are
+   * watching, and correct again by the time anyone checks.
+   *
+   * Keyed on the play id rather than the drive id because that is the unit being counted, and
+   * it also covers a drive that appears twice under two different ids. A play with no id at
+   * all still passes through, so a payload without ids degrades to the old behavior instead
+   * of dropping plays entirely.
+   */
+  const seenPlayIds = new Set<string>();
+
   for (const drive of allDrives) {
     // A drive's `team` is the offense; a block is credited to the defending side.
     const offenseKey = drive.team?.abbreviation ? normalizeTeamKey(drive.team.abbreviation) : null;
     const defenseKey = offenseKey ? orderedTeamKeys.find((k) => k !== offenseKey) ?? null : null;
 
     for (const play of drive.plays ?? []) {
+      const playId = play.id != null ? String(play.id) : null;
+      if (playId !== null) {
+        if (seenPlayIds.has(playId)) continue;
+        seenPlayIds.add(playId);
+      }
+
       const credit = extractTwoPointCredits(play.text);
       if (credit) {
         for (const key of credit.playerKeys) {

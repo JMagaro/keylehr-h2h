@@ -355,3 +355,91 @@ describe('extractGame — DST sacks come from the opponent’s team total', () =
     expect(Number.isFinite(scoreDst(dst.line).points)).toBe(true);
   });
 });
+
+/**
+ * `drives.current` is a DUPLICATE of the last entry in `drives.previous`, not a separate
+ * drive.
+ *
+ * Measured on a live slate: all 6 in-progress games duplicated, 58 of 58 current-drive plays
+ * appearing twice. Everything we read out of play text is worth 2 points, so the drive in
+ * progress paid double — and then healed itself when the next drive began.
+ */
+describe('extractGame — the current drive is not a second drive', () => {
+  // The real gamebook shape, copied from scripts/fixtures/espn-summary-401772810.json.
+  // "is complete" matters: `is` is in NAME_PATTERN's stop-list, and without it the second
+  // name swallows "ATTEMPT SUCCEEDS" and matches nobody.
+  const TWO_PT =
+    'M.Stafford pass to P.Nacua for 6 yards, TOUCHDOWN. TWO-POINT CONVERSION ATTEMPT. ' +
+    'M.Stafford pass to P.Nacua is complete. ATTEMPT SUCCEEDS.';
+  const BLOCK = 'J.Myers 48 yard field goal is BLOCKED (A.Donald), Center-T.Hennessy.';
+
+  function payload(play: { id?: string; text: string }) {
+    const drive = { id: 'd1', team: { abbreviation: 'LAR' }, plays: [{ ...play }] };
+    return {
+      header: {
+        id: '1',
+        competitions: [
+          {
+            status: { type: { state: 'in', detail: '2:00 - 2nd Quarter' } },
+            competitors: [
+              { homeAway: 'home', score: '7', team: { id: '1', abbreviation: 'LAR' } },
+              { homeAway: 'away', score: '3', team: { id: '2', abbreviation: 'SEA' } },
+            ],
+          },
+        ],
+      },
+      // Exactly what ESPN sends: the same drive object in both places.
+      drives: { previous: [drive], current: drive },
+      boxscore: {
+        teams: [],
+        players: [
+          {
+            team: { abbreviation: 'LAR' },
+            statistics: [
+              {
+                name: 'receiving',
+                keys: ['receptions', 'receivingYards', 'receivingTouchdowns'],
+                athletes: [
+                  { athlete: { id: '9', displayName: 'Puka Nacua' }, stats: ['1', '6', '1'] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    } as never;
+  }
+
+  it('credits a two-point conversion ONCE, not twice', () => {
+    const game = extractGame(payload({ id: 'p1', text: TWO_PT }));
+    const nacua = game.players.find((p) => p.name === 'Puka Nacua');
+    expect(nacua!.line.twoPointConversions).toBe(1);
+    // 1 rec + 6 yds + TD + 2PT = 1 + 0.6 + 6 + 2
+    expect(scorePlayer(nacua!.line).points).toBe(9.6);
+  });
+
+  it('credits a blocked kick ONCE, not twice', () => {
+    const game = extractGame(payload({ id: 'p1', text: BLOCK }));
+    // LAR is on offense for this drive, so the block belongs to SEA.
+    expect(defenseFor(game, 'SEA')!.line.blockedKicks).toBe(1);
+  });
+
+  it('still counts a play that genuinely appears in two different drives', () => {
+    // Dedupe is keyed on the play ID, so distinct plays both count — a team really can
+    // convert twice in a game.
+    const a = { id: 'p1', team: { abbreviation: 'LAR' }, plays: [{ id: 'p1', text: TWO_PT }] };
+    const b = { id: 'd2', team: { abbreviation: 'LAR' }, plays: [{ id: 'p2', text: TWO_PT }] };
+    const base = payload({ id: 'p1', text: TWO_PT }) as Record<string, unknown>;
+    const game = extractGame({ ...base, drives: { previous: [a, b], current: b } } as never);
+    expect(game.players.find((p) => p.name === 'Puka Nacua')!.line.twoPointConversions).toBe(2);
+  });
+
+  it('does not drop plays when ESPN sends no play ids', () => {
+    // Without an id we cannot dedupe, so it degrades to the old behavior rather than
+    // silently discarding the play.
+    const game = extractGame(payload({ text: TWO_PT }));
+    expect(
+      game.players.find((p) => p.name === 'Puka Nacua')!.line.twoPointConversions,
+    ).toBeGreaterThanOrEqual(1);
+  });
+});
