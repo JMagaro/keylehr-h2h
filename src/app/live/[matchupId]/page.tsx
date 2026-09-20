@@ -15,13 +15,15 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, TriangleAlert } from 'lucide-react';
 
+import { Card, CardBody } from '@/components/card';
 import { Container } from '@/components/container';
 import { assembleLive, type LiveMatchup } from '@/lib/live/assemble';
 import { getLiveWeekData, getMatchupLocation } from '@/lib/live/query';
 import { getLiveStatsForWeek, type LiveStatIndex } from '@/lib/live/stats';
 import { lineupMinutes } from '@/lib/live/minutes';
+import { assessCaptureStaleness } from '@/lib/live/staleness';
 import { exhibitionWeekLabel, isExhibitionWeek } from '@/lib/schedule/preseason';
 
 import { LiveRefresh } from '../live-refresh';
@@ -91,6 +93,30 @@ export default async function LiveMatchupPage({
   const next = view.matchups[(position + 1) % count];
   const options = view.matchups.map((m) => toNavItem(m, index));
 
+  // THE WARNING THIS PAGE WAS MISSING. /live has carried it since the feature shipped, but a
+  // matchup page is where people actually sit during a game — and it rendered a total that was
+  // quietly low with nothing to say so. 2026 week 2: the only capture was taken at 1:08pm, so
+  // the whole late slate stayed hidden and this page showed 56.02 against DraftKings' 78.42.
+  //
+  // Scoped to THIS matchup's hidden slots (a week-wide count would cry wolf on a matchup whose
+  // players are all accounted for), while "games started since" is necessarily week-wide —
+  // it is a property of the capture, not of one roster.
+  const concealedHere = matchup.home.concealed + matchup.away.concealed;
+  // THIS matchup's capture time, not the week's newest. Concealment is a property of when
+  // THESE two rosters were read, so judging them against a later capture of somebody else's
+  // roster would understate how much has kicked off since — and under-warn.
+  const capturedHere = [matchup.home.capturedAt, matchup.away.capturedAt]
+    .filter((d): d is Date => d !== null)
+    .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+  const staleness = assessCaptureStaleness({
+    games: index.games,
+    kickoffByTeam: Object.fromEntries(
+      Object.entries(data.teamContext).map(([k, c]) => [k, c.kickoff]),
+    ),
+    capturedAt: capturedHere,
+    concealedSlots: concealedHere,
+  });
+
   return (
     <Container width="wide" as="div" className="flex flex-col gap-4 py-6 sm:py-8">
       {/*
@@ -116,6 +142,23 @@ export default async function LiveMatchupPage({
         prev={toNavItem(prev, index)}
         next={toNavItem(next, index)}
       />
+
+      {staleness.shouldRecapture ? (
+        <Card className="border-tie/30 bg-tie-soft/40">
+          <CardBody className="flex items-start gap-3 p-4 sm:p-5">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-tie" aria-hidden="true" />
+            <p className="text-sm">
+              <span className="font-semibold">These totals are low — re-sync to fix.</span>{' '}
+              {concealedHere} player{concealedHere === 1 ? '' : 's'} in this matchup
+              {concealedHere === 1 ? ' was' : ' were'} hidden by DraftKings when the lineups were
+              last synced, and {staleness.gamesStartedSinceCapture} game
+              {staleness.gamesStartedSinceCapture === 1 ? ' has' : 's have'} kicked off since.
+              They are scoring points that are not counted below. Hit Sync in the Chrome
+              extension to fill them in.
+            </p>
+          </CardBody>
+        </Card>
+      ) : null}
 
       <MatchupDetail matchup={matchup} index={index} teamContext={data.teamContext} />
 

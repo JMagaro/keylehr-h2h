@@ -37,6 +37,8 @@ import {
 } from '@/lib/live/projection';
 import { formatPoints, cn } from '@/lib/utils';
 
+import { isFloorTotal, rosterSummaryParts } from '../roster-summary';
+
 /** Roster order, so both sides line up row for row. */
 const SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'DST'];
 
@@ -167,7 +169,20 @@ function ScoreValue({
 
   return (
     <span className="flex flex-col items-center">
-      <span className={cn(numberClass, 'font-bold tabular-nums')}>{formatPoints(team.points)}</span>
+      <span
+        className={cn(numberClass, 'font-bold tabular-nums')}
+        // The RUNNING TOTAL can be a floor too, not just the projection: a hidden pick is
+        // scoring points this number cannot see. Same trailing "+" the projection already
+        // uses below, so one mark means one thing on this page.
+        title={
+          isFloorTotal(team)
+            ? 'At least this much — some picks are hidden or unmatched, so their points are not counted here.'
+            : undefined
+        }
+      >
+        {formatPoints(team.points)}
+        {isFloorTotal(team) ? <span className="text-muted">+</span> : null}
+      </span>
       {hasBasis ? (
         // DraftKings' own projection model, recomputed live from ESPN's clock:
         // score + pregame × (minutes left / 60). See lib/live/projection.ts.
@@ -187,16 +202,16 @@ function ScoreValue({
   );
 }
 
-/** "58m left · 7 playing · 2 to play" — what makes a running total readable. */
+/** "58m left · 7 playing · 2 unknown" — what makes a running total readable. */
 function teamMetaLine(team: LiveTeam, minutes: LineupMinutes): string {
   if (!team.hasSnapshot) return 'Lineup not captured';
-  const parts = [
+  return [
     // 40 points with 300 minutes left is a completely different position from 40 with 12.
     `${formatMinutes(minutes.minutesLeft)} left`,
-    `${team.scored + team.noStats} playing`,
-  ];
-  if (team.pending + team.concealed > 0) parts.push(`${team.pending + team.concealed} to play`);
-  return parts.join(' · ');
+    // Hidden picks are reported as "unknown", never folded into "to play" — see
+    // ../roster-summary for why that distinction is the whole story of a stale capture.
+    ...rosterSummaryParts(team),
+  ].join(' · ');
 }
 
 /**
@@ -258,7 +273,9 @@ function PlayerCell({
           <PlayerName slot={slot} />
         </div>
         <div className="truncate text-xs text-muted">
-          {summary || line || (slot.status === 'concealed' ? 'DraftKings has not revealed this pick' : '')}
+          {summary ||
+            line ||
+            (slot.status === 'concealed' ? 'Hidden by DraftKings when the lineup was synced' : '')}
         </div>
         {summary && line ? <div className="truncate text-[11px] text-muted/80">{line}</div> : null}
       </div>
@@ -316,6 +333,34 @@ function SideMarker({ side }: { side: Side }) {
   );
 }
 
+/**
+ * How a stacked player row says whose player it is.
+ *
+ * A 4x14px colour chip was the ONLY cue, and it is not enough. Two owners routinely roster the
+ * same player — in 2026 week 2 both sides of this matchup started Carson Wentz AND Bijan
+ * Robinson — so the slot renders as two identical rows, same name, same stat line, same
+ * points, distinguished by a dim grey vs green tick most people will not even see. At that
+ * point the page is unreadable: you cannot tell whether you are looking at a duplicate render
+ * or at both owners' picks.
+ *
+ * Three reinforcing cues now, because colour alone fails for the ~8% of men with a red-green
+ * deficiency and for anyone glancing at a phone in daylight:
+ *   1. a full-height coloured left border, which also visually groups the row
+ *   2. a background tint on the home side
+ *   3. the OWNER'S NAME, in words, on the row itself
+ *
+ * (3) is the one that actually settles it. The others make it fast.
+ */
+const SIDE_ROW: Record<Side, string> = {
+  home: 'border-l-[3px] border-accent bg-accent/[0.06]',
+  away: 'border-l-[3px] border-border-strong',
+};
+
+const SIDE_NAME: Record<Side, string> = {
+  home: 'text-accent',
+  away: 'text-muted',
+};
+
 /** One owner's line in the stacked scoreboard: logo, name, meta, score. */
 function MobileTeamRow({
   team,
@@ -347,11 +392,13 @@ function MobileTeamRow({
 function MobilePlayerRow({
   slot,
   side,
+  ownerName,
   ctx,
   index,
 }: {
   slot: LiveSlot | null;
   side: Side;
+  ownerName: string;
   ctx: LiveTeamContext | undefined;
   index: LiveStatIndex;
 }) {
@@ -365,27 +412,33 @@ function MobilePlayerRow({
   const line = gameLine(slot, ctx, index);
 
   return (
-    <div className="flex items-start gap-2.5 py-1.5">
-      <span className="mt-1">
-        <SideMarker side={side} />
-      </span>
+    <div className={cn('mt-1.5 flex items-start gap-2.5 rounded-r py-1.5 pl-2.5', SIDE_ROW[side])}>
       <TeamLogo
         src={ctx?.logoEspn ?? null}
         alt={slot.teamKey ? `${slot.teamKey} logo` : ''}
         size={20}
+        className="mt-0.5"
       />
       <div className="min-w-0 flex-1">
+        {/* The owner's name leads the row. Colour and the border say it faster; this says it
+            unambiguously, which matters most when both sides started the same player. */}
+        <div className={cn('text-[11px] font-semibold uppercase tracking-wide', SIDE_NAME[side])}>
+          {ownerName}
+        </div>
         <div className="text-sm font-medium">
           <PlayerName slot={slot} />
         </div>
         {summary ? <div className="text-xs text-muted">{summary}</div> : null}
         <div className="text-[11px] text-muted/80">
-          {line || (slot.status === 'concealed' ? 'DraftKings has not revealed this pick' : '')}
+          {line ||
+            (slot.status === 'concealed'
+              ? 'Hidden by DraftKings when the lineup was synced'
+              : '')}
         </div>
       </div>
       <div
         className={cn(
-          'shrink-0 tabular-nums',
+          'shrink-0 pr-1 tabular-nums',
           pts.muted ? 'text-muted' : 'font-semibold',
           pts.tone,
         )}
@@ -521,12 +574,14 @@ export function MatchupDetail({
                       <MobilePlayerRow
                         slot={h}
                         side="home"
+                        ownerName={home.ownerName}
                         ctx={h?.teamKey ? teamContext[h.teamKey] : undefined}
                         index={index}
                       />
                       <MobilePlayerRow
                         slot={a}
                         side="away"
+                        ownerName={away.ownerName}
                         ctx={a?.teamKey ? teamContext[a.teamKey] : undefined}
                         index={index}
                       />

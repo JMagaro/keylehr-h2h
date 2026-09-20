@@ -22,13 +22,12 @@ import { TeamLogo } from '@/components/team-logo';
 import type { LiveMatchup, LiveTeam } from '@/lib/live/assemble';
 import { formatPoints, cn } from '@/lib/utils';
 
-/** "7 playing · 2 to play · 1 unresolved", or why there is no number at all. */
+import { isFloorTotal, rosterSummaryParts } from './roster-summary';
+
+/** "7 playing · 2 unknown", or why there is no number at all. See ./roster-summary. */
 function summaryLine(team: LiveTeam): string {
   if (!team.hasSnapshot) return 'Lineup not captured';
-  const parts = [`${team.scored + team.noStats} playing`];
-  if (team.pending + team.concealed > 0) parts.push(`${team.pending + team.concealed} to play`);
-  if (team.unresolved > 0) parts.push(`${team.unresolved} unresolved`);
-  return parts.join(' · ');
+  return rosterSummaryParts(team).join(' · ');
 }
 
 function TeamSide({ team }: { team: LiveTeam }) {
@@ -41,7 +40,13 @@ function TeamSide({ team }: { team: LiveTeam }) {
       </div>
       <div className="shrink-0 text-right">
         {team.hasSnapshot ? (
-          <span className="text-lg font-bold tabular-nums">{formatPoints(team.points)}</span>
+          // A trailing "+" when slots are hidden: the total is a floor, and an unmarked
+          // number here is what made a stale capture read as a finished score. Trailing to
+          // match the projection marker on the detail page — one mark, one meaning.
+          <span className="text-lg font-bold tabular-nums">
+            {formatPoints(team.points)}
+            {isFloorTotal(team) ? <span className="text-muted">+</span> : null}
+          </span>
         ) : (
           // NOT 0.00. An uncaptured lineup is unknown, and a zero here would be
           // indistinguishable from a forfeit.
