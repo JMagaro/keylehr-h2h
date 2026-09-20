@@ -437,14 +437,33 @@ Three architectural constraints, all deliberate:
 - **The estimate cannot enter the scoring chain.** `src/lib/dfs/` imports no database and no
   `src/lib/standings/`, so the module graph forbids it outright. The capture path *does* need the
   database, so it is fenced by a test instead: `src/lib/lineups/no-write.test.ts` scans every module
-  under `src/lib/dfs`, `src/lib/lineups` and `src/lib/live` — **and the `src/app/live` route**,
-  since a server component can reach the database directly — and fails on any write to `scores`,
+  under `src/lib/dfs`, `src/lib/lineups` and `src/lib/live` — **and the live routes**
+  (`src/app/live`, `src/app/api/live-status`, `src/app/admin/(panel)/scoring`), since a server
+  component can reach the database directly — and fails on any write to `scores`,
   `matchups`, `playoff_matchups`, `season_awards` or `nfl_games`. Reads are allowed; writes are not.
   DraftKings' leaderboard remains the sole authority for `scores`.
 - **The engine is pure and the rule set is data**, so both are exhaustively unit-tested (63 tests)
   and DK's published rules can be diffed against `rules.ts` by eye.
 - **The adapter is source-agnostic.** `stat-line.ts` names its fields after DraftKings' rules, not
   ESPN's JSON, so a second provider can feed the same engine without touching `score.ts`.
+
+**Three caches are stacked on the live path, and they add up.** Reason about them together, not
+one at a time — measured lag in production during live play is **~21–31s**, then it converges:
+
+| Layer | Window | Where |
+| ----- | ------ | ----- |
+| ESPN summary, per game (Data Cache) | `pre` 300s · **`in` 45s** · `post` 86,400s | `src/lib/dfs/sources/espn-boxscore.ts` |
+| The assembled week index (`unstable_cache`) | 30s, tagged `liveTag()` | `src/lib/live/stats.ts` |
+| The page (`router.refresh()`) | 30s, paused while the tab is hidden | `src/app/live/live-refresh.tsx` |
+
+A capture busts the index tag; **nothing busts the per-game Data Cache early.**
+
+**A dropped ESPN summary costs a whole GAME, not one stat**, so `fetchGameSummary` retries: 3
+attempts, 150/400ms backoff, a 6s timeout, and no retry on 404/403. The `AbortSignal` on that
+request is **required for the retry to reach the network** — Next's render-pass fetch dedupe
+memoises by URL+headers *before* the promise settles and would otherwise replay the same rejected
+promise, and `cache: 'no-store'` does **not** bust it. Written up in full at
+[`SCORING.md` §15](SCORING.md#a-dropped-boxscore-is-retried-not-painted-as-).
 
 `src/lib/nfl/team-keys.ts` holds the one `normalizeTeamKey()` — it existed as three private copies
 (DraftKings draftables, Sleeper players, and the live-scoring stat adapters) and was pulled up

@@ -571,9 +571,10 @@ Keep it that way — a live page renders an estimate *beside* the score, never *
 | `src/lib/dfs/sources/espn-extract.ts` | Pure ESPN payload → stat lines: `extractGame`, plus the play-text helpers. |
 | `src/lib/nfl/team-keys.ts` | `normalizeTeamKey()` — one copy, shared by the DK, Sleeper and ESPN adapters. |
 
-63 unit tests cover the two pure modules (`score.test.ts`, `espn-extract.test.ts`), the latter
-against two trimmed real payloads in `scripts/fixtures/` (CHI @ MIN 2025 week 1, and a 2026
-preseason DET @ CIN game).
+73 unit tests cover the two pure modules (41 in `score.test.ts`, 32 in `espn-extract.test.ts`), the
+latter against two trimmed real payloads in `scripts/fixtures/` (CHI @ MIN 2025 week 1, and a 2026
+preseason DET @ CIN game). The ESPN *client* has 12 of its own in `espn-boxscore.test.ts`, which
+exist mainly to pin the retry and its `AbortSignal` ([below](#a-dropped-boxscore-is-retried-not-painted-as-)).
 
 Three engine properties are load-bearing:
 
@@ -628,6 +629,58 @@ estimate must never *become* the score.
 
 Known gap: a blocked-kick *return* touchdown is a special-teams TD to DraftKings but is not
 separable from other return TDs in ESPN's data. Rare enough to accept.
+
+#### Which ESPN number is the right one — a DST reads the OPPONENT's totals
+
+"Straight out of the boxscore" hides a choice, because ESPN reports the same event from both
+sides and **the per-player rows are not always the authority**. Two DST stats are therefore read
+from the **opponent's team totals**, not from our own defenders' rows:
+
+| DST stat | Read from | Why not the obvious field |
+| -------- | --------- | ------------------------- |
+| `sacks` | opponent's `sacksYardsLost` (`"3-16"` → 3) | ESPN's per-player `defensive` rows **settle later than the aggregate** and can be short a sack the team total already carries. |
+| `fumbleRecoveries` | opponent's `fumblesLost` | Our own `fumblesRecovered` also counts recovering *our own* team's fumble, which DraftKings does not pay for. |
+
+`sacksYardsLost` on a team means sacks **that team's offense took**, so the defense being scored
+reads the other team's row. That is the same relationship `fumbleRecoveries` already used; the sack
+rule was brought into line with it in `cadf15f`.
+
+**Measured, not assumed.** 2026 week 2 surfaced it: Atlanta's offense was sacked three times
+(`"sacksYardsLost": "3-16"`), DraftKings paid the Carolina DST for **3**, and Carolina's player
+rows summed to **2**. One point — and it was the entire gap between an owner reading **116.62**
+here and **117.72** on DraftKings. Across every DST in weeks 1–2 with a DK sack count on a final
+game, the **opponent total is right 17/17** and the player sum **16/17**, so the team total leads
+and the player sum is only the fallback for a missing row. Two further checks, because a fix that
+is right for the wrong reason is a trap:
+
+- Cross-checked against the opponent quarterbacks' own `sacks-sackYardsLost` per-player stat — a
+  different part of the payload entirely — over every final game in both weeks. **No disagreement.**
+- Confirmed the team stat populates **during play**, not only at Final: 6 in-progress games, **12
+  of 12** defenses had it and all matched. A stat that only appeared after the whistle would have
+  regressed live scoring, which is the only thing this path is for.
+
+> **`teamPairedStat` exists because `teamStat` cannot read these rows.** `parseStat` sees `"3-16"`,
+> fails `Number()`, and returns **0** — indistinguishable from a real "no sacks" — and ESPN sends
+> `value: "-"` on paired rows, so the numeric branch does not save it either. `teamPairedStat`
+> returns `null` for an absent row so the caller can tell that apart from a genuine `"0-0"`.
+
+#### ⚠️ Near a yardage bonus, one yard is worth THREE POINTS
+
+**This will recur every week, it is not a bug, and it is the single most likely reason a `/live`
+number differs from the DraftKings app.** We score from ESPN; DraftKings scores from its own feed.
+The two occasionally disagree by a yard — and a yard is normally worth 0.1, *except* at 100 and 300
+where it also decides a **+3 bonus**.
+
+Live example from 2026 week 2: **DraftKings had Jaxon Smith-Njigba at 100 receiving yards and ESPN
+had 99** — consistently 99, across its boxscore row, its play-by-play (82 + 10 + 7) and its leaders
+block, so there was nothing to "fix" on our side. 0.1 of yardage plus 3.0 of bonus = **3.1 points
+of divergence on one yard.**
+
+Nothing in this repo can close that gap: it is two feeds disagreeing about what happened, which
+[the drift audit](#does-the-estimate-agree-with-draftkings--the-drift-audit) classifies as
+`statDrift` — **explicitly not our bug, and deliberately not flagged as needing attention**. The
+DraftKings leaderboard remains the official score; the estimate is an estimate. Say so when someone
+reports it, and do not go looking for a rule bug in `rules.ts`.
 
 ### Checking the engine against something
 
@@ -858,7 +911,7 @@ exists to prevent, avoided here by never producing the ambiguous value in the fi
 | ---------------- | ------- | -------- |
 | `scored` | We have the player's stat line. Real — and **may legitimately be 0**. | a number |
 | `pending` | Their game has not kicked off. Contributes nothing *yet*, and says so. | `null` |
-| `concealed` | DraftKings is still hiding the player. Same arithmetic as `pending`; we don't even have the name. | `null` |
+| `concealed` | DraftKings hid the pick when the roster was read, so we do not know **who** it is. Same arithmetic as `pending`, **opposite meaning** — see below. | `null` |
 | `noStats` | Their game **is** underway **and** we loaded its boxscore, but they have no row in it. | `0` |
 | `unresolved` | Their game did not load at all, so we genuinely do not know. **The only bad state.** | `null` |
 
@@ -872,17 +925,51 @@ would hide a genuine name-matching failure. They are a third thing: scored as 0,
 **A missing DEFENSE is `unresolved`, not `noStats`.** Points allowed alone guarantees a defense a
 row in any loaded boxscore, so its absence really does mean we don't know.
 
+##### 🛑 `pending` and `concealed` have identical arithmetic and OPPOSITE meanings
+
+They are both worth `null`, which is why they were merged in the UI and summed as **"to play"** —
+and that label is true of one and a lie about the other:
+
+- **`pending`** — we know exactly who this is, and their game has not started. The total below is
+  **complete right now**.
+- **`concealed`** — DraftKings hid the pick at capture time, so we do not know who it is. If their
+  game **has since started**, they are scoring points the total does **not** include. The total is
+  a **floor**.
+
+**2026 week 2 is the worked example.** The only capture was taken at 1:08pm and nobody re-synced,
+so the entire late slate stayed concealed. The page read *"7 playing · 2 to play"* and showed
+**56.02** against DraftKings' **78.42** — and the two "to play" players were **CeeDee Lamb (19.90)
+and a Washington back (2.50)**, 22.40 between them, both on the field at that moment. **The scoring
+was exact. The label said the gap was fine.**
+
+So the two are now reported separately, and `src/app/live/roster-summary.ts` owns the wording
+because it was independently wrong in **both** the week list and the detail page:
+
+| Function | Contract |
+| -------- | -------- |
+| `rosterSummaryParts(team)` | `["7 playing", "2 to play", "2 unknown", "1 unresolved"]` — clauses in reading order, omitting any that is 0. Returns the **parts**, not a joined string, so the detail page can prepend its own minutes-remaining clause without re-deriving the counts. |
+| `isFloorTotal(team)` | `hasSnapshot && concealed + unresolved > 0`. **`pending` is deliberately excluded** — a player who has not kicked off is worth nothing yet, so the total is complete. Only points we *cannot see* make the number an understatement. |
+
+A floor total renders with a **trailing `+`** (`56.02+`), matching the projection marker already in
+the detail page — one mark, one meaning. The two callers must never describe the same roster
+differently again, which is the entire reason the module exists rather than two copies of a
+`join('·')`.
+
 #### The staleness problem — one capture is not enough
 
 **This is the most consequential way the live estimate can be quietly wrong**, and it is not a bug
 in the scoring — it is a property of when the roster was read.
 
 DraftKings conceals a player until *that player's* game kicks off. So a capture taken at 1pm
-legitimately hides the entire late slate: those slots carry no identity, contribute nothing, and the
-UI honestly describes them as "to play". **That reading is correct at 1pm and wrong at 5pm.** By
-then those games have started, DraftKings would now reveal the players, and the only reason they are
-still missing is that nobody re-captured. Every one of them is scoring points the estimate excludes,
-so the totals are silently *low* — and low in a way that looks like a normal quiet afternoon.
+legitimately hides the entire late slate: those slots carry no identity and contribute nothing.
+**That is honest at 1pm and wrong at 5pm.** By then those games have started, DraftKings would now
+reveal the players, and the only reason they are still missing is that nobody re-captured. Every one
+of them is scoring points the estimate excludes, so the totals are silently *low* — and low in a way
+that looks like a normal quiet afternoon.
+
+> The UI used to call these slots **"to play"**, which made exactly that misreading the default.
+> They now read **"N unknown"** with a trailing `+` on the total —
+> [above](#-pending-and-concealed-have-identical-arithmetic-and-opposite-meanings).
 
 Measured on the real capture: **14 of 16 games had started while 30 roster spots were still
 concealed.**
@@ -897,8 +984,18 @@ That precision is what keeps it quiet in the **lookalike** case: right after a 1
 early games have started and the late-slate players are concealed — but no game has kicked off
 *since* the capture, so there is nothing to re-capture yet and no warning is shown.
 
-When it does fire, `/live` says **"These totals are low — re-sync to fix"**, naming how many games
-have kicked off since the capture and how many roster spots are still unknown.
+When it does fire, **both** `/live` and `/live/[matchupId]` say **"These totals are low — re-sync to
+fix"**, naming how many games have kicked off since the capture and how many roster spots are still
+unknown.
+
+> **The detail page got that banner late, and the scoping is deliberate.** `/live` has carried it
+> since the feature shipped, but the matchup page is where people actually sit during a game and it
+> was the one rendering a quietly low number with nothing to explain it. It counts **this
+> matchup's** concealed slots (a week-wide count would cry wolf on a matchup whose players are all
+> accounted for) and judges them against **this matchup's** capture time, not the week's newest:
+> concealment is a property of when *these two rosters* were read, so comparing them to somebody
+> else's later capture would under-warn. "Games started since" stays week-wide, because that is a
+> property of the capture rather than of one roster.
 
 > **Operationally: sync again after the last kickoff of the day**, or the late slate scores zero.
 > See [`RUNBOOK.md`](RUNBOOK.md#roster-capture--what-feeds-live). With **Live Sync** running, the
@@ -973,6 +1070,17 @@ Three rules are worth knowing, because each one encodes a judgement:
 Slots we cannot place at all are counted as `unknownSlots` and **excluded** from `minutesLeft`
 rather than assumed — the same "never invent a number" rule as the [five slot
 states](#the-five-slot-states--the-load-bearing-concept).
+
+> **`formatMinutes` renders `"223m"`, not `"223 min"`** (changed in `e4c2984`; two callers). It
+> sits in a phone-width meta line beside two other clauses — `223m left · 7 playing · 2 unknown` —
+> and those four characters are the difference between one line and two.
+>
+> **The lesson behind that is worth more than the format.** That line was `truncate`, and the
+> longer wording clipped to `…2 unkn…` at 390px — losing precisely the clause that had just been
+> added to say the total below is a floor. **Nothing failed:** the tests passed, the previous
+> wording had fitted, and the fix quietly defeated itself. It was caught only by screenshotting at
+> **390×844**. A correctness fix that lands in a fixed-width line is not done until it has been
+> *seen* at phone width.
 
 > **This is our computation, not DraftKings' PMR.** DK shows its own "Points Minutes Remaining",
 > and its `maxTimeRemaining: 540` (9 slots × 60) confirms the same model. One captured sample
@@ -1066,6 +1174,58 @@ The fan-out runs at **concurrency 6** with `Promise.allSettled` semantics: one f
 to "15 of 16 loaded" — surfaced in the UI — rather than throwing the page. Players in a game that
 did not load become `unresolved`, never 0.
 
+##### Three caches are stacked, and they add up
+
+A number on `/live` can be up to about a minute behind the field, and that is by design rather than
+by accident. Measured in production during live play: **~21–31s of lag, then it converges.**
+
+| Layer | Window | Where |
+| ----- | ------ | ----- |
+| ESPN summary, per game (Data Cache) | `BOXSCORE_TTL_SECONDS` — `pre` 300s · **`in` 45s** · `post` 86,400s | `src/lib/dfs/sources/espn-boxscore.ts` |
+| The assembled week index (`unstable_cache`) | `LIVE_INDEX_REVALIDATE_SECONDS = 30` | `src/lib/live/stats.ts` |
+| The page itself (`router.refresh()`) | `REFRESH_MS = 30_000`, paused while the tab is hidden | `src/app/live/live-refresh.tsx` |
+
+Each layer is individually justified — one warm ESPN entry serves every viewer, a finished game is
+cached for a day, a hidden tab costs nothing — but **do not reason about any of them in isolation
+when someone reports "the app is ahead of the site"**. A capture busts the index tag; nothing busts
+the per-game Data Cache early.
+
+##### A dropped boxscore is retried, not painted as `?`
+
+A failed summary does **not** degrade into one missing stat: `buildLiveStatIndex` skips the whole
+game, so every player in it loses their `teamState` and renders `unresolved` — **up to nine rosters
+from a single dropped request**. And it is *sticky*, because the assembled index is memoised for
+30s, so the partial result is served to everyone until that window rolls. The reported symptom was
+exactly that: *"question marks on random players, need to keep re-loading until it shows."* **The
+reload was the retry.**
+
+`fetchGameSummary` now makes **3 attempts** with **150ms / 400ms** backoff and a **6s timeout**
+where there was none at all. Backoff is short on purpose — these routes budget `maxDuration = 30`
+for a 16-game slate, so a patient retry would trade one broken render for a timed-out one. **404
+and 403 are not retried**: a wrong event id is wrong every time, and 403 is the User-Agent trap
+documented at the top of that file, not a blip.
+
+> 🛑 **The `AbortSignal` is load-bearing beyond the timeout, and without it the retry is a NO-OP
+> inside a render.** This was written once without it, on the strength of a docs line, and silently
+> did nothing — every test still passed, because tests stub `fetch` below Next's layer.
+> From `node_modules/next/dist/server/lib/dedupe-fetch.js`:
+>
+> - It memoises by `(url, method, headers, mode, redirect, credentials, referrer, referrerPolicy,
+>   integrity)` for the whole render pass, and pushes the entry **before the promise settles**. An
+>   identical retry therefore re-awaits the **same rejected promise** and never reaches the network.
+>   A non-OK response is worse: it *resolved*, so the retry gets a clone of the same 503.
+> - **`cache` and `next` are deliberately excluded from that key**, so `cache: 'no-store'` on the
+>   retry would **not** bust it. Only a signal (or a differing header) does.
+> - That same file **opts out of deduping entirely when a signal is present** — the documented
+>   escape hatch, and exactly what a retry needs.
+>
+> Losing dedupe costs nothing here: it only helps when one URL is fetched twice in a render, and
+> `buildLiveStatIndex` fetches each event exactly once. **The Data Cache is unaffected** —
+> `patch-fetch.js` passes `next.revalidate` through and only drops the signal when background-
+> revalidating a stale entry — so a finished game is still cached for a day. The test asserts the
+> signal is present on every attempt, so removing it fails loudly instead of quietly disabling the
+> retry.
+
 > **Do NOT add `export const dynamic = 'force-dynamic'` to either `/live` route.** Every other data
 > page in this repo sets it, so copying the idiom is the obvious mistake — and here it is actively
 > harmful: `force-dynamic` implies `fetchCache = 'force-no-store'`, which silently disables the Data
@@ -1078,7 +1238,10 @@ did not load become `unresolved`, never 0.
 
 - **`/live`** — the week's matchups as cards; the whole card is a `<Link>` to the detail page.
   Shows `N/M games loaded`, "lineups as of …", and names any owner with **no capture** rather than
-  showing them as `0.00`. `?season=` and `?week=` override the defaults.
+  showing them as `0.00`. Each side carries its roster summary —
+  [`rosterSummaryParts`](#-pending-and-concealed-have-identical-arithmetic-and-opposite-meanings),
+  e.g. `7 playing · 2 unknown` — and a **trailing `+`** on the total when that total is a floor.
+  `?season=` and `?week=` override the defaults.
   > **The "not captured" notice names at most `MAX_NAMED_MISSING = 6` owners, then counts the
   > rest** ("… and 20 more"). Spelling out 26 names filled an entire phone screen and pushed every
   > matchup below it, to repeat something each card already says on its own row. **The count is the
@@ -1096,10 +1259,21 @@ did not load become `unresolved`, never 0.
   > at 390px leave each player roughly **70px** once the logo and the points column are subtracted
   > — enough for `J. Jeffe…` and nothing else, with the stat line dropped entirely. Below `sm` the
   > same data renders **stacked**: one block per roster slot, both players full width beneath it,
-  > each keeping its name, stat line and game state, with a **two-tone legend** naming which row
-  > belongs to which owner (stacking removes the left/right cue the mirror gives you for free).
+  > each keeping its name, stat line and game state.
   > **Two layouts, ONE data source** — everything is computed once and rendered twice. Do not let
-  > the variants drift into computing different things. Each side's header carries its **minutes left**
+  > the variants drift into computing different things.
+  >
+  > 🛑 **Stacking removes the left/right cue the mirror gives you for free, and ONE cue is not
+  > enough.** The first version marked ownership with a 4×14px chip, dim grey against green. Two
+  > owners routinely start the same player — in one week-2 matchup **both sides started Carson
+  > Wentz *and* Bijan Robinson** — so a slot rendered as two identical rows: same name, same stat
+  > line, same points, and no usable way to tell whether it was a duplicate render or both rosters.
+  > There are now **three reinforcing cues**: a full-height coloured left border, a background tint
+  > on the home side, and **the owner's name on the row**. The name is the one that settles it; the
+  > others make it fast. Colour alone was never enough — not for the ~8% of men with a red-green
+  > deficiency, and not for anyone glancing at a phone in daylight.
+  >
+  > Each side's header carries its **minutes left**
   and, under the score, its **projected final**; the centre shows the **win-probability estimate**.
   The **largest single-slot gap** is highlighted as the difference-maker (≥ 5 points, and only where
   both sides are actually scored — a gap against an unknown is not a gap). It resolves the matchup's
@@ -1329,9 +1503,11 @@ Real, specific, and none of them blocking:
   `"projection": { "valueIcon": "" }`. That is structural rather than accidental: the capture that
   is ideal for the drift audit (post-game, everything revealed and final) is exactly the one that
   cannot carry a projection. A **mid-game** capture on a real slate is what closes it.
-- **A ~16-game cold render has never been tested against `maxDuration = 30`.** The fan-out runs at
-  concurrency 6; the proving capture needed 1–2 games, not 16. If a cold Sunday render times out,
-  this is the first thing to look at.
+- ✅ **CLOSED — a full 16-game slate has now rendered in production.** 2026 week 2 served
+  `16/16 games loaded` live, and the fan-out now also carries a **6s per-request timeout** so one
+  hung socket can no longer hold a wave until `maxDuration` kills the render. Measured cache lag
+  during live play: **~21–31s**, converging. If a cold Sunday render ever does time out, the
+  concurrency-6 fan-out is still the first thing to look at.
 - **A pasted capture is only enriched if someone fills in the draft group id.** Admin → Lineups has
   the field and passes it through, but it is optional. Left blank, the capture is usually still
   **scorable** — the team comes from DK's own `competition` block — but nothing supplies a player's

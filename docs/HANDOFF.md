@@ -4,13 +4,18 @@ A running "where things stand" doc so a fresh Claude/context window (or contribu
 without re-deriving everything. Update the **Snapshot**, **Recent work** and **Known open items**
 sections as you go; **[Start here](#start-here-fresh-session)** is the entry point.
 
-_Last updated: 2026-09-16 (**committed as `6c16de6`…`1996311`, NOT yet pushed** — see
-[Recent work](#recent-work-newest-first): **roster-capture identity made failure-proof**, after
-2026 week 1 rendered as 288 unresolved slots. The DK scoring engine was audited player-by-player
-against DraftKings' own numbers and found **exactly correct** — 288/288 slots and 32/32 owner
-totals, max |delta| 0.00, and **`pointsAllowedMode: 'raw'` settled** against the ATL/PIT game that
-separates the two modes. The defect was identity,
-not arithmetic. `verify` 9/9, **369 tests**, typecheck + lint clean. The 2026-08-23 work below —
+_Last updated: 2026-09-20 (**everything through `12e4bb9` is COMMITTED AND PUSHED**. Newest:
+`cadf15f`…`12e4bb9`, five commits from a live Sunday in **2026 week 2**, with the owner watching
+`/live` on a phone against the DraftKings app and reporting mismatches as they happened — see
+[Recent work](#recent-work-newest-first). **One real scoring bug** (a DST's sacks now come from the
+opponent's team total), **one silent live-only bug** (ESPN's `drives.current` was being processed
+twice), **a retry for dropped boxscores**, and **two UI-correctness fixes** — a hidden pick is no
+longer labelled "to play", and you can tell whose player is whose in portrait. Before that,
+`6c16de6`…`1996311`: **roster-capture identity made failure-proof**, after 2026 week 1 rendered as
+288 unresolved slots. The DK scoring engine was audited player-by-player against DraftKings' own
+numbers and found **exactly correct** — 288/288 slots and 32/32 owner totals, max |delta| 0.00, and
+**`pointsAllowedMode: 'raw'` settled** against the ATL/PIT game that separates the two modes. That
+defect was identity, not arithmetic. The 2026-08-23 work below —
 the mobile `/live` rebuild, the conditional roster refresh (**extension 1.5.0**) and the
 **scoring-drift audit** — **is now committed** (`b11d448`, `18a8b95`, `28ce62b`); so is the backup tooling
 (`5c4c1d9`) and the `/history` career work after it. Before that: **live in-progress scoring,
@@ -36,10 +41,10 @@ tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model
   Phase 0–5 write-up — on top of the earlier 12-commit run `d0ba364` … `e2a3f1a`. **Those commit
   messages are the real design record** — read them before touching the scoring, live or playoff
   paths; each one states the bug, the decision and what was rejected.
-  > **Push check.** ⚠️ **The 2026-09-16 identity work is COMMITTED BUT UNPUSHED** — three commits
-  > on `main`, `6c16de6` (read the team from DK's payload), `71e34eb` (the drift audit stops
-  > blaming correct rules) and `1996311` (the repair script + docs). Not deployed. Check with
-  > `git log origin/main..main`; anything listed is unpushed work from a later session.
+  > **Push check.** ✅ **`main` and `origin/main` are level at `12e4bb9`** — the 2026-09-16 identity
+  > work (`6c16de6`, `71e34eb`, `1996311`) and the 2026-09-20 week-2 live fixes
+  > (`cadf15f`…`12e4bb9`) are all pushed and deployed. Check with `git log origin/main..main`;
+  > anything listed is unpushed work from a later session.
   >
   > **The production DATA was already repaired**, which is the one thing a push does not do and
   > does not undo: `scripts/repair-lineup-identities.ts --season=1 --week=1 --write` ran against
@@ -442,8 +447,87 @@ Sleeper PPR as a free proxy).
 
 ## Recent work (newest first)
 
+- **A live Sunday in 2026 week 2: one real scoring bug, one invisible one, and two labels that
+  lied** (`cadf15f`…`12e4bb9`, **pushed**, 2026-09-20). All five came out of the owner watching
+  `/live` on a phone against the DraftKings app and reporting mismatches in real time — which is
+  worth noting on its own: **none of these would have been found by the drift audit alone**, because
+  three of them only exist while a game is in progress.
+  - **`cadf15f` — a DST's sacks now come from the OPPONENT'S TEAM TOTAL.** The one genuine scoring
+    bug. Sacks were summed from ESPN's per-player `defensive` rows, which **settle later than the
+    team aggregate** and can be short one. Week 2: Atlanta's offense was sacked 3 times
+    (`"sacksYardsLost": "3-16"`), DraftKings paid the Carolina DST for **3**, our player rows summed
+    to **2** — one point, and it was the entire gap between an owner's **116.62** here and
+    **117.72** on DK. `sacksYardsLost` on a team means sacks that team's OFFENSE took, so the
+    defense being scored reads the **opponent's** figure — the same relationship `fumbleRecoveries`
+    already used. **Measured, not assumed:** opponent total right **17/17** across weeks 1–2 final
+    games, player sum **16/17**; independently cross-checked against opponent QBs'
+    `sacks-sackYardsLost` rows (no disagreement); and confirmed to populate **during play**, not
+    just at Final (6 in-progress games, **12/12** defenses) — a team stat that only appeared after
+    the whistle would have regressed the only thing this path is for. New `teamPairedStat` helper,
+    because `teamStat`'s `parseStat` reads `"3-16"` as **0** and ESPN sends `value: "-"` on paired
+    rows.
+  - **`12e4bb9` — ESPN's `drives.current` IS the last entry of `drives.previous`.** We concatenated
+    both, so **every play in the drive in progress was processed twice**: all 6 in-progress games,
+    **58 of 58** current-drive plays. Everything read from play text is worth 2 points apiece, so a
+    live two-point conversion paid **+4** and a blocked kick gave the defense **+4** — then the
+    drive ended and the number **silently corrected itself**. Wrong only while you were watching,
+    right again by the time anyone checked: **nobody would ever report this.** Impact at fix time:
+    **zero** (nothing scoring happened to be in a live drive). Deduped on **play id**, not drive id;
+    a play with no id still passes through. Unaffected: safeties (read from `scoringPlays`) and
+    every boxscore stat. ⚠️ **Writing tests here? Use the real gamebook string from
+    `scripts/fixtures/`** — ESPN sends `"… pass to P.Nacua is complete. ATTEMPT SUCCEEDS."`, and
+    that `is` is in `NAME_PATTERN`'s stop-list; without it the name swallows `ATTEMPT SUCCEEDS`.
+  - **`e6565e8` — retry a dropped boxscore instead of painting question marks.** Reported from a
+    phone: *"question marks on random players, need to keep re-loading until it shows."* A failed
+    summary skips the **whole game** in `buildLiveStatIndex` — up to nine rosters — and the index is
+    memoised 30s, so it **sticks**. Now 3 attempts, 150/400ms backoff, **6s timeout** where there was
+    none, no retry on 404/403. 🛑 **THE `AbortSignal` IS LOAD-BEARING BEYOND THE TIMEOUT.**
+    `next/dist/server/lib/dedupe-fetch.js` memoises by (url, method, headers, …) for the whole
+    render pass and pushes the entry **before the promise settles**, so an identical retry re-awaits
+    the same **rejected** promise (or gets a clone of the same 503) and never hits the network.
+    **`cache: 'no-store'` does NOT bust it** — that file excludes `cache` from the key. A signal is
+    the documented opt-out. Data Cache unaffected (`patch-fetch.js` only drops the signal when
+    background-revalidating). **This was written once WITHOUT the signal and silently did nothing**,
+    with every test passing, because tests stub `fetch` below Next's layer — the test now asserts
+    the signal is present.
+  - **`3c9a78f` — "2 to play" was a lie, and you could not tell whose player was whose.**
+    `pending` and `concealed` were summed under one label. They are **opposites**: `pending` = we
+    know who it is and their game has not started (**total complete**); `concealed` = DK hid the
+    pick at capture, so if their game HAS started they are scoring points the total misses
+    (**total is a floor**). Week 2's only capture was 1:08pm: the page read *"7 playing · 2 to
+    play"*, showed **56.02** against DK's **78.42**, and the two "to play" players were **CeeDee
+    Lamb (19.90)** and a Washington back (2.50) — both on the field. **The scoring was exact; the
+    label said the gap was fine.** Hidden picks now read **"N unknown"**, a floor total carries a
+    trailing **`+`**, and `/live/[matchupId]` finally gets the re-sync banner `/live` always had —
+    scoped to **this matchup's** capture time, not the week's newest, because judging these rosters
+    against someone else's later capture would under-warn. New module `src/app/live/roster-summary.ts`
+    (`rosterSummaryParts`, `isFloorTotal`) **because the wording was independently wrong in both the
+    list and the detail page.** Second half: stacked portrait rows had one ownership cue, a 4×14px
+    grey-vs-green chip — and both owners in that matchup started **Carson Wentz AND Bijan
+    Robinson**, so a slot rendered as two identical rows. Now three reinforcing cues: full-height
+    coloured left border, background tint on the home side, and **the owner's name on the row**.
+  - **`e4c2984` — stop truncating the one clause that says the score is incomplete.** The mobile
+    meta line was `truncate` and clipped to *"…2 unkn…"* at 390px, losing exactly the clause
+    `3c9a78f` had just added. **Nothing failed** — tests passed, the old wording fitted, and the fix
+    quietly defeated itself. Caught only by **screenshotting at 390×844**. Now wraps, and
+    `formatMinutes` outputs **`"223m"` instead of `"223 min"`** (a changed output format, two
+    callers).
+  - **VERIFIED STATE.** Week 1 reconciles **288/288** with 0 drift. Week 2: **133 comparable slots
+    agree**, 0 ruleDrift / statDrift / unmapped / unmatched, **0 unresolved**, 16/16 games, and all
+    32 owners' production totals match freshly-computed. A **480-assertion** cross-check over every
+    final game in weeks 1–2 (sacks against two independent ESPN sources, fumble recoveries,
+    defensive TDs, interceptions, rushing/passing/receiving yards, plus internal invariants) found
+    **0 disagreements**. Measured production cache lag during live play: **~21–31s**, then it
+    converges.
+  - **🛑 THE LIMITATION TO QUOTE WHEN SOMEONE REPORTS A MISMATCH — it will recur every week and it
+    is NOT a bug.** We score from ESPN; DraftKings scores from its own feed. Near a yardage bonus a
+    **one-yard** disagreement becomes a **three-point** one. Live example: DK had Jaxon Smith-Njigba
+    at **100** receiving yards, ESPN at **99** — consistently, across its boxscore row, its
+    play-by-play (82+10+7) and its leaders block. 0.1 yardage + 3.0 bonus = **3.1 points on one
+    yard**. The drift audit calls this `statDrift` and deliberately does not flag it as needing
+    attention. **The DraftKings leaderboard remains the official score.**
 - **Roster-capture identity made failure-proof; the DK engine audited and found CORRECT**
-  (`6c16de6`…`1996311`, unpushed, 2026-09-16). Tests 356 → **369**; `verify` 9/9 including the production
+  (`6c16de6`…`1996311`, pushed, 2026-09-16). Tests 356 → **369**; `verify` 9/9 including the production
   build and the frozen-season byte-identical snapshot. Files: `src/lib/lineups/{normalize,enrich,
   ingest}.ts`, `src/lib/live/reconcile.ts`, and the new `scripts/repair-lineup-identities.ts`.
   Written up in [`SCORING.md` §15](SCORING.md#when-identity-fails-the-whole-week-fails).
@@ -954,10 +1038,10 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
   `projectedSlots`; the detail page renders nothing when it is `0`, and marks a partial
   projection as a floor (`proj 141.20+`) rather than passing it off as complete.
 - ✅ **A full 32-owner regular-season Sunday HAS now been exercised end to end** (2026 week 1: 288
-  slots, 288 agree, max |delta| 0.00) — the old "it was only preseason, 6 owners, 54 slots" caveat
-  is discharged. What that week did **not** settle: **a ~16-game cold render has never been tested
-  against `maxDuration = 30`** (the fan-out runs at concurrency 6). If a cold Sunday render times
-  out, start here.
+  slots, 288 agree, max |delta| 0.00; week 2: 133 comparable slots, 0 drift) — the old "it was only
+  preseason, 6 owners, 54 slots" caveat is discharged, and so is the **16-game cold render**, which
+  served `16/16 games loaded` live in week 2. The fan-out still runs at concurrency 6, now with a 6s
+  per-request timeout; if a cold Sunday render ever times out, start there.
   ✅ **Append-only versioning is no longer on this list** — week 102 now holds three capture
   versions per owner, newest winning, nothing overwritten.
 - **The drift audit's coverage grows with the seasons, and two of its limits are worth knowing.**
@@ -1090,14 +1174,15 @@ regular-season week and found exact. The **2026-09-16 identity work is committed
 (`6c16de6`…`1996311`); everything before it is committed through `41bcd22`. The production data
 repair it describes has already run.
 
-**0. Commit and push the working tree.** `git status` lists **ten modified files** under
-`src/lib/{dfs,lineups,live}` and `src/app/admin/(panel)/lineups/`, plus the new
-`scripts/repair-lineup-identities.ts`. `npm run verify` is
-9/9 and **369 tests** pass as it stands. **No migration is involved** — the identity work writes
-the same `lineup_snapshots.slots` jsonb. Note the **production data repair has already been
-applied** (288 slots, 32 snapshots, season 1 week 1), so the database is ahead of the code until
-this lands. Read [Recent work](#recent-work-newest-first) for what each piece decided and what was
-rejected; that is the design record until these become commits.
+**0. Nothing is waiting to be pushed.** `main` and `origin/main` are level at `12e4bb9`, the tree
+is clean, and **403 tests** pass across 29 files. **No migration is outstanding.** Read
+[Recent work](#recent-work-newest-first) for what each commit decided and what was rejected; those
+commit messages are the design record.
+
+> **The most useful thing to know before touching live scoring:** the last two sessions' bugs were
+> found by *watching a real Sunday against the DraftKings app*, not by the test suite or the drift
+> audit — three of them only exist while a game is in progress. If you change anything on this
+> path, the acceptance test is a live slate.
 
 **1. ✅ CLOSED — the second week-102 capture has landed.** Older notes here asked for it. The
 database now holds **four** captures for season 1 / week 102: two mid-slate on 2026-08-15
@@ -1133,9 +1218,15 @@ item 2 above, which is about the value never being *present*), the paste path no
 2026-09-16**: `pointsAllowedMode: 'raw'` is now **settled** — measured against the ATL/PIT game
 where the carve-out would have given a different tier, and DraftKings paid the raw one — and
 the engine has now been reconciled against DraftKings on a **full 32-owner regular-season Sunday**
-at max |delta| 0.00. Still open: `dkProjection` never captured, a 16-game cold render untested
-against `maxDuration = 30`, and the win-probability standard deviation being an assumed constant.
-None blocks use.
+at max |delta| 0.00. A third closed on **2026-09-20**: a **16-game cold render** has now run in
+production (week 2, `16/16 games loaded`), and the ESPN fetch gained a 6s timeout so one hung
+socket cannot eat the render budget. Still open: `dkProjection` never captured, and the
+win-probability standard deviation being an assumed constant. Neither blocks use.
+
+**And one thing that will never close, by nature:** near a yardage bonus, a **one-yard**
+disagreement between ESPN and DraftKings is a **three-point** one (0.1 + a 3.0 bonus). Week 2's
+example was Jaxon Smith-Njigba — DK 100 receiving yards, ESPN 99. It is `statDrift`, not a bug, and
+the DraftKings leaderboard is the official score.
 
 ## Map of the important code
 
@@ -1191,7 +1282,9 @@ None blocks use.
   ext: `extension/` — distinct from DK *salaries* (`src/lib/draftkings/`, server-side, keyless)
 - Live in-progress **estimate** (a third, separate thing): `src/lib/dfs/` — `rules.ts` (DK Classic
   as frozen data) · `stat-line.ts` (the provider-agnostic input contract) · `score.ts` (the pure
-  engine) · `sources/espn-{boxscore,extract,types}.ts` (the public ESPN adapter). Checked by
+  engine) · `sources/espn-{boxscore,extract,types}.ts` (the public ESPN adapter — `boxscore` owns
+  the retry + `AbortSignal`, `extract` owns the play-id dedupe and the **opponent-side** reads for
+  DST sacks and fumble recoveries). Checked by
   `npm run dfs:selftest`. **It must never write to `scores` or reach `src/lib/standings/`** —
   [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). Shared
   helper: `src/lib/nfl/team-keys.ts` (`normalizeTeamKey`, one copy for DK + Sleeper + ESPN)
@@ -1218,7 +1311,9 @@ None blocks use.
   DraftKings, player by player; knows DK's bonus keys and its points-allowed ladder) · `reconcile-query.ts` (**reads only**: `reconcileWeekFromDb`,
   `buildReconciliation`, `getReconcilableSeasons`, `getCapturedWeeks`; holds
   `ASSUMED_GAME_LENGTH_MS`, the feature's one approximation) · `query.ts`
-  (**reads only**: `getLiveWeekData`, `getDefaultLiveWeek`, `getMatchupLocation`). Routes:
+  (**reads only**: `getLiveWeekData`, `getDefaultLiveWeek`, `getMatchupLocation`). Presentation
+  contract shared by the two pages: `src/app/live/roster-summary.ts` (`rosterSummaryParts`,
+  `isFloorTotal`, 11 tests) — **`pending` and `concealed` must never be merged again**. Routes:
   `src/app/live/` (list, ordered by **closeness**) and `src/app/live/[matchupId]/` (head-to-head
   detail, no `PageHeader`; `matchup-nav.tsx` = prev/next + dropdown, carrying both owners, logos,
   scores and minutes). **Both pages have two layouts below/above `sm` sharing ONE data source** —

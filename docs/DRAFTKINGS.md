@@ -514,6 +514,53 @@ all week; only an in-progress game is worth polling.
 Both ESPN endpoints we use are unofficial and undocumented; the same best-effort caveat as
 DraftKings applies.
 
+#### Three things in this payload are not what they look like
+
+All three were found by hand-checking a live slate against DraftKings, and each one silently
+produced a wrong number rather than an error.
+
+**1. `sacksYardsLost` is the sacks a team's OFFENSE took — so a defense reads its OPPONENT's row.**
+It arrives as a paired string, `"3-16"` (three sacks, sixteen yards), on the *sacked* team. It is
+also the authority: ESPN's per-player `defensive` rows **settle later than the team aggregate** and
+can be short a sack the total already carries. 2026 week 2 — Atlanta sacked three times, DraftKings
+paid the Carolina DST for 3, Carolina's player rows summed to 2, and that one point was the whole
+gap between an owner's 116.62 here and 117.72 on DraftKings. Validated 17/17 on final games in
+weeks 1–2 (player sum: 16/17), cross-checked against the opponent QBs' own `sacks-sackYardsLost`
+rows, and confirmed to populate **during** play (12/12 defenses across 6 in-progress games). The
+same opponent-side relationship already governed `fumbleRecoveries`, which reads the opponent's
+`fumblesLost`. Full rationale:
+[`SCORING.md` §15](SCORING.md#which-espn-number-is-the-right-one--a-dst-reads-the-opponents-totals).
+
+> The paired shape needs `teamPairedStat`, not `teamStat`: `parseStat` sees `"3-16"`, fails
+> `Number()`, and returns **0** — indistinguishable from a real "no sacks" — and ESPN sends
+> `value: "-"` on these rows, so the numeric branch does not save it either.
+
+**2. `drives.current` is the LAST ENTRY of `drives.previous`, not a new drive.** Concatenating the
+two replays the drive in progress. Measured on a live slate: **all 6 in-progress games duplicated,
+58 of 58 current-drive plays counted twice.** Everything read out of play text is worth 2 points
+apiece, so while a drive was live a two-point conversion paid **+4** and a blocked kick gave the
+defense **+4** — and then the drive ended, `current` moved on, and the number **silently corrected
+itself**. Wrong only while someone was watching, right again by the time anyone checked: nobody
+would ever report it. `extractGame` now dedupes on **play id** (the unit actually being counted,
+and it also covers a drive appearing twice under two ids); a play with no id still passes through,
+so a payload without ids degrades to the old behaviour rather than dropping plays. Not affected:
+safeties (read from `scoringPlays`) and every boxscore stat — ~99% of scoring by volume never
+touches play text.
+
+> **Writing a test here? Use the real gamebook string from `scripts/fixtures/`, not an invented
+> one.** The first version of these tests failed because ESPN does not send
+> `"M.Stafford pass to P.Nacua. ATTEMPT SUCCEEDS."` — it sends `"... pass to P.Nacua is complete.
+> ATTEMPT SUCCEEDS."`, and that `is` is load-bearing: it is in `NAME_PATTERN`'s stop-list, and
+> without it the receiver's name swallows `ATTEMPT SUCCEEDS` and matches nobody.
+
+**3. A dropped summary is not a missing stat — it is a missing GAME.** `buildLiveStatIndex` skips
+the whole event, so up to nine rosters render `?`, and the index is memoised 30s so it sticks.
+`fetchGameSummary` retries (3 attempts, 150/400ms, 6s timeout, no retry on 404/403), and **the
+`AbortSignal` on that request is required for the retry to reach the network at all** — Next's
+render-pass fetch dedupe would otherwise replay the same rejected promise. That interaction is
+written up in
+[`SCORING.md` §15](SCORING.md#a-dropped-boxscore-is-retried-not-painted-as-).
+
 ### Sleeper — a reconciler, not a live feed
 
 `api.sleeper.app/v1/stats/nfl/regular/{year}/{week}` is public and keyless, but it lags. Observed

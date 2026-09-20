@@ -213,6 +213,27 @@ shows a **win-probability estimate** — a model, not a measurement, so treat it
 as a result. The detail page also flags the **biggest single-slot gap** as the difference-maker.
 See [`SCORING.md` §15](SCORING.md#projections--win-probability--draftkings-own-formula).
 
+**The roster line under each owner, clause by clause.** `223m left · 7 playing · 2 unknown`:
+
+| Clause | What it means | Do you act? |
+| ------ | ------------- | ----------- |
+| `N playing` | We have their stat line. The number beside it is real. | No. |
+| `N to play` | We know exactly who they are and their game has not kicked off. **The total is complete right now.** | No. |
+| `N unknown` | DraftKings was still hiding these picks when the roster was read. If their games have started, **they are scoring points the total does not include.** | **Yes — hit Sync.** |
+| `N unresolved` | Their game did not load from ESPN. | Usually reload; see the troubleshooting table. |
+
+> 🛑 **`unknown` and `to play` are not the same thing, and the difference is the whole point.**
+> They used to be summed and labelled "to play". In 2026 week 2 the only capture was taken at
+> 1:08pm, so the whole late slate stayed hidden: a matchup read *"7 playing · 2 to play"* and showed
+> **56.02** against DraftKings' **78.42**, and the two "to play" players were **CeeDee Lamb (19.90)
+> and a Washington back (2.50)** — both on the field at that moment. Nothing was mis-scored; the
+> label said the gap was fine.
+
+**A trailing `+` on a total means it is a FLOOR** (`56.02+`), not a running score — there are
+`unknown` or `unresolved` slots whose points are not in it. Both `/live` and the matchup page also
+raise the **"These totals are low — re-sync to fix"** banner when games have kicked off since the
+capture. The answer to all of it is the same: **hit Sync in the Chrome extension.**
+
 **Admin → Lineups** (`/admin/lineups?season=<id>&week=<n>`, defaulting to week 1) shows three
 things: how many DraftKings rosters have been captured for the week (`captured N/32` — the
 denominator is the season's owner count) alongside how many individual players are **revealed**, the
@@ -221,7 +242,7 @@ of recent capture runs including which DraftKings URL actually returned the rost
 
 > **"Revealed" is not "captured".** DraftKings hides a player from opponents until that player's game
 > kicks off, so a perfect 32/32 capture taken at the 1pm lock can show only a handful of the 288
-> players by name, with the rest listed as *N yet to play*. **That is not a partial capture** — a
+> players by name, with the rest listed as *N unknown* on `/live`. **That is not a partial capture** — a
 > concealed player has scored nothing, so no points are missing, only names. Re-capture later and
 > they fill in. Fewer than 9 **slots**, on the other hand, is a genuinely short payload.
 
@@ -547,10 +568,13 @@ migrations:
 | A capture reports **0 enriched slots** with revealed players | Normally fine: the team came straight out of DraftKings' own payload, so the draftables lookup had nothing left to add. It is no longer a failure signal on its own | Check the capture run's **status** instead — `success` means every revealed slot has a team. See the next row. |
 | A capture run reads **partial** with a team-related error | Either DK's draftables lookup returned nothing, or revealed slots were stored with **no team** — and a slot with no team can never be scored | Re-run **Sync** while the contest is still live. If the week has passed, repair it: [Repairing a capture that stored no teams](#repairing-a-capture-that-stored-no-teams). Confirm the draft group id resolves at `api.draftkings.com/contests/v1/contests/{contestId}?format=json`. |
 | **Sync** reports scores fine but the Lineups card shows a failure | Expected behaviour, not a bug: the roster half is best-effort and reports separately so it cannot cast doubt on the scores | Re-run **Sync**. If it keeps failing, DraftKings may have moved the roster endpoint — use the popup's **Troubleshooting — DraftKings endpoints** panel and send the output to whoever maintains the app. |
-| `/live` shows players as **unresolved** | Those players' games did not load from ESPN — the page says `N/M games loaded` | Usually transient; reload. Unresolved is never scored as 0, so a total showing unresolved slots is a **floor**, not a wrong number. |
+| `/live` shows players as **unresolved** (`?`) | Those players' games did not load from ESPN — the page says `N/M games loaded`. One dropped request loses the **whole game**, so up to nine rosters light up at once | Reload once. The fetch already retries 3× per game, so a `?` that survives that is a genuinely unavailable ESPN event. Unresolved is never scored as 0, so the total is a **floor**, not a wrong number. |
+| A `/live` number is **3-ish points** off the DraftKings app | Almost always a **yardage bonus on a one-yard disagreement**: ESPN and DK differ by a yard right at 100 or 300, which is 0.1 of yardage **plus** a 3.0 bonus | Nothing to fix — two feeds, one of them official. DraftKings' leaderboard is the score. See [`SCORING.md` §15](SCORING.md#-near-a-yardage-bonus-one-yard-is-worth-three-points). |
+| A `/live` number lags the DraftKings app by **~20–30s** | Three caches stacked: the ESPN boxscore (45s in-progress), the assembled index (30s), the page refresh (30s) | Expected, and it converges. Do not chase it unless the gap persists past a minute. |
 | `/live` shows **every** owner at 0.00 with **every** slot unresolved | A different fault entirely: the newest capture stored no team on any player, and `/live` reads only the newest capture per owner — so one bad capture hides every good one | [Repair the capture](#repairing-a-capture-that-stored-no-teams). Re-syncing will not fix it once DraftKings has expired that draft group. |
 | `/live` shows an owner's total as **—** | No roster was captured for them that week | Run **Sync** from the extension. The page names them rather than showing `0.00`, because zero would be indistinguishable from a forfeit. |
-| `/live` says **"These totals are low — re-sync to fix"** | Games have kicked off since the last capture, so DraftKings would now reveal players it was hiding — those players are scoring and the estimate is excluding them | Hit **Sync** in the extension. This is the expected mid-Sunday workflow, not a fault — see [One capture is not enough](#-one-capture-is-not-enough--sync-again-after-the-last-kickoff). |
+| `/live` says **"These totals are low — re-sync to fix"** | Games have kicked off since the last capture, so DraftKings would now reveal players it was hiding — those players are scoring and the estimate is excluding them | Hit **Sync** in the extension. This is the expected mid-Sunday workflow, not a fault — see [One capture is not enough](#-one-capture-is-not-enough--sync-again-after-the-last-kickoff). The matchup page raises the same banner, scoped to **that** matchup's capture time. |
+| A total shows **`N unknown`** or a trailing **`+`** | Those picks were hidden by DraftKings when the roster was read, so the total is a **floor** — not a score | Hit **Sync**. If their games have started, the missing points can be substantial: 22.40 on one roster in week 2. |
 | Totals on `/live` look too low but there's **no** warning | Nothing has kicked off since your capture, so re-capturing would reveal nothing | Not a staleness problem. Check `N/M games loaded` and the unresolved count instead. |
 | The `/live` "not captured" notice ends **"… and 20 more"** | Not a fault — the notice names at most 6 owners then counts the rest, so it cannot fill a phone screen | Nothing is hidden: every uncaptured owner still shows `—` on their own card. Run **Sync**. |
 | Live Sync's popup says **`Rosters: none needed yet`** for hours | Expected. Rosters are re-read only when a kickoff has revealed players the estimate is missing — most polls legitimately need nothing | Nothing to do. Confirm scores are still ticking on the line above; the two are independent. |
