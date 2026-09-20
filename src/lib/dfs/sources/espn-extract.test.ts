@@ -257,3 +257,101 @@ describe('extractGame — degenerate payloads', () => {
     expect(game.defenses).toHaveLength(2);
   });
 });
+
+/**
+ * DST sacks, and the reason they do not come from our own players' rows.
+ *
+ * 2026 week 2: Atlanta's offense was sacked three times and DraftKings paid the Carolina DST
+ * for three, while ESPN's Carolina `defensive` rows still summed to two. One point — and it
+ * was the entire difference between an owner's total here and on DraftKings.
+ */
+describe('extractGame — DST sacks come from the opponent’s team total', () => {
+  /** A minimal two-team payload: the defense's player rows can be made to disagree. */
+  function payload({
+    defenderSacks,
+    opponentSacksAllowed,
+  }: {
+    defenderSacks: number[];
+    opponentSacksAllowed: string | null;
+  }) {
+    const teamStats = (abbr: string, sacksYardsLost: string | null) => ({
+      team: { abbreviation: abbr },
+      statistics: [
+        { name: 'fumblesLost', displayValue: '0', value: 0 },
+        { name: 'defensiveTouchdowns', displayValue: '0', value: 0 },
+        // ESPN really does send `value: "-"` on paired rows; the number is in displayValue.
+        ...(sacksYardsLost === null
+          ? []
+          : [{ name: 'sacksYardsLost', displayValue: sacksYardsLost, value: '-' }]),
+      ],
+    });
+
+    return {
+      header: {
+        id: '1',
+        competitions: [
+          {
+            status: { type: { state: 'post', detail: 'Final' } },
+            competitors: [
+              { homeAway: 'home', score: '10', team: { id: '1', abbreviation: 'CAR' } },
+              { homeAway: 'away', score: '20', team: { id: '2', abbreviation: 'ATL' } },
+            ],
+          },
+        ],
+      },
+      boxscore: {
+        teams: [teamStats('CAR', null), teamStats('ATL', opponentSacksAllowed)],
+        players: [
+          {
+            team: { abbreviation: 'CAR' },
+            statistics: [
+              {
+                name: 'defensive',
+                keys: ['totalTackles', 'sacks'],
+                athletes: defenderSacks.map((sacks, i) => ({
+                  athlete: { id: String(100 + i), displayName: `Defender ${i}` },
+                  stats: ['5', String(sacks)],
+                })),
+              },
+            ],
+          },
+        ],
+      },
+    } as never;
+  }
+
+  const carolina = (p: ReturnType<typeof payload>) => defenseFor(extractGame(p), 'CAR')!;
+
+  it('prefers the opponent’s total when the player rows are short — the week-2 case', () => {
+    const dst = carolina(payload({ defenderSacks: [1, 1], opponentSacksAllowed: '3-16' }));
+    expect(dst.line.sacks).toBe(3);
+  });
+
+  it('parses the leading number of the pair, never the yardage', () => {
+    const dst = carolina(payload({ defenderSacks: [0], opponentSacksAllowed: '5-41' }));
+    expect(dst.line.sacks).toBe(5);
+  });
+
+  it('reads a real zero as zero, not as a missing row', () => {
+    // "0-0" must NOT fall through to the player sum, or a defense with no sacks would
+    // inherit whatever the rows happened to say.
+    const dst = carolina(payload({ defenderSacks: [2], opponentSacksAllowed: '0-0' }));
+    expect(dst.line.sacks).toBe(0);
+  });
+
+  it('falls back to the player sum when the team row is absent', () => {
+    const dst = carolina(payload({ defenderSacks: [1, 0.5, 0.5], opponentSacksAllowed: null }));
+    expect(dst.line.sacks).toBe(2);
+  });
+
+  it('keeps half-sacks intact', () => {
+    const dst = carolina(payload({ defenderSacks: [], opponentSacksAllowed: '2.5-18' }));
+    expect(dst.line.sacks).toBe(2.5);
+  });
+
+  it('falls back when the pair is unreadable rather than scoring NaN', () => {
+    const dst = carolina(payload({ defenderSacks: [4], opponentSacksAllowed: '--' }));
+    expect(dst.line.sacks).toBe(4);
+    expect(Number.isFinite(scoreDst(dst.line).points)).toBe(true);
+  });
+});

@@ -96,6 +96,25 @@ function teamStat(team: EspnTeamStats | undefined, name: string): number {
   return parseStat(row.displayValue);
 }
 
+/**
+ * Read the FIRST number of a paired team stat, e.g. `sacksYardsLost` = "3-16" -> 3.
+ *
+ * Returns null when the row is absent or unreadable, which the caller needs in order to fall
+ * back — distinct from a real 0 ("0-0", a team that allowed no sacks).
+ *
+ * `teamStat` cannot do this: its `parseStat` sees "3-16", fails `Number()`, and returns 0 —
+ * silently indistinguishable from "no sacks". And ESPN sends `value: "-"` on these rows, so
+ * the numeric-value branch does not save it either.
+ */
+function teamPairedStat(team: EspnTeamStats | undefined, name: string): number | null {
+  const row = team?.statistics?.find((s) => s.name === name);
+  if (!row) return null;
+  const first = String(row.displayValue ?? '').split('-')[0]?.trim();
+  if (!first) return null;
+  const n = Number(first);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** ESPN's coarse game state, defaulting to `pre` when the payload is incomplete. */
 function readState(raw: string | undefined): GameState {
   if (raw === 'in') return 'in';
@@ -404,11 +423,26 @@ export function extractGame(summary: EspnSummaryResponse): ExtractedGame {
     const own = teamStatsByKey.get(teamKey);
     const opponent = teamStatsByKey.get(opponentKey);
 
+    // SACKS COME FROM THE OPPONENT'S TEAM TOTAL, NOT OUR OWN PLAYER ROWS.
+    //
+    // ESPN's per-player `defensive` group can be short a sack that its own team totals
+    // already reflect — the individual rows settle later than the aggregate. Measured in
+    // 2026 week 2: Atlanta's offense was sacked 3 times ("sacksYardsLost": "3-16") and
+    // DraftKings paid the Carolina DST for 3, while Carolina's player rows summed to 2.
+    // One point, and it is the whole reason an owner's total did not match DK.
+    //
+    // `sacksYardsLost` on a team means sacks that team's OFFENSE took, so the defense we
+    // are scoring gets the OPPONENT's figure — exactly the relationship `fumbleRecoveries`
+    // already uses below. Validated against every DST in weeks 1-2 with a DraftKings sack
+    // count: the opponent total is right 17/17, the player sum 16/17. It never loses, so it
+    // leads and the player sum is only the fallback for a missing row.
+    const sacksAllowedByOpponent = teamPairedStat(opponent, 'sacksYardsLost');
+
     defenses.push({
       teamKey,
       line: {
         ...EMPTY_DST_LINE,
-        sacks: teamSacks.get(teamKey) ?? 0,
+        sacks: sacksAllowedByOpponent ?? teamSacks.get(teamKey) ?? 0,
         interceptions: teamDefInterceptions.get(teamKey) ?? 0,
         // Fumbles the OPPONENT lost are the ones this defense recovered. Do not use our own
         // `fumblesRecovered`, which also counts recovering our own team's fumble.
