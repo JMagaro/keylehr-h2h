@@ -123,5 +123,7 @@ export function lineupMinutes(
 
 /** "312 min" / "48 min" — compact enough for a matchup card. */
 export function formatMinutes(minutes: number): string {
-  return `${Math.round(minutes)} min`;
+  // "223m", not "223 min" — this sits in a phone-width meta line beside two other clauses,
+  // and the four characters it saves are the difference between one line and two.
+  return `${Math.round(minutes)}m`;
 }

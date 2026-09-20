@@ -379,7 +379,13 @@ function MobileTeamRow({
       <TeamLogo src={team.logoEspn} alt={team.teamKey ? `${team.teamKey} logo` : ''} size={32} />
       <div className="min-w-0 flex-1">
         <div className="truncate font-semibold">{team.ownerName}</div>
-        <div className="truncate text-xs text-muted">{teamMetaLine(team, minutes)}</div>
+        {/*
+          WRAPS, never truncates. At 390px "223 min left · 7 playing · 2 unknown" does not
+          fit on one line, and `truncate` clipped it to "…2 unkn…" — losing precisely the
+          clause that says the score below is incomplete. The counts are the point of this
+          line; a second line costs nothing.
+        */}
+        <div className="text-xs leading-snug text-muted">{teamMetaLine(team, minutes)}</div>
       </div>
       <div className="shrink-0 text-right">
         <ScoreValue team={team} projection={projection} size="lg" />
