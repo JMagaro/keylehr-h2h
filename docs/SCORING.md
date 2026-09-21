@@ -238,7 +238,8 @@ This is the single most important safety property in the scoring path.
 
 > A week is **settled** when it has at least one `nfl_games` row and **every one of them is
 > final**, **and** at least one owner has posted a real (non-bye) score for it. Forfeit
-> derivation runs for settled weeks only.
+> derivation runs for settled weeks only — **and so does counting the week's games toward
+> W/L at all** ([§8](#8-matchup-assembly)).
 
 `computeSettledWeeks` (`src/lib/standings/forfeit-derive.ts`) applies **both** halves, and each
 one guards a different window in which every owner is legitimately on zero:
@@ -259,14 +260,47 @@ and the admin sync dashboard so they cannot drift apart:
 
 - `statusIsFinal(status)` — an explicit ESPN status always wins
   (`final` / `complete` / `full-time` / `postgame`, case-insensitive). Returns `null` for a
-  missing or unrecognized status.
+  missing, unrecognized, **or merely pre-game** status — see the trap below.
 - `gameIsFinal(game, now)` — falls back to "kicked off at least `FINAL_FALLBACK_MS` (6 hours)
-  ago" only when the status is unknown.
+  ago" whenever the status is unknown or stale.
 - `weekIsFinal(games, now)` — at least one game, and all of them final. **A week with no games
   is NOT final**, or a week whose NFL schedule has not been pulled yet would read as final and
   start deriving forfeits for owners who never had a game to miss.
 
 `now` is always passed in — the module keeps no clock of its own, so tests are deterministic.
+
+### ⚠️ `STATUS_SCHEDULED` is the default, not a claim — and it froze this gate shut
+
+**The gate silently failed to open for the entire first half of the 2026 season**, which is
+worth understanding before you touch `final.ts`, because the failure was invisible.
+
+`nfl_games.status` has exactly **one** writer, `syncSeasonSchedule`, and it is only reachable
+by hand — Admin → Schedule, or `npm run schedule:pull` — which [`RUNBOOK.md`](RUNBOOK.md) lists
+as **pre-season** setup, not part of the weekly loop. So the 2026 rows froze at
+`STATUS_SCHEDULED` in August and stayed there: all 288 of them, including played-and-scored
+weeks. `statusIsFinal` read that as an explicit "not finished", which **outranks** the kickoff
+fallback, so `weekIsFinal` was permanently `false`, so nothing ever settled, so missed-lineup
+derivation — the feature this whole section exists for — never ran once.
+
+The fix (`4a5f73e`) classifies a status by whether it is **evidence**:
+
+| Status | Written by | Verdict |
+| ------ | ---------- | ------- |
+| `STATUS_SCHEDULED`, pre-game | Nothing — it is the **default** every row carries | `null`, defer to kickoff age |
+| `STATUS_IN_PROGRESS`, `halftime`, `STATUS_POSTPONED` | Only a **refresh** — so it is fresh | `false`, still wins outright |
+| `STATUS_FINAL`, `postgame` | A refresh | `true` |
+
+A game stuck in-progress therefore still cannot be aged into "final" by the fallback; only the
+status meaning "nothing has been written here yet" defers to the clock.
+
+> **The hole this leaves.** A game **postponed and never refreshed** reads final 6 hours after
+> its *original* kickoff. Closing it properly means refreshing `status` as part of the weekly
+> sync rather than trusting a column that nothing writes during a season.
+
+> **Why 2023–2025 never caught it:** their importers run `syncSeasonSchedule` *after* the season
+> is over, so every historical row carries `STATUS_FINAL` and settles exactly as it always did.
+> The frozen snapshot stayed byte-identical through both fixes — which is precisely why a green
+> `verify` could not have told you the live season was broken.
 
 > **Operational note.** The second half of the gate needs only **one** score, so a *partially*
 > synced week is settled. Every owner who is missing a row at that point derives as a missed
@@ -331,6 +365,39 @@ order:
      (which is the "no special handling" case and short-circuits before `forfeitBy` is set).
 
 Playoff rows and non-final rows are never given forfeit fields.
+
+### What makes a matchup `isFinal`
+
+```ts
+homePoints !== null && awayPoints !== null && (m.isPlayoff || settledWeeks.has(m.week))
+```
+
+Both owners scored **and** the week is over ([§6](#6-settled-weeks-the-safety-property)). The
+second half is not redundant: **scores arrive during play.** The extension's Live Sync "ALWAYS
+posts the leaderboard" on every poll and the ingest upserts `dkPoints`, so `scores` fills up
+while games are still being played — "both owners have a score" says nothing about whether
+either lineup has *finished*.
+
+Without the week gate, `/standings` published W-L off half-played lineups and quietly rewrote
+it as the afternoon went on. It was reported as *"week 2 is not over yet but every team shows 2
+games played"* — on a Monday, with that week's Monday night game not yet kicked off, and the
+league's DraftKings contest running through it. Right by Tuesday, wrong all Sunday, and
+self-healing enough that nobody would ever file it (`f8e7126`).
+
+> **Playoff rows are EXEMPT**, deliberately. Playoff weeks (19–22) hold no `nfl_games` rows, so
+> `computeSettledWeeks` can never include them and gating them would strand the entire bracket
+> at unplayed.
+
+> **The gate decides *when* a week counts, not how *fresh* its scores are.** A week whose last
+> sync was mid-Sunday settles on partial DraftKings numbers the moment its games age out. The
+> post-Monday-night sync is what makes the two line up — see
+> [`RUNBOOK.md` §2](RUNBOOK.md#2-the-weekly-loop).
+
+> **Rejected: per-matchup finality** ("count it once both these lineups are done"). It needs
+> per-player game state, which lives in `src/lib/live/`, and the module graph deliberately
+> forbids the scoring chain from depending on the live estimate
+> ([ARCHITECTURE.md](ARCHITECTURE.md)). Week-level gating gives the same answer except for a
+> matchup whose owners both finish before Monday night, at no architectural cost.
 
 ## 9. Standings
 

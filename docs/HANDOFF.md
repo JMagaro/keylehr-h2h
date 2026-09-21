@@ -4,7 +4,15 @@ A running "where things stand" doc so a fresh Claude/context window (or contribu
 without re-deriving everything. Update the **Snapshot**, **Recent work** and **Known open items**
 sections as you go; **[Start here](#start-here-fresh-session)** is the entry point.
 
-_Last updated: 2026-09-20 (**everything through `12e4bb9` is COMMITTED AND PUSHED**. Newest:
+_Last updated: 2026-09-21 (**everything through `f8e7126`, plus the docs commit on top of it,
+is COMMITTED AND PUSHED**. Newest: `4a5f73e` and `f8e7126`, fixing **two rules about when a week is over** — found by the
+owner asking why `/standings` showed 2 games played on a Monday with that week's MNF unplayed.
+`4a5f73e`: a stale `STATUS_SCHEDULED` no longer vetoes the kickoff fallback, which had frozen
+`weekIsFinal` at false for **the entire 2026 season** and silently disabled missed-lineup
+derivation. `f8e7126`: a regular-season week now counts toward W/L only once it is **settled**,
+instead of the moment both owners have a score — scores arrive during play, so the old rule
+published records off half-played lineups. Frozen seasons byte-identical through both. See
+[Recent work](#recent-work-newest-first). Before that, everything through `12e4bb9`. Prior:
 `cadf15f`…`12e4bb9`, five commits from a live Sunday in **2026 week 2**, with the owner watching
 `/live` on a phone against the DraftKings app and reporting mismatches as they happened — see
 [Recent work](#recent-work-newest-first). **One real scoring bug** (a DST's sacks now come from the
@@ -41,10 +49,11 @@ tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model
   Phase 0–5 write-up — on top of the earlier 12-commit run `d0ba364` … `e2a3f1a`. **Those commit
   messages are the real design record** — read them before touching the scoring, live or playoff
   paths; each one states the bug, the decision and what was rejected.
-  > **Push check.** ✅ **`main` and `origin/main` are level at `12e4bb9`** — the 2026-09-16 identity
-  > work (`6c16de6`, `71e34eb`, `1996311`) and the 2026-09-20 week-2 live fixes
-  > (`cadf15f`…`12e4bb9`) are all pushed and deployed. Check with `git log origin/main..main`;
-  > anything listed is unpushed work from a later session.
+  > **Push check.** ✅ **`main` and `origin/main` are level** — the 2026-09-16
+  > identity work (`6c16de6`, `71e34eb`, `1996311`), the 2026-09-20 week-2 live fixes
+  > (`cadf15f`…`12e4bb9`) and the 2026-09-21 settled-week fixes (`4a5f73e`, `f8e7126` + docs)
+  > are all pushed and deployed. Check with `git log origin/main..main`; anything listed is
+  > unpushed work from a later session.
   >
   > **The production DATA was already repaired**, which is the one thing a push does not do and
   > does not undo: `scripts/repair-lineup-identities.ts --season=1 --week=1 --write` ran against
@@ -446,6 +455,40 @@ Sleeper PPR as a free proxy).
   `src/lib/utils.ts`. `src/lib/standings/` stays pure (no DB imports).
 
 ## Recent work (newest first)
+
+- **Two rules about when a week is over — one of which had been broken all season**
+  (`4a5f73e`, `f8e7126`, + this docs commit, **pushed**, 2026-09-21). Started as a question about the
+  standings and turned up a load-bearing gate that had never once been able to open.
+  - **`f8e7126` — the reported bug.** `/standings` showed all 32 owners at **2 games played**
+    on Monday afternoon, with week 2's Monday night game not yet kicked off and the league's
+    DraftKings contest running through it. `isFinal` meant only "both owners have a non-null
+    `dkPoints`", and nothing in the standings path ever asked whether the week was over. Since
+    Live Sync **"ALWAYS posts the leaderboard"** on every poll, `scores` fills up mid-game — so
+    W/L was being published off half-played lineups and quietly rewritten as the afternoon went
+    on. Right by Tuesday, wrong all Sunday, and self-healing enough that nobody would file it.
+    A regular-season matchup is now `isFinal` only inside a **settled** week, reusing the
+    `settledWeeks` set `getSeasonStandingsData` already builds eight lines above the call.
+    Playoff rows are exempt — weeks 19–22 hold no `nfl_games` rows, so gating them would strand
+    the bracket.
+  - **`4a5f73e` — the prerequisite, and the more serious find.** That gate could not have
+    worked: **`weekIsFinal` had been false for every week of 2026.** `nfl_games.status` is
+    written only by `syncSeasonSchedule` (manual, documented as *pre-season* setup), so all 288
+    rows froze at `STATUS_SCHEDULED` in August — and `statusIsFinal` read that as an explicit
+    "not finished", which outranks the kickoff fallback. **Missed-lineup derivation therefore
+    never ran once all season.** It fails safe (no false forfeits), which is why nothing looked
+    wrong. A status is now classified by whether it is *evidence*: pre-game is the **default** a
+    row carries and defers to the clock; `STATUS_IN_PROGRESS`/`halftime`/`STATUS_POSTPONED` can
+    only have been written by a refresh and still win outright.
+  - **Measured on the live season**, Mon Sep 21 4:34pm ET: week 1 settled, week 2 **not**
+    (its 8:15pm MNF kickoff still ahead), weeks 3–4 not. `/standings` went from 32 owners at 2
+    games played to **32 at 1**. Week 2 rejoins at Tue 2:15am ET, six hours past that kickoff.
+    Arming the gate derives **zero** forfeits on current data (weeks 1–2: 32 scores each, no
+    nulls, no zeros, min 104.80 / 66.16), so no record moved.
+  - **Why `verify` was always green:** 2023–2025 carry `STATUS_FINAL`, because their importers
+    run the schedule sync *after* the season ends. The frozen snapshot stayed byte-identical
+    through both fixes — a green `verify` could not have told you the live season was broken.
+  - **Left open deliberately:** the gate decides *when* a week counts, not how *fresh* its
+    scores are — see Known open items.
 
 - **A live Sunday in 2026 week 2: one real scoring bug, one invisible one, and two labels that
   lied** (`cadf15f`…`12e4bb9`, **pushed**, 2026-09-20). All five came out of the owner watching
@@ -996,6 +1039,24 @@ Sleeper PPR as a free proxy).
 Nothing here blocks a deploy. Each is a real, specific gap — not a vague "could be nicer".
 
 **Needs a decision or a fix**
+
+- **A week settles on whatever scores happen to be in the table — fresh or not.** `f8e7126`
+  fixed *when* a week counts (every NFL game final + the sync landed); it cannot tell a complete
+  sync from a partial one. Scores arrive **during** play, so a week whose last sync was
+  mid-Sunday will settle the moment its games age out and publish records off partial
+  DraftKings numbers, until someone re-syncs. Syncing after Monday night — which
+  [`RUNBOOK.md` §2](RUNBOOK.md#2-the-weekly-loop) step 3 prescribes, and which Live Sync's final
+  poll does by itself — is what keeps the two aligned. **Closing it properly** means requiring
+  the week's last import run to be *newer than its last kickoff* before it settles. That is a
+  new concept and real work; it may not be worth it against a habit that already exists.
+  Flagged rather than assumed.
+- **`nfl_games.status` is never refreshed during a season, and `4a5f73e` works around that
+  rather than fixing it.** The column's only writer is a manual `syncSeasonSchedule`. The
+  pre-game statuses now defer to kickoff age, which covers the common case, but a game
+  **postponed and never refreshed** reads final 6 hours after its *original* kickoff. The real
+  fix is to refresh the week's statuses as part of the weekly sync (`syncSeasonSchedule` is
+  idempotent) — it must hang off the **manual** sync, not Live Sync's poll loop, or it hits
+  ESPN every few minutes.
 
 - ✅ **`pointsAllowedMode` is SETTLED — `'raw'`, measured (2026-09-16).** This entry used to ask for
   a regular-season week with a defensive or return TD. Week 1 supplied it: **Atlanta's DST conceded

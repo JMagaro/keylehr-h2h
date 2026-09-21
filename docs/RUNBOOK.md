@@ -40,11 +40,24 @@ counts toward Points For and repairs itself on the next sync (see
    kickoff) or if an assignment changed. Idempotent.
 
 2. **Wait for the week to finish.** Scoring only treats a week as *settled* once **every** NFL
-   game that week is final **and** at least one real score has been ingested for it; until then
-   no missed lineup is derived
+   game that week is final **and** at least one real score has been ingested for it. Until then
+   no missed lineup is derived, **and the week does not count toward W/L at all** — `/standings`
+   simply shows one fewer week while Sunday plays out
    ([`SCORING.md` §6](SCORING.md#6-settled-weeks-the-safety-property)).
 
+   > A week opens **6 hours after its last kickoff** when the schedule has not been re-pulled
+   > since pre-season, since that is when the fallback ages the final game out. For a Monday
+   > night finish that is roughly 2:15am ET Tuesday.
+
 3. **Sync scores with the DK Sync extension**, ideally right after Monday night's game:
+
+   > **This step is load-bearing, and the settled-week gate does not cover for it.** The gate
+   > decides *when* a week counts; it cannot tell fresh scores from stale ones. Scores land
+   > **during** play — Live Sync posts the leaderboard on every poll — so a week whose last
+   > sync was mid-Sunday will settle on **partial** DraftKings numbers and publish wrong
+   > records until someone re-syncs. Syncing after Monday night's game puts the final numbers
+   > in before the gate opens. Leaving Live Sync running through MNF does the same thing on
+   > its own, via its final poll.
    - Log in to DraftKings, open the shared contest's `/contest/gamecenter/{contestId}`
      **Standings** tab.
    - Open the extension popup → pick the **Season**, **read the line under the Week box** ("Preseason
@@ -556,6 +569,8 @@ migrations:
 | ------- | ------------ | --- |
 | `/admin/sync` shows **`0/32` scored right after a successful sync** | Every owner was written as a bye — scores were ingested before `nfl_games` existed for that week | Pull the schedule, then re-sync the week. `/standings` should already be right: the read path ignores a bye flag for an owner who has a matchup. |
 | Some owners show a loss for the most recent week and never scored | The week is settled (games final, *some* scores in) but their rows are missing — a partial sync | Re-sync the week and confirm `/admin/sync` reads `32/32` ([§2](#2-the-weekly-loop) step 3) |
+| **`/standings` shows one fewer week than has been played** | Expected while a week is in progress: a week counts only once **every** NFL game in it is final, and the league's contest runs through Monday night | Nothing to do. It rejoins ~6 hours after the last kickoff (≈2:15am ET Tuesday for an MNF finish). `/live` is where an in-progress week is visible. |
+| **A week's records appear, but the numbers look low / wrong** | The week settled on a **partial** sync — scores land during play, so whatever was in `scores` when the games aged out is what got published | Re-sync the week; standings are derived at read time and correct themselves immediately. Prevent it by syncing after Monday night's game ([§2](#2-the-weekly-loop) step 3). |
 | `/admin/sync` shows `partial` with unmatched entries | An owner submitted under a different DraftKings entry name | Fix `owner_seasons.dkEntryName` in Admin → Assignments, then re-sync. Unmatched entries are reported, never written. |
 | An owner should be marked as missing a lineup but is not | They scored above 0, or the week is not settled | Set `scores.isForfeit = true` for that owner-week directly. A stored flag is always honored as the commissioner's override and is never overwritten by the ingest path. |
 | Sync 401s | `INGEST_TOKEN` unset on the server, or the extension's token does not match | See [`DEPLOYMENT.md` §2](DEPLOYMENT.md#2-environment-variables) |
