@@ -17,6 +17,11 @@
  *      denied the opponent a win they were owed AND changed their games-played, which in turn
  *      feeds the win% tiebreaker cohorts. An owner who never submits a lineup must lose, not
  *      erase the game.
+ *   3. **A regular-season week counts only once it is SETTLED.** `isFinal` used to mean no
+ *      more than "both owners have a score", so a live DraftKings sync — the extension posts
+ *      the leaderboard on every poll — published W/L off half-played lineups. The league's
+ *      contest runs through Monday night, so a record shown on Sunday afternoon could still
+ *      move. See {@link AssembleParams.settledWeeks}.
  *
  * Pure / no DB.
  */
@@ -42,6 +47,19 @@ export interface AssembleParams {
   forfeits: ReadonlySet<string>;
   missedLineup: MissedLineupRule;
   regularSeasonWeeks: number;
+  /**
+   * Weeks whose results may be counted: every NFL game final AND the week's sync landed
+   * (`computeSettledWeeks`). A regular-season matchup is `isFinal` only inside one.
+   *
+   * Scores arrive DURING play — the extension's Live Sync posts the leaderboard on every
+   * poll and the ingest upserts `dkPoints` — so "both owners have a score" says nothing
+   * about whether either lineup has finished. Gating on the week instead means a record
+   * appears when it can no longer change, which for this league is after Monday night.
+   *
+   * Playoff rows are exempt: playoff weeks (19-22) hold no `nfl_games` rows, so they can
+   * never settle, and gating them would strand the bracket.
+   */
+  settledWeeks: ReadonlySet<number>;
 }
 
 export interface AssembleResult {
@@ -64,7 +82,7 @@ function median(values: readonly number[]): number {
 }
 
 export function assembleMatchupResults(params: AssembleParams): AssembleResult {
-  const { scores, matchups, forfeits, missedLineup, regularSeasonWeeks } = params;
+  const { scores, matchups, forfeits, missedLineup, regularSeasonWeeks, settledWeeks } = params;
   const playing = buildPlayingSet(matchups);
 
   // 1. Scores → per-owner-week points, with byes reconciled against the schedule.
@@ -138,7 +156,9 @@ export function assembleMatchupResults(params: AssembleParams): AssembleResult {
   const results: MatchupResult[] = matchups.map((m) => {
     const homePoints = pointsByOwnerWeek.get(ownerWeekKey(m.homeOwnerSeasonId, m.week)) ?? null;
     const awayPoints = pointsByOwnerWeek.get(ownerWeekKey(m.awayOwnerSeasonId, m.week)) ?? null;
-    const isFinal = homePoints !== null && awayPoints !== null;
+    // Both owners scored AND the week is over. Playoffs are exempt — see `settledWeeks`.
+    const isFinal =
+      homePoints !== null && awayPoints !== null && (m.isPlayoff || settledWeeks.has(m.week));
 
     const base: MatchupResult = {
       week: m.week,

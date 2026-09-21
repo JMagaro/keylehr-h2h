@@ -195,8 +195,11 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
       .where(and(eq(nflGames.seasonId, seasonId), eq(nflGames.isExhibition, false))),
   ]);
 
-  // 3a. Only SETTLED weeks derive missed lineups — every NFL game final AND the week's
-  //     scores actually synced. See computeSettledWeeks for why both halves are needed.
+  // 3a. A week is SETTLED when every NFL game is final AND its scores actually synced.
+  //     See computeSettledWeeks for why both halves are needed. Two things depend on it:
+  //     missed lineups are derived only for settled weeks (3b), and only a settled week's
+  //     matchups count toward W/L at all (4) — scores land during play, so "both owners
+  //     have a score" is not the same question as "the week is over".
   const gamesByWeek = new Map<number, { status: string | null; kickoff: Date | null }[]>();
   for (const g of gameRows) {
     const cur = gamesByWeek.get(g.week) ?? [];
@@ -229,6 +232,7 @@ export async function getSeasonStandingsData(seasonId: number): Promise<SeasonSt
     forfeits: forfeitByOwnerWeek,
     missedLineup: rules.missedLineup,
     regularSeasonWeeks,
+    settledWeeks,
   });
 
   // Rule-derived ranking knobs, ready for the engine: the configured tiebreaker

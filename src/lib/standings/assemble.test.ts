@@ -13,6 +13,8 @@ import { computeStandings } from './standings';
 import type { OwnerEntry } from './types';
 
 const REGULAR_WEEKS = 18;
+/** Every regular-season week settled — the steady state these cases are about. */
+const SETTLED = new Set(Array.from({ length: REGULAR_WEEKS }, (_, i) => i + 1));
 const AVG: MissedLineupRule = { result: 'auto_loss', opponentScores: 'league_average' };
 const MED: MissedLineupRule = { result: 'auto_loss', opponentScores: 'league_median' };
 
@@ -61,6 +63,7 @@ describe('median vs average', () => {
       forfeits,
       missedLineup: AVG,
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     // counted: 135, 100, 110, 120, 300 → mean 153, median 120
     expect(out.leagueAverageByWeek.get(1)).toBeCloseTo(153, 6);
@@ -74,6 +77,7 @@ describe('median vs average', () => {
       forfeits,
       missedLineup: AVG,
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     const game = out.results.find((r) => r.homeOwnerSeasonId === 1)!;
     expect(game.forfeitBy).toBe('home');
@@ -91,6 +95,7 @@ describe('median vs average', () => {
       forfeits,
       missedLineup: MED,
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     const game = out.results.find((r) => r.homeOwnerSeasonId === 1)!;
     expect(game.opponentFacesPoints).toBe(120);
@@ -114,6 +119,7 @@ describe('a forfeiter with no score row', () => {
       forfeits: new Set([ownerWeekKey(1, 4)]),
       missedLineup: AVG,
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     const game = out.results[0];
     expect(game.isFinal).toBe(true);
@@ -133,6 +139,7 @@ describe('a forfeiter with no score row', () => {
       forfeits: new Set(), // week not settled → nothing derived
       missedLineup: AVG,
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     expect(out.results[0].isFinal).toBe(false);
   });
@@ -148,6 +155,7 @@ describe('bye reconciliation inside the assembly', () => {
       forfeits: new Set(),
       missedLineup: AVG,
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     expect(out.pointsByOwnerWeek.get(ownerWeekKey(1, 2))).toBe(130);
     expect(out.results[0].isFinal).toBe(true);
@@ -164,6 +172,7 @@ describe('bye reconciliation inside the assembly', () => {
       forfeits: new Set(),
       missedLineup: AVG,
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     expect(out.pointsByOwnerWeek.get(ownerWeekKey(9, 2))).toBeNull();
     expect(out.byePointsForByOwner.get(9)).toBe(88);
@@ -178,6 +187,7 @@ describe('rule passthrough', () => {
       forfeits: new Set([ownerWeekKey(1, 1)]),
       missedLineup: { result: 'none', opponentScores: 'league_average' },
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     expect(out.results[0].forfeitBy).toBeUndefined();
   });
@@ -189,6 +199,7 @@ describe('rule passthrough', () => {
       forfeits: new Set([ownerWeekKey(1, 1)]),
       missedLineup: { result: 'auto_loss', opponentScores: 'actual' },
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     expect(out.results[0].forfeitBy).toBeUndefined();
   });
@@ -200,6 +211,7 @@ describe('rule passthrough', () => {
       forfeits: new Set([ownerWeekKey(1, 1), ownerWeekKey(2, 1)]),
       missedLineup: AVG,
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     const game = out.results.find((r) => r.homeOwnerSeasonId === 1)!;
     expect(game.forfeitBy).toBe('both');
@@ -216,7 +228,72 @@ describe('rule passthrough', () => {
       forfeits: new Set([ownerWeekKey(1, 19)]),
       missedLineup: AVG,
       regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
     });
     expect(out.results[0].forfeitBy).toBeUndefined();
+  });
+});
+
+describe('a week counts only once it is settled', () => {
+  // The league's DraftKings contest runs through Monday night, and the extension's Live
+  // Sync posts the leaderboard on EVERY poll — so `scores` fills up while games are still
+  // being played. "Both owners have a score" therefore says nothing about whether either
+  // lineup has finished, and publishing W/L off it showed owners a record that could still
+  // move. The week, not the presence of a score, is what decides.
+  const scores = [score(1, 2, 120), score(2, 2, 95)];
+  const matchups = [matchup(2, 1, 2)];
+
+  const assemble = (settledWeeks: ReadonlySet<number>) =>
+    assembleMatchupResults({
+      scores,
+      matchups,
+      forfeits: new Set<string>(),
+      missedLineup: AVG,
+      regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks,
+    });
+
+  it('does NOT count a fully-scored week while its games are still going', () => {
+    const out = assemble(new Set([1])); // week 1 settled, week 2 in progress
+    expect(out.results[0].isFinal).toBe(false);
+
+    const rows = computeStandings([owner(1), owner(2)], out.results);
+    expect(rows.find((r) => r.ownerSeasonId === 1)!.gamesPlayed).toBe(0);
+    expect(rows.find((r) => r.ownerSeasonId === 2)!.gamesPlayed).toBe(0);
+  });
+
+  it('counts the same week once it settles', () => {
+    const out = assemble(new Set([1, 2]));
+    expect(out.results[0].isFinal).toBe(true);
+
+    const rows = computeStandings([owner(1), owner(2)], out.results);
+    expect(rows.find((r) => r.ownerSeasonId === 1)!.wins).toBe(1);
+    expect(rows.find((r) => r.ownerSeasonId === 2)!.losses).toBe(1);
+  });
+
+  it('still requires BOTH owners to have scored', () => {
+    const out = assembleMatchupResults({
+      scores: [score(1, 2, 120)], // opponent never synced
+      matchups,
+      forfeits: new Set<string>(),
+      missedLineup: AVG,
+      regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: new Set([1, 2]),
+    });
+    expect(out.results[0].isFinal).toBe(false);
+  });
+
+  it('EXEMPTS playoff rows, which live in weeks that can never settle', () => {
+    // Playoff weeks (19-22) hold no `nfl_games` rows, so `computeSettledWeeks` can never
+    // include them. Gating them would strand the entire bracket at unplayed.
+    const out = assembleMatchupResults({
+      scores: [score(1, 19, 140), score(2, 19, 110)],
+      matchups: [matchup(19, 1, 2, true)],
+      forfeits: new Set<string>(),
+      missedLineup: AVG,
+      regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: new Set([1, 2]), // 19 deliberately absent
+    });
+    expect(out.results[0].isFinal).toBe(true);
   });
 });
