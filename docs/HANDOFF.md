@@ -4,13 +4,26 @@ A running "where things stand" doc so a fresh Claude/context window (or contribu
 without re-deriving everything. Update the **Snapshot**, **Recent work** and **Known open items**
 sections as you go; **[Start here](#start-here-fresh-session)** is the entry point.
 
-_Last updated: 2026-09-21 (**everything through `8b60110`, plus the docs commit on top of it,
-is COMMITTED**. Newest: `8b60110`, **`/live`'s detail page now mirrors the two rosters on a
+_Last updated: 2026-09-21 (**everything through `8ec5f62` is COMMITTED AND PUSHED.** Newest
+five commits, all same session: a **win-probability bar** on `/live/[matchupId]` replacing the
+old plain-text odds line (`3ab51d8`) — team logos + a filled track, ESPN-referenced layout — and,
+found and fixed along the way, **the concealed-slot bias** that had been left open at the bottom
+of the previous session (`3ab51d8`; the originally-proposed fix, suppress the number whenever
+anything is concealed, was caught as wrong before being built — see
+[Known open items](#known-open-items-honest-list), the now-✅ concealed-slot entry, for why and
+what shipped instead). Then three rounds of owner-reported polish, each a real fix: the bar was
+invisible on the owner's actual phone through two on-device iterations, bisected by building and
+serving a real production bundle locally (proved it was a Turbopack-dev-over-LAN quirk, not the
+markup) and simplified to a more robust single-track fill either way (`9c473fe`); a settled
+matchup was swapping the bar for muted text instead of keeping it at a true, unclamped 100/0
+(`43e7ca9`); and the fill color was hardcoded to home=green/away=red regardless of who was
+actually favored — a team winning 92% of the time could render in "loss" red for being away
+(`8ec5f62`). Also same session, a smaller fix landing first: **`c3f3ee9`, a finished roster stops
+being labelled "playing."** Before that: `8b60110`, **`/live`'s detail page now mirrors the two
+rosters on a
 phone** instead of stacking them — built against an ESPN screenshot the owner supplied, with
 the layout reviewed on the actual phone as it went. Presentation only; no scoring path touched.
-That session also surfaced a live bug that is NOT fixed: **the win probability is biased
-whenever a pick is concealed** — see [Known open items](#known-open-items-honest-list), first
-entry. Before that, `4a5f73e` and `f8e7126`, fixing **two rules about when a week is over** —
+Before that, `4a5f73e` and `f8e7126`, fixing **two rules about when a week is over** —
 found by the owner asking why `/standings` showed 2 games played on a Monday with that week's
 MNF unplayed.
 `4a5f73e`: a stale `STATUS_SCHEDULED` no longer vetoes the kickoff fallback, which had frozen
@@ -57,9 +70,10 @@ tiebreaker fix + 2023/2024 playoffs + per-season owner names + DK salary + model
   paths; each one states the bug, the decision and what was rejected.
   > **Push check.** ✅ **`main` and `origin/main` are level** — the 2026-09-16
   > identity work (`6c16de6`, `71e34eb`, `1996311`), the 2026-09-20 week-2 live fixes
-  > (`cadf15f`…`12e4bb9`) and the 2026-09-21 settled-week fixes (`4a5f73e`, `f8e7126` + docs)
-  > are all pushed and deployed. Check with `git log origin/main..main`; anything listed is
-  > unpushed work from a later session.
+  > (`cadf15f`…`12e4bb9`), the 2026-09-21 settled-week fixes (`4a5f73e`, `f8e7126` + docs), and
+  > the same-day win-probability bar + bias fix + three polish rounds (`c3f3ee9`…`8ec5f62`) are
+  > all pushed and deployed. Check with `git log origin/main..main`; anything listed is unpushed
+  > work from a later session.
   >
   > **The production DATA was already repaired**, which is the one thing a push does not do and
   > does not undo: `scripts/repair-lineup-identities.ts --season=1 --week=1 --write` ran against
@@ -461,6 +475,58 @@ Sleeper PPR as a free proxy).
   `src/lib/utils.ts`. `src/lib/standings/` stays pure (no DB imports).
 
 ## Recent work (newest first)
+
+- **A win-probability bar, the bias it surfaced, and three rounds of owner-reported polish**
+  (`c3f3ee9`…`8ec5f62`, **pushed**, 2026-09-21). Five commits, one session, each triggered by the
+  owner using the actual page and reporting what was wrong with it.
+  - **`c3f3ee9` — a finished roster stops calling itself "playing."** `LiveTeam.played` splits
+    the `scored + noStats` bucket by each slot's own game clock state (`assemble.ts` now keeps
+    `gameState` per slot instead of discarding it), so `rosterSummaryParts` only says
+    "6 played · 3 playing" when a roster is genuinely mid-transition — a fully live or fully
+    final roster still gets one clause, matching the old text exactly at either extreme.
+  - **`3ab51d8` — the bar itself, plus the bias found designing it.** Replaced the plain-text
+    odds line with a full-width meter (team logos + printed percentages anchoring a filled
+    track) matching an ESPN screenshot the owner referenced. Checked the app's win/loss color
+    pair against the dataviz skill's CVD validator before using it as the fill — it **fails a
+    colorblind-separation check outright** (not eyeballed), so the design leans on logos +
+    printed percentages + the bar's own width split as independent channels, never color alone.
+    Designing this surfaced the **concealed-slot win-probability bias** — see the now-✅ entry
+    under [Known open items](#known-open-items-honest-list) for the bug and the fix
+    (`projectLineupForOdds`, averaging over the roster's own known slots). Also fixed in the
+    same commit: `ScoreValue`'s optional "proj" line now always reserves its line height instead
+    of disappearing for a finished side, which used to pull that side's rows out of vertical
+    alignment with a still-live opponent's two-line column.
+  - **`9c473fe` — invisible on the actual phone, twice, root-caused by building prod locally.**
+    The bar rendered correctly in the server HTML, in Chrome (including headless-screenshotted
+    on this machine), and by every static check — but not on the owner's iPhone, through two
+    different markup approaches. Bisected by running `npm run build && npm run start` and
+    serving that on the LAN instead of the dev server: identical on-device, bar visible
+    immediately. **Root cause was Turbopack dev serving over a cross-origin LAN address, not the
+    component** — the dev server log already showed a blocked cross-origin HMR websocket warning
+    from the phone's address, which was the tell in hindsight. Kept the simplified markup
+    anyway (one `overflow-hidden` track + a single plain block fill, rather than two flex
+    children each `width: calc(%)`) since it's a more standard, lower-risk pattern regardless of
+    the actual root cause, and it's what was confirmed working on-device.
+    **🛑 Lesson for next time something renders in every check but not on the phone: build and
+    serve production locally FIRST** (`npm run build && npm run start -- -H 0.0.0.0`, then hit it
+    from the phone on a different port) — it isolates dev-mode/Turbopack/LAN-origin quirks from
+    real component bugs in about a minute, far faster than iterating on markup changes blind.
+  - **`43e7ca9` — a settled matchup kept the bar instead of swapping to muted text.** The owner
+    didn't like the downgrade in visual weight once a game ended. Same bar now at all times;
+    settled just means the **true, unclamped** 100/0 (the live estimate's 1–99 clamp exists
+    specifically to avoid overstating certainty while a game can still move — once settled
+    there's nothing left to overstate) and the pill relabels "Win Prob" → "Final" so the page
+    isn't calling a decided result a probability.
+  - **`8ec5f62` — the fill color was bound to home/away, not to who was actually favored.** Asked
+    directly ("does red seem confusing?") and yes: the green segment was hardcoded to home and
+    red to away regardless of the percentages, so a team winning 92% of the time could render in
+    "loss" red purely for being the away side. Color now follows the number — whichever side is
+    ahead is green, the trailing side red — while the bar's width/position stays unconditionally
+    home-on-the-left, matching the logos either side of it.
+  - **Verification habit for this whole arc:** `npm run verify` (9/9, incl. the production build
+    and the frozen-season byte-identical check) before every push; spot-checked real matchup IDs
+    via `curl` against the running server after each change, not just `tsc`/tests, because the
+    phone-invisibility bug would have passed every automated check in the repo.
 
 - **`/live` mirrors the rosters on a phone** (`8b60110`, 2026-09-21). The detail page stacked
   the two lineups below `sm`; it now mirrors them around the same slot rail desktop uses, built
@@ -1164,29 +1230,26 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
   `hydrateStoredSlot` / `hydrateStoredSlots` (`src/lib/lineups/normalize.ts`), with `== null`
   guards in `projection.ts` as belt and braces, and three regression tests. **Generalise it: any
   field added to that jsonb later is `undefined` on older rows — hydrate, never cast.**
-- **⚠️ Win probability is BIASED, not merely uncertain, whenever a slot is concealed.** Found
-  2026-09-21 by the owner asking the right question: *"isn't the probability incorrect if you
-  can't see the player?"* A concealed slot is treated asymmetrically by the two inputs —
-  `lineupMinutes` credits it a full **60 minutes** (`minutes.ts`, and correctly: DK conceals
-  until kickoff), while `projectLineup` contributes **0 points** for it (no `dkProjection`,
-  `points` null). `margin = homeProjected − awayProjected` is the **centre** of the
-  distribution, so every concealed pick drags its own side's projection down by a player's
-  worth (~8–20 pts). Widening the spread does not fix a displaced centre.
-  - Worked on the real matchup 8161: rendered **65%**, and the honest range is **38%–86%**
-    depending on what the two unseen players do. Symmetric concealment (one each) largely
-    cancels in the margin; **asymmetry is the defect** — two concealed against none understates
-    by ~25 pts against an sd of ~19, enough to invert who is favoured.
-  - Second failure mode: `concealed ⇒ 60 minutes left` is true at *capture* time. On a stale
-    capture whose players' games have since finished, it credits a full game still to play.
-  - **The inconsistency to fix:** the running total, the projection and the roster line all mark
-    this honestly (`+`, `N unknown`, the re-sync banner). The probability derived from those
-    marked floors prints a clean unqualified "65% Greg Lehr" — the one number on the page
-    hiding its own uncertainty.
-  - **Fix direction: suppress or qualify the probability when either side has concealed slots**,
-    consistent with the page's rule that a number we do not have is never rendered as one.
-    Imputing a projection for a concealed pick would violate it outright — it invents a number
-    for a player we cannot identify, and would have made the week-2 22.40 gap look closed.
-  - Pre-existing and equally wrong on desktop; **not** introduced by the mobile layout work.
+- ✅ **Win probability's concealed-slot bias — FIXED (2026-09-21, `3ab51d8`).** Was biased, not
+  merely uncertain, whenever a slot was concealed: `lineupMinutes` credited it a full **60
+  minutes** of uncertainty while `projectLineup` contributed **0 expected points** for it, so
+  the margin was dragged toward whichever side had fewer hidden picks (measured on real matchup
+  8161: displayed 65%, honest range 38–86%).
+  - **The originally-proposed fix (suppress the number whenever any slot is concealed) was
+    wrong and was caught before building it** — the owner pointed out concealed only means "this
+    player's game hasn't kicked off," not "hasn't finished," and a 9-slot roster commonly
+    carries an SNF/MNF player, so blanket suppression would leave most Sunday-afternoon
+    matchups showing nothing for hours.
+  - **What shipped instead:** `projectLineupForOdds` (`src/lib/live/projection.ts`) — a
+    concealed slot's expected contribution is filled with the roster's own average projected
+    value across its *other, already-known* slots. A real number drawn from that lineup's own
+    revealed picks, never an invented stat line for the hidden player, which stays inside the
+    "never render a number we don't have" rule while keeping the estimate up (and now unbiased)
+    for essentially the whole slate. Degrades to "no estimate" only when a whole side has
+    nothing else to average from. The DISPLAYED "proj" figure under each score is untouched —
+    this only feeds win probability. Tests in `projection.test.ts`.
+  - `page.tsx`'s week-list closeness sort now ranks by this same unbiased projection.
+  - Pre-existing and equally wrong on desktop; was not introduced by the mobile layout work.
 - **Win probability is calibrated by assumption.** `LINEUP_SD_FULL_SLATE = 40` in
   `src/lib/live/projection.ts` is a rough industry figure for a Classic lineup's spread, never
   fitted to this league. The *projection* it feeds is DraftKings' own formula and is exact; the
@@ -1241,10 +1304,10 @@ Do these three things, in this order:
 2. **Run `npm run verify`.** It must be **9/9**. It needs `DATABASE_URL`, and its ground-truth
    replay writes to the DB (idempotent, by design); `npm run verify:quick` skips that and the
    production build. If the **historical snapshot** check fires, stop — you moved a frozen season.
-3. **Check the repo state:** `git status` and `git log origin/main..main`. **As of 2026-08-23 the
-   working tree is dirty on purpose** — the mobile `/live` rebuild, the Live Sync roster refresh
-   (extension **1.5.0**) and the scoring-drift audit are written and verified but **not committed**
-   (see the push check in Snapshot). `git diff HEAD` is the whole of it.
+3. **Check the repo state:** `git status` and `git log origin/main..main`. **As of 2026-09-21
+   (end of session) the working tree is CLEAN and `main`/`origin/main` are level** — see the
+   push check in Snapshot for exactly what's landed. If either command shows something, it's
+   from a session after this one; read forward from here rather than trusting this paragraph.
 
 The rebuild is **feature-complete** vs the old Google-Sheets workflow. Importers are idempotent;
 2023–2025 (regular season + playoffs) are in, validated, and gated against moving.
