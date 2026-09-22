@@ -271,6 +271,14 @@ function WinProbabilityBar({
   // shouldn't drop just because the number stopped being a guess.
   const homePct = odds.settled ? Math.round(odds.home * 100) : winProbabilityPercent(odds.home);
   const awayPct = 100 - homePct;
+  // Color tracks who is FAVORED, not which side is home. The fill's position/width is always
+  // home's share (home sits on the left, matching the logos either side of it) — only which
+  // color goes on which piece swaps. Getting this backwards is worse than no color at all: a
+  // team on pace to win 92% of the time rendering in "loss" red because they happen to be away
+  // reads as flatly wrong to anyone glancing at the bar, not just inconsistent.
+  const homeFavored = homePct >= 50;
+  const trackColor = homeFavored ? 'bg-loss' : 'bg-win';
+  const fillColor = homeFavored ? 'bg-win' : 'bg-loss';
 
   return (
     <div className="flex flex-col items-center gap-1.5 border-t border-border/60 pt-2.5">
@@ -288,19 +296,20 @@ function WinProbabilityBar({
         <TeamLogo src={home.logoEspn} alt={home.teamKey ? `${home.teamKey} logo` : ''} size={20} />
         <span className="w-8 shrink-0 text-right text-xs font-semibold tabular-nums">{homePct}%</span>
         {/*
-          A single overflow-hidden TRACK (bg-loss, the away side) with one plain block child
-          sized to the home share — not two flex children each width:calc(%). That pattern
-          nests a percentage-width flex item inside a container whose OWN width comes from
-          flex-1 one level up, which is exactly the double-indirection Safari has known bugs
-          rendering (zero-size, no error). A plain block child's percentage resolves against
-          its parent's already-settled width with no such ambiguity.
+          A single overflow-hidden TRACK with one plain block child sized to the home share —
+          not two flex children each width:calc(%). That pattern nests a percentage-width flex
+          item inside a container whose OWN width comes from flex-1 one level up, which is
+          exactly the double-indirection Safari has known bugs rendering (zero-size, no error).
+          A plain block child's percentage resolves against its parent's already-settled width
+          with no such ambiguity. Which of trackColor/fillColor is win vs loss is decided above
+          by who's favored — the width below is still always home's share, unconditionally.
         */}
         <div
-          className="h-2 flex-1 overflow-hidden rounded-full bg-loss"
+          className={cn('h-2 flex-1 overflow-hidden rounded-full', trackColor)}
           role="img"
           aria-label={`${home.ownerName} ${homePct}%, ${away.ownerName} ${awayPct}%`}
         >
-          <div className="h-full rounded-full bg-win" style={{ width: `${homePct}%` }} />
+          <div className={cn('h-full rounded-full', fillColor)} style={{ width: `${homePct}%` }} />
         </div>
         <span className="w-8 shrink-0 text-xs font-semibold tabular-nums">{awayPct}%</span>
         <TeamLogo src={away.logoEspn} alt={away.teamKey ? `${away.teamKey} logo` : ''} size={20} />
