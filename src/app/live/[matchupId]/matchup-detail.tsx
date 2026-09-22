@@ -36,9 +36,10 @@ import type { LiveTeamContext } from '@/lib/live/query';
 import type { LiveStatIndex } from '@/lib/live/stats';
 import { formatMinutes, lineupMinutes, type LineupMinutes } from '@/lib/live/minutes';
 import {
-  formatWinProbability,
   projectLineup,
+  projectLineupForOdds,
   winProbability,
+  winProbabilityPercent,
   type LineupProjection,
   type WinProbability,
 } from '@/lib/live/projection';
@@ -190,21 +191,36 @@ function ScoreValue({
         {formatPoints(team.points)}
         {isFloorTotal(team) ? <span className="text-muted">+</span> : null}
       </span>
-      {hasBasis ? (
-        // DraftKings' own projection model, recomputed live from ESPN's clock:
-        // score + pregame × (minutes left / 60). See lib/live/projection.ts.
-        <span
-          className="text-[11px] text-muted"
-          title={
-            isFloor
-              ? `At least this much — ${projection.unprojectedSlots} slot(s) still to play have no DraftKings projection, so their points are not counted here.`
+      {/*
+        ALWAYS rendered, only sometimes INVISIBLE. A finished side genuinely has nothing to
+        project, so hasBasis is correctly false — but omitting this line entirely used to
+        shrink that side's column to one line while a still-live opponent kept two, so the
+        row lost its shared baseline: on desktop the two scores re-centered at different
+        heights, on mobile the owner-name/meta rows below drifted out of alignment. Reserving
+        the SPACE (not a fake number) is the fix, matching MobilePlayerCell's min-h trick for
+        the same class of problem below.
+      */}
+      <span
+        className={cn('text-[11px] text-muted', !hasBasis && 'invisible')}
+        title={
+          hasBasis
+            ? // DraftKings' own projection model, recomputed live from ESPN's clock:
+              // score + pregame × (minutes left / 60). See lib/live/projection.ts.
+              isFloor
+              ? `At least this much — ${projection!.unprojectedSlots} slot(s) still to play have no DraftKings projection, so their points are not counted here.`
               : 'Projected final, from DraftKings’ own projection and the game clock.'
-          }
-        >
-          proj {formatPoints(projection.projected)}
-          {isFloor ? '+' : ''}
-        </span>
-      ) : null}
+            : undefined
+        }
+      >
+        {hasBasis ? (
+          <>
+            proj {formatPoints(projection!.projected)}
+            {isFloor ? '+' : ''}
+          </>
+        ) : (
+          ' '
+        )}
+      </span>
     </span>
   );
 }
@@ -222,21 +238,21 @@ function teamMetaLine(team: LiveTeam, minutes: LineupMinutes): string {
 }
 
 /**
- * The vs / win-probability strip between the two scores.
+ * The win-probability meter, full width below both scores — ESPN's layout, not squeezed into
+ * the narrow "vs" gap between the two `ScoreValue`s.
  *
  * An ESTIMATE from projected margin and time left — labelled, never dressed up as a
- * measurement. See lib/live/projection.ts for the model.
+ * measurement. See lib/live/projection.ts for the model, and `projectLineupForOdds` for why a
+ * concealed pick no longer silently biases this number toward whichever side has fewer of them.
+ *
+ * COLOR IS NEVER THE ONLY CHANNEL. The app's win/loss pair fails a colorblind-separation check
+ * outright (measured, not eyeballed — the same category of problem the roster mirror's
+ * `SideMarker` chip hit). So the fill reinforces a reading that is already complete without it:
+ * each end carries the team's own logo (identity) and its percentage printed as text
+ * (magnitude), and the bar's own width split is a third, color-independent cue. A viewer who
+ * cannot tell the two fills apart still gets the whole story.
  */
-function oddsText(odds: WinProbability | null, home: LiveTeam, away: LiveTeam): string | null {
-  if (!odds) return null;
-  // Both branches lead with whoever is ahead, so the name and the number always agree.
-  const leader = odds.home >= 0.5 ? home : away;
-  return odds.settled
-    ? `${leader.ownerName} won`
-    : `${formatWinProbability(Math.max(odds.home, 1 - odds.home), false)} ${leader.ownerName}`;
-}
-
-function OddsLine({
+function WinProbabilityBar({
   odds,
   home,
   away,
@@ -245,13 +261,41 @@ function OddsLine({
   home: LiveTeam;
   away: LiveTeam;
 }) {
-  const text = oddsText(odds, home, away);
-  if (!text) return <span className="text-xs text-muted">vs</span>;
+  // No basis yet (e.g. a side with nothing revealed at all to estimate from) — nothing printed,
+  // matching this page's rule that a number we do not have is never rendered as one.
+  if (!odds) return null;
+
+  if (odds.settled) {
+    const leader = odds.home >= 0.5 ? home : away;
+    return (
+      <div className="border-t border-border/60 pt-2.5 text-center text-xs text-muted">
+        {leader.ownerName} won
+      </div>
+    );
+  }
+
+  const homePct = winProbabilityPercent(odds.home);
+  const awayPct = 100 - homePct;
+
   return (
-    <span className="flex flex-col items-center text-xs text-muted">
-      <span>vs</span>
-      <span className="mt-0.5 text-center text-[11px]">{text}</span>
-    </span>
+    <div className="flex flex-col items-center gap-1.5 border-t border-border/60 pt-2.5">
+      <span
+        className="rounded-full bg-accent/12 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent"
+        title="An estimate from projected score and time remaining — not a measurement."
+      >
+        Win Prob
+      </span>
+      <div className="flex w-full items-center gap-2">
+        <TeamLogo src={home.logoEspn} alt={home.teamKey ? `${home.teamKey} logo` : ''} size={20} />
+        <span className="w-8 shrink-0 text-right text-xs font-semibold tabular-nums">{homePct}%</span>
+        <div className="flex h-2 flex-1 items-center gap-0.5" role="img" aria-label={`${home.ownerName} ${homePct}%, ${away.ownerName} ${awayPct}%`}>
+          <div className="h-full rounded-l-full bg-win" style={{ width: `calc(${homePct}% - 1px)` }} />
+          <div className="h-full rounded-r-full bg-loss" style={{ width: `calc(${awayPct}% - 1px)` }} />
+        </div>
+        <span className="w-8 shrink-0 text-xs font-semibold tabular-nums">{awayPct}%</span>
+        <TeamLogo src={away.logoEspn} alt={away.teamKey ? `${away.teamKey} logo` : ''} size={20} />
+      </div>
+    </div>
   );
 }
 
@@ -552,17 +596,21 @@ export function MatchupDetail({
   const awayMinutes = lineupMinutes(away.slots, index.teamState);
   const homeProj = home.hasSnapshot ? projectLineup(home, index.teamState) : null;
   const awayProj = away.hasSnapshot ? projectLineup(away, index.teamState) : null;
-  // Only meaningful when BOTH sides are known — a probability against an unknown is not one.
+  // The DISPLAYED "proj" figure above (homeProj/awayProj) stays exactly as projectLineup
+  // computes it — 0 for a concealed slot, never invented. Win probability is a different
+  // number with a different job (already a labelled estimate), computed separately via
+  // projectLineupForOdds so a hidden pick's own asymmetry stops biasing the margin — see the
+  // doc comment there and on WinProbabilityBar.
+  const homeOddsProj = home.hasSnapshot ? projectLineupForOdds(home, index.teamState) : null;
+  const awayOddsProj = away.hasSnapshot ? projectLineupForOdds(away, index.teamState) : null;
   const odds =
-    homeProj && awayProj
+    homeOddsProj?.hasBasis && awayOddsProj?.hasBasis
       ? winProbability(
-          homeProj.projected,
-          awayProj.projected,
+          homeOddsProj.projected,
+          awayOddsProj.projected,
           homeMinutes.minutesLeft + awayMinutes.minutesLeft,
         )
       : null;
-  // Same text the desktop OddsLine prints, rendered on its own line on a phone.
-  const mobileOdds = oddsText(odds, home, away);
 
   // Kept short and allowed to wrap. The long form ("…so their total is unknown rather than
   // zero") ran to three uppercase lines on a phone and burst out of the card, while saying
@@ -600,12 +648,6 @@ export function MatchupDetail({
                 projection={awayProj}
               />
             </div>
-
-            {mobileOdds ? (
-              <div className="border-t border-border/60 pt-2 text-center text-[11px] text-muted">
-                {mobileOdds}
-              </div>
-            ) : null}
           </div>
 
           {/* sm and up: the mirrored scoreboard. */}
@@ -613,11 +655,15 @@ export function MatchupDetail({
             <TeamHeader team={home} align="left" minutes={homeMinutes} />
             <div className="flex items-center gap-3">
               <ScoreValue team={home} projection={homeProj} size="xl" />
-              <OddsLine odds={odds} home={home} away={away} />
+              <span className="text-xs text-muted">vs</span>
               <ScoreValue team={away} projection={awayProj} size="xl" />
             </div>
             <TeamHeader team={away} align="right" minutes={awayMinutes} />
           </div>
+
+          {/* One bar, shared by both breakpoints — its own row spans the full card width,
+              which the narrow "vs" gap above never had room for. */}
+          <WinProbabilityBar odds={odds} home={home} away={away} />
 
           {notCapturedBadge}
         </CardBody>

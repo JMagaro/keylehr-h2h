@@ -103,6 +103,57 @@ export function projectLineup(
   };
 }
 
+/**
+ * A lineup's projected final for WIN PROBABILITY ONLY — never the team's displayed "proj"
+ * figure, which stays exactly as `projectLineup` computes it.
+ *
+ * `projectLineup` gives a concealed slot 0 expected points, correctly: we have no identity to
+ * project, and inventing a stat line for a player we cannot name would be worse than saying
+ * nothing. But `winProbability`'s spread already credits that same slot a FULL game of
+ * uncertainty (see `lineupMinutes`), so "0 expected, full variance" pulls the margin toward
+ * whichever side has fewer hidden picks — measured on a real matchup as 65% displayed against
+ * an honest range of 38–86%. Symmetric concealment mostly cancels; the asymmetric case is the
+ * defect.
+ *
+ * The fix here is scoped to this one number: a concealed slot's expected contribution is
+ * filled in with this roster's OWN average projected value across its other, already-known
+ * slots — a real figure drawn from this lineup's own revealed picks, not an invented line for
+ * the hidden player. It removes the directional bias without requiring the estimate to
+ * disappear for most of a Sunday, which a blanket "no concealed picks allowed" gate would have
+ * done — plenty of rosters carry at least one SNF/MNF slot.
+ */
+export function projectLineupForOdds(
+  team: LiveTeam,
+  clockByTeam: Record<string, GameClock | undefined>,
+): { projected: number; hasBasis: boolean } {
+  let total = 0;
+  let concealedCount = 0;
+  const known: number[] = [];
+
+  for (const slot of team.slots) {
+    if (slot.status === 'concealed') {
+      concealedCount += 1;
+      continue; // filled in below, once the average of the rest is known
+    }
+    const clock = slot.teamKey ? clockByTeam[slot.teamKey] : undefined;
+    const value = projectSlot(slot, clock);
+    total += value ?? 0;
+    if (value !== null) known.push(value);
+  }
+
+  if (concealedCount === 0) return { projected: Math.round(total * 100) / 100, hasBasis: true };
+
+  if (known.length === 0) {
+    // Nothing else on this roster carries a projection either — there is genuinely no basis
+    // to estimate the hidden slot(s) from. The caller must fall back to "no estimate".
+    return { projected: Math.round(total * 100) / 100, hasBasis: false };
+  }
+
+  const average = known.reduce((sum, v) => sum + v, 0) / known.length;
+  total += average * concealedCount;
+  return { projected: Math.round(total * 100) / 100, hasBasis: true };
+}
+
 /* -------------------------------------------------------------------------- */
 /* Win probability                                                            */
 /* -------------------------------------------------------------------------- */
@@ -167,9 +218,13 @@ export function winProbability(
   return { home: normalCdf(margin / sd), settled: false };
 }
 
+/** Rounded 1–99 — never 0 or 100 while a game is still moving. Shared with the bar's fill. */
+export function winProbabilityPercent(p: number): number {
+  return Math.min(99, Math.max(1, Math.round(p * 100)));
+}
+
 /** "73%" — rounded, and never shown as 0% or 100% while games are still running. */
 export function formatWinProbability(p: number, settled: boolean): string {
   if (settled) return p >= 0.5 ? 'Won' : 'Lost';
-  const pct = Math.round(p * 100);
-  return `${Math.min(99, Math.max(1, pct))}%`;
+  return `${winProbabilityPercent(p)}%`;
 }

@@ -8,7 +8,13 @@ import { describe, it, expect } from 'vitest';
 
 import type { LiveSlot, LiveTeam } from './assemble';
 import type { GameClock } from './minutes';
-import { formatWinProbability, projectLineup, projectSlot, winProbability } from './projection';
+import {
+  formatWinProbability,
+  projectLineup,
+  projectLineupForOdds,
+  projectSlot,
+  winProbability,
+} from './projection';
 
 const slot = (over: Partial<LiveSlot> = {}): LiveSlot => ({
   slot: 'WR',
@@ -164,6 +170,78 @@ describe('projectLineup', () => {
     const p = projectLineup(t, clocks);
     expect(p.isFinal).toBe(true);
     expect(p.projected).toBe(20);
+  });
+});
+
+describe('projectLineupForOdds — the concealed-slot bias fix', () => {
+  const clocks: Record<string, GameClock> = {
+    LAR: { state: 'post', period: 4, displayClock: '0:00' },
+    SEA: { state: 'pre' },
+  };
+
+  it('matches projectLineup exactly when nothing is concealed', () => {
+    const t = team(
+      [
+        slot({ teamKey: 'LAR', points: 20, dkProjection: 15 }),
+        slot({ teamKey: 'SEA', points: 0, dkProjection: 12 }),
+      ],
+      20,
+    );
+    expect(projectLineupForOdds(t, clocks)).toEqual({ projected: 32, hasBasis: true });
+  });
+
+  it('fills a concealed slot with the roster’s own average, not zero', () => {
+    // Two known slots projecting 10 and 20 (average 15), one concealed. The old behavior
+    // credited the concealed slot 0 here while still charging it a full game of uncertainty
+    // elsewhere — the asymmetry that biased the margin. This is the fix: 10 + 20 + 15 = 45.
+    const t = team(
+      [
+        slot({ teamKey: 'PIT', points: 10, dkProjection: null }), // projects flat at 10
+        slot({ teamKey: 'SEA', points: 0, dkProjection: 20 }), // pre-kickoff, projects 20
+        slot({ teamKey: null, status: 'concealed', points: null }),
+      ],
+      10,
+    );
+    expect(projectLineupForOdds(t, clocks)).toEqual({ projected: 45, hasBasis: true });
+  });
+
+  it('averages across MULTIPLE concealed slots using the same known average', () => {
+    const t = team(
+      [
+        slot({ teamKey: 'SEA', points: 0, dkProjection: 20 }), // pre-kickoff, projects 20
+        slot({ teamKey: null, status: 'concealed', points: null }),
+        slot({ teamKey: null, status: 'concealed', points: null }),
+      ],
+      0,
+    );
+    // known average is 20; two concealed slots each get 20 → 20 + 20 + 20 = 60.
+    expect(projectLineupForOdds(t, clocks)).toEqual({ projected: 60, hasBasis: true });
+  });
+
+  it('reports no basis when EVERY slot is concealed — nothing to average from', () => {
+    const t = team(
+      [
+        slot({ teamKey: null, status: 'concealed', points: null }),
+        slot({ teamKey: null, status: 'concealed', points: null }),
+      ],
+      0,
+    );
+    expect(projectLineupForOdds(t, clocks)).toEqual({ projected: 0, hasBasis: false });
+  });
+
+  it('does not let an unresolved (non-concealed) slot poison the average', () => {
+    // Unresolved is a matching failure, not "hidden" — it stays at 0 and is not averaged in,
+    // matching projectLineup's existing treatment of it.
+    const t = team(
+      [
+        slot({ teamKey: 'SEA', points: 0, dkProjection: 20 }),
+        slot({ teamKey: 'MIA', status: 'unresolved', points: null, dkProjection: null }),
+        slot({ teamKey: null, status: 'concealed', points: null }),
+      ],
+      0,
+    );
+    // known = [20] (unresolved contributes nothing and is not a basis); concealed gets 20.
+    expect(projectLineupForOdds(t, clocks)).toEqual({ projected: 40, hasBasis: true });
   });
 });
 

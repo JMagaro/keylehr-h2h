@@ -33,7 +33,7 @@ import { getDefaultLiveWeek, getLiveWeekData } from '@/lib/live/query';
 import { getLiveStatsForWeek } from '@/lib/live/stats';
 import { assessCaptureStaleness, countConcealedSlots } from '@/lib/live/staleness';
 import { lineupMinutes } from '@/lib/live/minutes';
-import { projectLineup, winProbability } from '@/lib/live/projection';
+import { projectLineupForOdds, winProbability } from '@/lib/live/projection';
 import { exhibitionWeekLabel, isExhibitionWeek } from '@/lib/schedule/preseason';
 import { getDefaultStandingsSeasonId, getSeasonOptions } from '@/lib/standings/query';
 
@@ -113,8 +113,10 @@ export default async function LivePage({
     .map((m) => {
       const known = m.home.hasSnapshot && m.away.hasSnapshot;
       if (!known) return { m, rank: Number.POSITIVE_INFINITY };
-      const homeProj = projectLineup(m.home, index.teamState);
-      const awayProj = projectLineup(m.away, index.teamState);
+      const homeProj = projectLineupForOdds(m.home, index.teamState);
+      const awayProj = projectLineupForOdds(m.away, index.teamState);
+      // Same "no basis" bucket as an uncaptured lineup — nothing to be close about yet.
+      if (!homeProj.hasBasis || !awayProj.hasBasis) return { m, rank: Number.POSITIVE_INFINITY };
       const minutes =
         lineupMinutes(m.home.slots, index.teamState).minutesLeft +
         lineupMinutes(m.away.slots, index.teamState).minutesLeft;
