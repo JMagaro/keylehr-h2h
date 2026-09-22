@@ -8,15 +8,19 @@
  * happens to be listed first.
  *
  * ON A PHONE the rich prev/next cards are the wrong trade: two of them stacked push the
- * actual scoreboard below the fold, which is the one thing you opened the page for. So below
- * `sm` they collapse to two tappable arrows either side of the jump dropdown — the dropdown
- * already names every matchup with both owners and both scores, so nothing is lost but
- * height. The full cards return from `sm` up.
+ * actual scoreboard below the fold, which is the one thing you opened the page for. Below
+ * `sm` the whole week is a SCROLLABLE STRIP of chips instead (`MatchupStrip`) — every matchup
+ * reachable in one tap rather than stepped through one at a time, and still a single row.
+ * The full cards, and the jump dropdown beside them, return from `sm` up.
  *
- * Prev/next are `<Link>`s, so they navigate with JavaScript disabled; only the dropdown needs
- * the client. It wraps at both ends — with 16 matchups a dead arrow is more annoying than a
- * loop.
+ * That strip replaced arrows either side of the dropdown. Stepping is a poor fit for 16
+ * sibling matchups: reaching the one you want took up to eight taps and a page load each
+ * time, and the dropdown that made it bearable could not show a score without being opened.
+ *
+ * Prev/next are `<Link>`s, so they navigate with JavaScript disabled, and so are the chips —
+ * only the dropdown and the strip's scroll-into-view need the client.
  */
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -104,29 +108,64 @@ function Step({
 }
 
 /**
- * The arrow-only form — below `sm`. Sized to a 44px tap target rather than to its icon, which
- * is the difference between a control you can hit on a phone and one you stab at.
+ * The week's matchups as a scrollable strip — tap any one to switch to it.
+ *
+ * Replaces the arrows + dropdown below `sm` rather than sitting above them: the whole reason
+ * the phone nav is one row is that two rows push the scoreboard off screen, and that
+ * constraint does not relax just because the row got nicer. A chip is about the height of the
+ * select it displaces.
+ *
+ * Each chip is BOTH scores plus both logos, because a head-to-head is identified by the pair.
+ * The logos are the fast cue and the `aria-label` carries the owners' names, which the chip
+ * itself has no room for and a screen reader cannot get from an image.
  */
-function ArrowStep({
-  matchup,
-  direction,
+function MatchupStrip({
+  matchups,
+  currentId,
 }: {
-  matchup: MatchupNavItem;
-  direction: 'prev' | 'next';
+  matchups: MatchupNavItem[];
+  currentId: number;
 }) {
-  const isPrev = direction === 'prev';
-  const Icon = isPrev ? ChevronLeft : ChevronRight;
+  const activeRef = useRef<HTMLAnchorElement | null>(null);
+
+  // Matchup 14 of 16 would otherwise open with its own chip off screen to the right, which
+  // makes the strip look like it starts at someone else's game. `block: 'nearest'` keeps this
+  // from scrolling the PAGE as well — the scoreboard must stay where it is.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }, [currentId]);
+
   return (
-    <Link
-      href={`/live/${matchup.id}`}
-      aria-label={`${isPrev ? 'Previous' : 'Next'} matchup: ${label(matchup)}`}
-      className={[
-        'flex size-11 shrink-0 items-center justify-center rounded-lg border border-border',
-        'bg-card text-muted transition-colors hover:border-border-strong hover:text-foreground',
-      ].join(' ')}
-    >
-      <Icon className="size-5" aria-hidden="true" />
-    </Link>
+    // Full-bleed: the strip should run to both screen edges so it reads as scrollable, while
+    // the padding keeps the first and last chips clear of them.
+    <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex w-max gap-2">
+        {matchups.map((m) => {
+          const isCurrent = m.id === currentId;
+          return (
+            <Link
+              key={m.id}
+              ref={isCurrent ? activeRef : undefined}
+              href={`/live/${m.id}`}
+              aria-label={label(m)}
+              aria-current={isCurrent ? 'page' : undefined}
+              className={cn(
+                'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 transition-colors',
+                isCurrent
+                  ? 'border-accent bg-accent/10'
+                  : 'border-border bg-card hover:border-border-strong',
+              )}
+            >
+              <TeamLogo src={m.home.logoEspn} alt="" size={18} />
+              <span className="text-xs font-semibold tabular-nums">{score(m.home)}</span>
+              <span className="text-[10px] text-muted">vs</span>
+              <span className="text-xs font-semibold tabular-nums">{score(m.away)}</span>
+              <TeamLogo src={m.away.logoEspn} alt="" size={18} />
+            </Link>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -182,15 +221,8 @@ export function MatchupNav({
 
   return (
     <>
-      {/* Below sm: arrows flanking the dropdown, one row, no scoreboard pushed off screen. */}
-      <div className="flex flex-col items-center gap-1 sm:hidden">
-        <div className="flex w-full items-center gap-2">
-          <ArrowStep matchup={prev} direction="prev" />
-          <div className="min-w-0 flex-1">{jumpSelect}</div>
-          <ArrowStep matchup={next} direction="next" />
-        </div>
-        {positionLabel}
-      </div>
+      {/* Below sm: every matchup as a tappable chip, one scrollable row. */}
+      <MatchupStrip matchups={matchups} currentId={currentId} />
 
       {/* sm and up: the full prev/next cards. */}
       <div className="hidden sm:flex sm:items-stretch sm:gap-3">

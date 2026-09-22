@@ -3,16 +3,23 @@
  * every fantasy app uses because it makes "who is beating whom, at which position" readable
  * at a glance.
  *
- * ON A PHONE THAT LAYOUT CANNOT WORK, and it is not a matter of tightening it up. Three
- * columns at 390px leave each player roughly 70px once the logo and the points column are
- * subtracted — enough for "J. Jeffe…" and nothing else, with the stat line gone entirely. So
- * below `sm` the same data renders STACKED: one block per roster slot, both players full width
- * beneath it, each keeping its name, stat line and game state. A two-tone legend says which
- * row belongs to which owner, since stacking removes the left/right cue the mirror gives you
- * for free. The mirrored rail returns from `sm` up.
+ * THE PHONE MIRRORS TOO, and getting there is about WHERE THINGS SIT, not about tightening.
+ * This layout was previously stacked below `sm` on the reasoning that three columns at 390px
+ * leave each player ~70px — true of the desktop cell, which spends 22px on a team logo and 56
+ * on a points column, both as COLUMNS, so both are charged against every line of the cell.
+ * Mobile narrows the points column to 40px and moves it INBOARD against the centre rail, and
+ * puts the team logo inline on the name line, where it costs ~17px of one line instead of its
+ * width on three. That leaves ~115px of text on a 390px phone: an abbreviated name, the game
+ * state and the stat line — the shape every fantasy app ships.
+ *
+ * WHAT THE MIRROR BUYS BACK. Stacking had to say whose player each row was — two owners
+ * routinely start the same player, so the same name, stat line and points appeared twice in a
+ * slot. Position answers that for free here, which is why the per-row owner label is gone and
+ * the header legend above the list carries the whole job.
  *
  * Two layouts, ONE data source: everything below is computed once and rendered twice. Do not
- * let the variants drift into computing different things.
+ * let the variants drift into computing different things. The mobile cell is deliberately
+ * NOT the desktop cell at a smaller size — see `MobilePlayerCell` vs `PlayerCell`.
  *
  * Each player row carries what you actually need mid-game: the points, a plain-English stat
  * line, and their game's state — which for a player yet to kick off means their opponent and
@@ -220,6 +227,15 @@ function teamMetaLine(team: LiveTeam, minutes: LineupMinutes): string {
  * An ESTIMATE from projected margin and time left — labelled, never dressed up as a
  * measurement. See lib/live/projection.ts for the model.
  */
+function oddsText(odds: WinProbability | null, home: LiveTeam, away: LiveTeam): string | null {
+  if (!odds) return null;
+  // Both branches lead with whoever is ahead, so the name and the number always agree.
+  const leader = odds.home >= 0.5 ? home : away;
+  return odds.settled
+    ? `${leader.ownerName} won`
+    : `${formatWinProbability(Math.max(odds.home, 1 - odds.home), false)} ${leader.ownerName}`;
+}
+
 function OddsLine({
   odds,
   home,
@@ -229,12 +245,8 @@ function OddsLine({
   home: LiveTeam;
   away: LiveTeam;
 }) {
-  if (!odds) return <span className="text-xs text-muted">vs</span>;
-  // Both branches lead with whoever is ahead, so the name and the number always agree.
-  const leader = odds.home >= 0.5 ? home : away;
-  const text = odds.settled
-    ? `${leader.ownerName} won`
-    : `${formatWinProbability(Math.max(odds.home, 1 - odds.home), false)} ${leader.ownerName}`;
+  const text = oddsText(odds, home, away);
+  if (!text) return <span className="text-xs text-muted">vs</span>;
   return (
     <span className="flex flex-col items-center text-xs text-muted">
       <span>vs</span>
@@ -333,119 +345,169 @@ function SideMarker({ side }: { side: Side }) {
   );
 }
 
-/**
- * How a stacked player row says whose player it is.
+/*
+ * Historical note, because it is the reason the mirror is worth the width it costs.
  *
- * A 4x14px colour chip was the ONLY cue, and it is not enough. Two owners routinely roster the
- * same player — in 2026 week 2 both sides of this matchup started Carson Wentz AND Bijan
- * Robinson — so the slot renders as two identical rows, same name, same stat line, same
- * points, distinguished by a dim grey vs green tick most people will not even see. At that
- * point the page is unreadable: you cannot tell whether you are looking at a duplicate render
- * or at both owners' picks.
+ * The stacked layout had to label every row with its owner: two owners routinely start the
+ * same player — in 2026 week 2 both sides of one matchup started Carson Wentz AND Bijan
+ * Robinson — and stacked, that slot rendered as two identical rows, same name, same stat
+ * line, same points. Colour chips alone could not fix it (and fail outright for the ~8% of
+ * men with a red-green deficiency), so the owner's name had to appear on all nine rows.
  *
- * Three reinforcing cues now, because colour alone fails for the ~8% of men with a red-green
- * deficiency and for anyone glancing at a phone in daylight:
- *   1. a full-height coloured left border, which also visually groups the row
- *   2. a background tint on the home side
- *   3. the OWNER'S NAME, in words, on the row itself
- *
- * (3) is the one that actually settles it. The others make it fast.
+ * Mirroring makes position the cue, so that per-row label is gone and those pixels went to
+ * the stat line instead. The header legend now carries the left/right mapping for the whole
+ * list, which is why it is not optional decoration.
  */
-const SIDE_ROW: Record<Side, string> = {
-  home: 'border-l-[3px] border-accent bg-accent/[0.06]',
-  away: 'border-l-[3px] border-border-strong',
-};
 
-const SIDE_NAME: Record<Side, string> = {
-  home: 'text-accent',
-  away: 'text-muted',
-};
-
-/** One owner's line in the stacked scoreboard: logo, name, meta, score. */
-function MobileTeamRow({
+/**
+ * One side of the mobile scoreboard: logo outboard, score inboard, owner beneath.
+ *
+ * The two scores meet in the middle, which is what makes the margin between them readable
+ * without doing arithmetic — the same reason the rosters below mirror.
+ */
+function MobileScoreSide({
   team,
-  side,
+  align,
   minutes,
   projection,
 }: {
   team: LiveTeam;
-  side: Side;
+  align: 'left' | 'right';
   minutes: LineupMinutes;
   projection: LineupProjection | null;
 }) {
+  const right = align === 'right';
   return (
-    <div className="flex items-center gap-2.5">
-      <SideMarker side={side} />
-      <TeamLogo src={team.logoEspn} alt={team.teamKey ? `${team.teamKey} logo` : ''} size={32} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-semibold">{team.ownerName}</div>
-        {/*
-          WRAPS, never truncates. At 390px "223 min left · 7 playing · 2 unknown" does not
-          fit on one line, and `truncate` clipped it to "…2 unkn…" — losing precisely the
-          clause that says the score below is incomplete. The counts are the point of this
-          line; a second line costs nothing.
-        */}
-        <div className="text-xs leading-snug text-muted">{teamMetaLine(team, minutes)}</div>
+    <div className={cn('flex min-w-0 flex-col gap-0.5', right ? 'items-end' : 'items-start')}>
+      <div className={cn('flex items-center gap-2', right && 'flex-row-reverse')}>
+        <TeamLogo src={team.logoEspn} alt={team.teamKey ? `${team.teamKey} logo` : ''} size={32} />
+        <ScoreValue team={team} projection={projection} size="xl" />
       </div>
-      <div className="shrink-0 text-right">
-        <ScoreValue team={team} projection={projection} size="lg" />
+      <div className="max-w-full truncate text-xs font-semibold">{team.ownerName}</div>
+      {/*
+        Belongs to THIS owner, so it sits under this owner. Stacking both lines in the middle
+        made them read as one shared caption for the matchup.
+
+        WRAPS, never truncates: at a mirrored ~170px "223m left · 7 playing · 2 unknown" takes
+        two or three lines, and `truncate` once clipped it to "…2 unkn…" — losing precisely
+        the clause that says the score above is incomplete.
+      */}
+      <div className={cn('text-[11px] leading-snug text-muted', right && 'text-right')}>
+        {teamMetaLine(team, minutes)}
       </div>
     </div>
   );
 }
 
-/** One player, full width — the whole point of stacking is that nothing has to truncate. */
-function MobilePlayerRow({
+/**
+ * "Jaxon Smith-Njigba" → "J. Smith-Njigba".
+ *
+ * The mirrored cell gives a name ~130px. A surname alone would be ambiguous in a league that
+ * rosters both Williamses in the screenshot that prompted this layout, so the initial stays.
+ * Left alone: single-token names and defenses, where the first token IS the identity.
+ */
+function shortName(name: string, slot: string | null): string {
+  if ((slot ?? '').toUpperCase() === 'DST') return name;
+  const parts = name.trim().split(/\s+/);
+  if (parts.length < 2) return name;
+  const [first, ...rest] = parts;
+  if (first.length <= 2) return name; // already an initial, e.g. "J. Taylor"
+  return `${first[0]}. ${rest.join(' ')}`;
+}
+
+/**
+ * One player in the mobile mirror.
+ *
+ * Not the desktop cell shrunk: the points column moves INBOARD against the centre rail, and
+ * the team logo rides the name line instead of taking a column — the two trades that make
+ * three columns fit a phone at all. The away side reverses so both point columns meet in the
+ * middle and both names sit at the outer edges — the arrangement that makes "who won this
+ * slot" a single glance.
+ */
+function MobilePlayerCell({
   slot,
-  side,
-  ownerName,
   ctx,
   index,
+  align,
 }: {
   slot: LiveSlot | null;
-  side: Side;
-  ownerName: string;
   ctx: LiveTeamContext | undefined;
   index: LiveStatIndex;
+  align: 'left' | 'right';
 }) {
-  // Nothing to draw. The mirrored layout renders an invisible spacer here to keep the two
-  // sides aligned; stacked there is no alignment to preserve, and nine "No slot" rows for an
-  // owner who simply has no capture is noise the scoreboard already explained.
-  if (!slot) return null;
+  // An empty cell, NOT nothing: this side has no slot in a row the other side does fill, and
+  // the mirror only reads if the two stay aligned.
+  if (!slot) return <div aria-hidden="true" />;
 
+  const right = align === 'right';
   const pts = pointsCell(slot);
   const summary = statSummary(slot);
   const line = gameLine(slot, ctx, index);
 
   return (
-    <div className={cn('mt-1.5 flex items-start gap-2.5 rounded-r py-1.5 pl-2.5', SIDE_ROW[side])}>
-      <TeamLogo
-        src={ctx?.logoEspn ?? null}
-        alt={slot.teamKey ? `${slot.teamKey} logo` : ''}
-        size={20}
-        className="mt-0.5"
-      />
-      <div className="min-w-0 flex-1">
-        {/* The owner's name leads the row. Colour and the border say it faster; this says it
-            unambiguously, which matters most when both sides started the same player. */}
-        <div className={cn('text-[11px] font-semibold uppercase tracking-wide', SIDE_NAME[side])}>
-          {ownerName}
-        </div>
-        <div className="text-sm font-medium">
-          <PlayerName slot={slot} />
-        </div>
-        {summary ? <div className="text-xs text-muted">{summary}</div> : null}
-        <div className="text-[11px] text-muted/80">
-          {line ||
-            (slot.status === 'concealed'
-              ? 'Hidden by DraftKings when the lineup was synced'
-              : '')}
-        </div>
+    <div className={cn('flex items-start gap-1.5', right && 'flex-row-reverse')}>
+      {/*
+        `min-h` so every row is the same height whatever it contains. A concealed pick has no
+        name, no team and therefore no game line or stat line — one line of text against its
+        neighbour's three — and without a floor here that row visibly collapsed, which read as
+        a rendering fault rather than as "DraftKings is hiding this one".
+      */}
+      {/*
+        `min-h` matches a full three-line cell (13px name + two 11px lines ≈ 2.9rem) so every
+        row is the same height whatever it contains. A concealed pick has no name, no team and
+        therefore no game line or stat line; without a floor here that row visibly collapsed
+        against its neighbour's three lines, which read as a rendering fault rather than as
+        "DraftKings is hiding this one".
+      */}
+      <div className={cn('min-h-[2.9rem] min-w-0 flex-1', right && 'text-right')}>
+        {slot.name ? (
+          /*
+            The logo rides the NAME LINE rather than taking a column of its own.
+            A column costs its width on all three lines and was what made the mirror
+            impossible at this size; inline it costs ~17px on one line, and the game state
+            and stat line below still get the cell's full width. It sits at the OUTER edge on
+            both sides, so the logos form two clean columns down the screen edges and the
+            mirror stays a mirror.
+          */
+          <div className={cn('flex items-center gap-1', right && 'flex-row-reverse')}>
+            <TeamLogo
+              src={ctx?.logoEspn ?? null}
+              alt={slot.teamKey ? `${slot.teamKey} logo` : ''}
+              size={14}
+              className="shrink-0"
+            />
+            <span className="truncate text-[13px] font-semibold leading-tight">
+              {shortName(slot.name, slot.slot)}
+            </span>
+          </div>
+        ) : (
+          /*
+            SPLIT ACROSS THE TWO LINES a named player uses, not truncated into one.
+            "Hidden until kickoff" needs ~135px at 13px semibold and the cell offers ~115px on
+            a 390px phone, so `truncate` clipped it to "Hidden until kicko…". Breaking it where
+            it makes sense gives the concealed slot the same shape as every other row and
+            nothing is lost. `PlayerName` still carries the full phrase on desktop, which has
+            the width for it.
+          */
+          <>
+            <div className="truncate text-[13px] font-semibold italic leading-tight text-muted">
+              Hidden
+            </div>
+            <div className="truncate text-[11px] leading-snug text-muted">until kickoff</div>
+          </>
+        )}
+        {/* Game state above the stat line, matching how every fantasy app orders these: it
+            is the thing that tells you whether the number beside it can still move. */}
+        {line ? <div className="truncate text-[11px] leading-snug text-muted">{line}</div> : null}
+        {/* WRAPS. The stat line is the reason for the cell's width; clipping it to one line
+            would spend the space and then throw the content away. */}
+        {summary ? <div className="text-[11px] leading-snug text-muted/80">{summary}</div> : null}
       </div>
       <div
         className={cn(
-          'shrink-0 pr-1 tabular-nums',
-          pts.muted ? 'text-muted' : 'font-semibold',
+          'w-10 shrink-0 pt-0.5 text-[15px] tabular-nums leading-tight',
+          right ? 'text-left' : 'text-right',
+          pts.muted ? 'text-muted' : 'font-bold',
           pts.tone,
         )}
       >
@@ -499,6 +561,8 @@ export function MatchupDetail({
           homeMinutes.minutesLeft + awayMinutes.minutesLeft,
         )
       : null;
+  // Same text the desktop OddsLine prints, rendered on its own line on a phone.
+  const mobileOdds = oddsText(odds, home, away);
 
   // Kept short and allowed to wrap. The long form ("…so their total is unknown rather than
   // zero") ran to three uppercase lines on a phone and burst out of the card, while saying
@@ -515,15 +579,33 @@ export function MatchupDetail({
     <div className="flex flex-col gap-4">
       <Card>
         <CardBody className="flex flex-col gap-4 p-4 sm:p-5">
-          {/* Mobile: stacked, so neither name nor score has to compete for width. */}
-          <div className="flex flex-col gap-3 sm:hidden">
-            <MobileTeamRow team={home} side="home" minutes={homeMinutes} projection={homeProj} />
-            <div className="flex items-center gap-3">
-              <span className="h-px flex-1 bg-border" aria-hidden="true" />
-              <OddsLine odds={odds} home={home} away={away} />
-              <span className="h-px flex-1 bg-border" aria-hidden="true" />
+          {/* Mobile: the same mirror as the rosters below, so the page reads one way. */}
+          <div className="flex flex-col gap-2.5 sm:hidden">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2">
+              <MobileScoreSide
+                team={home}
+                align="left"
+                minutes={homeMinutes}
+                projection={homeProj}
+              />
+              {/* Just "vs" here. The win-probability text is a name plus a percentage, and in
+                  the centre column it would push both scores outward into their logos. */}
+              <span className="pt-2 text-[11px] font-medium uppercase tracking-wide text-muted">
+                vs
+              </span>
+              <MobileScoreSide
+                team={away}
+                align="right"
+                minutes={awayMinutes}
+                projection={awayProj}
+              />
             </div>
-            <MobileTeamRow team={away} side="away" minutes={awayMinutes} projection={awayProj} />
+
+            {mobileOdds ? (
+              <div className="border-t border-border/60 pt-2 text-center text-[11px] text-muted">
+                {mobileOdds}
+              </div>
+            ) : null}
           </div>
 
           {/* sm and up: the mirrored scoreboard. */}
@@ -547,13 +629,18 @@ export function MatchupDetail({
             <p className="p-5 text-sm text-muted">No captured rosters for this matchup yet.</p>
           ) : (
             <>
-              {/* Stacking removes the left/right cue, so the two-tone key earns its one line. */}
-              <div className="flex items-center gap-4 border-b border-border/60 px-3 py-2 text-xs text-muted sm:hidden">
+              {/*
+                The mirror's one instruction: who is on the left, who is on the right. The
+                rows below carry no owner label at all — position is the cue — so this line
+                is doing that job for all nine of them and is pinned to the same outer edges
+                the names below sit on.
+              */}
+              <div className="flex items-center justify-between gap-3 border-b border-border/60 px-2 py-2 text-xs font-medium sm:hidden">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <SideMarker side="home" />
                   <span className="truncate">{home.ownerName}</span>
                 </span>
-                <span className="flex min-w-0 items-center gap-1.5">
+                <span className="flex min-w-0 flex-row-reverse items-center gap-1.5">
                   <SideMarker side="away" />
                   <span className="truncate">{away.ownerName}</span>
                 </span>
@@ -561,40 +648,51 @@ export function MatchupDetail({
 
               <div className="divide-y divide-border/60">
                 {rows.map(([h, a], i) => (
-                  <div
-                    key={`${h?.slot ?? ''}-${a?.slot ?? ''}-${i}`}
-                    className={cn(isDifferenceMaker(i) && 'bg-accent/5')}
-                  >
-                    {/* Mobile: slot heading, then both players full width beneath it. */}
-                    <div className="px-3 py-2 sm:hidden">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                          {h?.slot ?? a?.slot ?? ''}
-                        </span>
-                        {isDifferenceMaker(i) ? (
-                          <span className="text-[10px] font-semibold uppercase text-accent">
-                            +{formatPoints(biggestGap)} swing
-                          </span>
-                        ) : null}
-                      </div>
-                      <MobilePlayerRow
+                  <div key={`${h?.slot ?? ''}-${a?.slot ?? ''}-${i}`}>
+                    {/* Mobile: mirrored around the same slot rail the desktop uses. */}
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1.5 px-2 py-2 sm:hidden">
+                      <MobilePlayerCell
                         slot={h}
-                        side="home"
-                        ownerName={home.ownerName}
+                        align="left"
                         ctx={h?.teamKey ? teamContext[h.teamKey] : undefined}
                         index={index}
                       />
-                      <MobilePlayerRow
+                      {/*
+                        The rail. Narrow on purpose — every pixel here comes off the names.
+
+                        The slot, and ONLY the slot. THE DIFFERENCE-MAKER IS NOT SHOWN ON A
+                        PHONE AT ALL — neither the margin nor the row tint — and that is the
+                        whole feature, deliberately dropped here rather than half-kept.
+
+                        It was tried both ways. The bare "+19.00" under "TE", on one row out
+                        of nine with no label or unit, read as a stat belonging to that
+                        position, and "+19.00 swing" does not fit 36px. Removing just the
+                        number left a faintly tinted row with nothing to explain it, which
+                        drew the same question one step quieter. A cue that has to be asked
+                        about is not a cue. Desktop has room for the label, so it keeps both.
+                      */}
+                      <div className="w-9 pt-0.5 text-center">
+                        <div className="text-[10px] font-semibold uppercase leading-tight tracking-wide text-muted">
+                          {h?.slot ?? a?.slot ?? ''}
+                        </div>
+                      </div>
+                      <MobilePlayerCell
                         slot={a}
-                        side="away"
-                        ownerName={away.ownerName}
+                        align="right"
                         ctx={a?.teamKey ? teamContext[a.teamKey] : undefined}
                         index={index}
                       />
                     </div>
 
-                    {/* sm and up: mirrored around the slot rail. */}
-                    <div className="hidden grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 sm:grid">
+                    {/* sm and up: mirrored around the slot rail. The difference-maker tint
+                        lives HERE rather than on the shared row, so it applies to the desktop
+                        layout only — see the rail comment above for why mobile drops it. */}
+                    <div
+                      className={cn(
+                        'hidden grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 sm:grid',
+                        isDifferenceMaker(i) && 'bg-accent/5',
+                      )}
+                    >
                       <PlayerCell
                         slot={h}
                         ctx={h?.teamKey ? teamContext[h.teamKey] : undefined}
