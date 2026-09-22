@@ -23,6 +23,13 @@
  * 1pm we genuinely do not know who they are, and at 5pm we do not know what they have scored.
  * `assessCaptureStaleness` (src/lib/live/staleness.ts) is what turns that into the actionable
  * "re-sync" banner.
+ *
+ * The same class of mistake existed one level up: `scored + noStats` was reported as a single
+ * "playing" count with no regard for whether those games were still live. Once a Sunday slate
+ * finishes, a fully-final roster kept reading "9 playing" — a word that means "in progress" —
+ * hours after the last whistle. `LiveTeam.played` (assemble.ts) splits that bucket by the
+ * game's own clock state, and the two clauses below only appear together when the roster is
+ * genuinely mid-transition; a fully live or fully final roster still gets one clause.
  */
 import type { LiveTeam } from '@/lib/live/assemble';
 
@@ -33,7 +40,17 @@ import type { LiveTeam } from '@/lib/live/assemble';
  * (the detail page leads with minutes remaining) without re-deriving the counts.
  */
 export function rosterSummaryParts(team: LiveTeam): string[] {
-  const parts = [`${team.scored + team.noStats} playing`];
+  const counted = team.scored + team.noStats;
+  const playing = counted - team.played;
+  // Only split into two clauses when the roster is genuinely mid-transition — a fully live
+  // roster still just says "9 playing", a fully final one "9 played", matching today's
+  // behavior at either extreme. See the header note for why the split exists at all.
+  const parts =
+    team.played > 0 && playing > 0
+      ? [`${team.played} played`, `${playing} playing`]
+      : team.played > 0
+        ? [`${team.played} played`]
+        : [`${playing} playing`];
   // Distinct clauses on purpose — see the header. A roster can legitimately have both.
   if (team.pending > 0) parts.push(`${team.pending} to play`);
   if (team.concealed > 0) parts.push(`${team.concealed} unknown`);

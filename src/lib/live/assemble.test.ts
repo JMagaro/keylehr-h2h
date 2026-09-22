@@ -115,6 +115,33 @@ describe('assembleLive — scoring', () => {
     expect(view.matchups[0].home.slots[0].points).toBe(9);
   });
 
+  it('counts a scored slot toward played once its game is final', () => {
+    const view = assembleLive(
+      [MATCHUP],
+      [snap(10, [slot()])],
+      makeIndex({
+        players: {
+          [playerStatKey('Puka Nacua', 'LAR')]: {
+            name: 'Puka Nacua',
+            teamKey: 'LAR',
+            line: { ...EMPTY_PLAYER_LINE, receptions: 8, recYards: 100, recTd: 1 },
+          },
+        },
+        teamState: { LAR: { state: 'post', detail: 'Final', period: 4, displayClock: null } },
+      }),
+    );
+    const s = view.matchups[0].home.slots[0];
+    expect(s.status).toBe('scored');
+    expect(s.gameState).toBe('post');
+    expect(view.matchups[0].home.played).toBe(1);
+  });
+
+  it('does not count a still-live scored slot toward played', () => {
+    const view = assembleLive([MATCHUP], [snap(10, [slot()])], nacuaIndex());
+    expect(view.matchups[0].home.slots[0].gameState).toBe('in');
+    expect(view.matchups[0].home.played).toBe(0);
+  });
+
   it('treats a genuine zero as scored, not as missing', () => {
     // The distinction this protects: a player who played and did nothing IS 0.00, and must
     // not be lumped in with players we simply could not find.

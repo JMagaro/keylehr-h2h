@@ -15,6 +15,7 @@ const slot = (over: Partial<LiveSlot> = {}): LiveSlot => ({
   dkScore: null,
   dkStats: null,
   dkProjection: null,
+  gameState: null,
   ...over,
 });
 

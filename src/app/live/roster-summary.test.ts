@@ -27,6 +27,7 @@ function team(over: Partial<LiveTeam> = {}): LiveTeam {
     concealed: 0,
     noStats: 0,
     unresolved: 0,
+    played: 0,
     capturedAt: new Date('2026-09-20T17:08:40Z'),
     hasSnapshot: true,
     ...over,
@@ -69,6 +70,20 @@ describe('rosterSummaryParts', () => {
 
   it('omits every clause that is zero', () => {
     expect(rosterSummaryParts(team({ scored: 9 }))).toEqual(['9 playing']);
+  });
+
+  it('says "played" instead of "playing" once every counted slot is final', () => {
+    expect(rosterSummaryParts(team({ scored: 9, played: 9 }))).toEqual(['9 played']);
+  });
+
+  it('splits played from playing when the roster is mid-transition', () => {
+    expect(rosterSummaryParts(team({ scored: 9, played: 6 }))).toEqual(['6 played', '3 playing']);
+  });
+
+  it('leads with played/playing before pending, unknown or unresolved', () => {
+    expect(
+      rosterSummaryParts(team({ scored: 8, played: 5, pending: 1, concealed: 1, unresolved: 1 })),
+    ).toEqual(['5 played', '3 playing', '1 to play', '1 unknown', '1 unresolved']);
   });
 });
 

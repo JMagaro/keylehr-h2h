@@ -22,6 +22,7 @@ const slot = (over: Partial<LiveSlot> = {}): LiveSlot => ({
   dkScore: null,
   dkStats: null,
   dkProjection: null,
+  gameState: null,
   ...over,
 });
 
@@ -37,6 +38,7 @@ const team = (slots: LiveSlot[], points: number): LiveTeam => ({
   concealed: 0,
   noStats: 0,
   unresolved: 0,
+  played: 0,
   capturedAt: new Date('2026-08-15T20:00:00Z'),
   hasSnapshot: true,
 });

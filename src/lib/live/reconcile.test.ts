@@ -32,6 +32,7 @@ function slot(over: Partial<LiveSlot> = {}): LiveSlot {
       { key: 'INT', value: 1, points: -1 },
     ],
     dkProjection: null,
+    gameState: null,
     ...over,
   };
 }

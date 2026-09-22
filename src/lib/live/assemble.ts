@@ -31,6 +31,7 @@
  * Nothing here is a score. See docs/SCORING.md §15.
  */
 import { scoreDst, scorePlayer, type ScoreComponent } from '@/lib/dfs/score';
+import type { GameState } from '@/lib/dfs/sources/espn-boxscore';
 import type { DkStat, LineupSlotInput } from '@/lib/lineups/normalize';
 
 import { playerStatKey, type LiveStatIndex } from './stats';
@@ -65,6 +66,12 @@ export interface LiveSlot {
   dkStats: DkStat[] | null;
   /** DraftKings' pregame projection — see ./projection for how it becomes a projected final. */
   dkProjection: number | null;
+  /**
+   * The game's own clock state — independent of whether we could score this slot. Lets a
+   * 'scored'/'noStats' slot be told apart as still live vs. already final (see `LiveTeam.played`).
+   * Null when concealed (no team known yet) or the game never loaded.
+   */
+  gameState: GameState | null;
 }
 
 export interface LiveTeam {
@@ -84,6 +91,12 @@ export interface LiveTeam {
   /** Playing, but nothing recorded yet. Counted as 0 — see the header note. */
   noStats: number;
   unresolved: number;
+  /**
+   * Of `scored + noStats`, how many are already FINAL (`gameState === 'post'`) rather than
+   * still live. Exists so the summary line can say "6 played · 3 playing" instead of a single
+   * "9 playing" that keeps reading as in-progress hours after the last kickoff finished.
+   */
+  played: number;
   /** When DraftKings was read. null when this owner has no capture at all. */
   capturedAt: Date | null;
   /** False → render "not captured", never "0.00". */
@@ -140,6 +153,9 @@ function isDstSlot(slot: LineupSlotInput): boolean {
 
 /** Score one captured slot against the stat index. */
 function resolveSlot(slot: LineupSlotInput, index: LiveStatIndex): LiveSlot {
+  // Computed once, up front: a concealed slot has no teamKey anyway, so this is naturally
+  // null for it without special-casing the lookup order.
+  const teamState = slot.teamKey ? index.teamState[slot.teamKey] : undefined;
   const base = {
     slot: slot.slot,
     name: slot.name,
@@ -148,6 +164,7 @@ function resolveSlot(slot: LineupSlotInput, index: LiveStatIndex): LiveSlot {
     dkScore: slot.dkScore,
     dkStats: slot.dkStats,
     dkProjection: slot.dkProjection,
+    gameState: teamState?.state ?? null,
   };
 
   // DraftKings hid this player because their game has not kicked off. We know the roster
@@ -157,7 +174,6 @@ function resolveSlot(slot: LineupSlotInput, index: LiveStatIndex): LiveSlot {
     return { ...base, status: 'concealed', points: null, components: [], gameDetail: null };
   }
 
-  const teamState = slot.teamKey ? index.teamState[slot.teamKey] : undefined;
   const gameDetail = teamState?.detail ?? null;
 
   // Kickoff hasn't happened. Distinct from 'unresolved': there is nothing to find yet.
@@ -228,16 +244,22 @@ function buildTeam(
     concealed: 0,
     noStats: 0,
     unresolved: 0,
+    played: 0,
     capturedAt: null,
     hasSnapshot: false,
   };
   if (!snapshot) return empty;
 
   const slots = snapshot.slots.map((s) => resolveSlot(s, index));
-  const counts = { scored: 0, pending: 0, concealed: 0, noStats: 0, unresolved: 0 };
+  const counts = { scored: 0, pending: 0, concealed: 0, noStats: 0, unresolved: 0, played: 0 };
   let total = 0;
   for (const s of slots) {
     counts[s.status] += 1;
+    // Of the counted (scored/noStats) slots, how many belong to a game that has already
+    // ended — the split the roster summary uses to stop calling a finished slate "playing".
+    if ((s.status === 'scored' || s.status === 'noStats') && s.gameState === 'post') {
+      counts.played += 1;
+    }
     // 'noStats' contributes its 0 explicitly: it is a known value, not a missing one.
     if (s.points !== null) total += s.points;
   }
