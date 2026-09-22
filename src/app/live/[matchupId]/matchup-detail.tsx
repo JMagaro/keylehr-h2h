@@ -265,25 +265,24 @@ function WinProbabilityBar({
   // matching this page's rule that a number we do not have is never rendered as one.
   if (!odds) return null;
 
-  if (odds.settled) {
-    const leader = odds.home >= 0.5 ? home : away;
-    return (
-      <div className="border-t border-border/60 pt-2.5 text-center text-xs text-muted">
-        {leader.ownerName} won
-      </div>
-    );
-  }
-
-  const homePct = winProbabilityPercent(odds.home);
+  // Settled means this is no longer an estimate, so the TRUE 100/0 — never the 1–99 clamp
+  // `winProbabilityPercent` applies for the live case specifically to avoid overstating
+  // certainty while a game can still move. Same bar shape either way: the visual weight
+  // shouldn't drop just because the number stopped being a guess.
+  const homePct = odds.settled ? Math.round(odds.home * 100) : winProbabilityPercent(odds.home);
   const awayPct = 100 - homePct;
 
   return (
     <div className="flex flex-col items-center gap-1.5 border-t border-border/60 pt-2.5">
       <span
         className="rounded-full bg-accent/12 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent"
-        title="An estimate from projected score and time remaining — not a measurement."
+        title={
+          odds.settled
+            ? undefined
+            : 'An estimate from projected score and time remaining — not a measurement.'
+        }
       >
-        Win Prob
+        {odds.settled ? 'Final' : 'Win Prob'}
       </span>
       <div className="flex w-full items-center gap-2">
         <TeamLogo src={home.logoEspn} alt={home.teamKey ? `${home.teamKey} logo` : ''} size={20} />
