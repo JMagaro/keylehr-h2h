@@ -4,9 +4,15 @@ A running "where things stand" doc so a fresh Claude/context window (or contribu
 without re-deriving everything. Update the **Snapshot**, **Recent work** and **Known open items**
 sections as you go; **[Start here](#start-here-fresh-session)** is the entry point.
 
-_Last updated: 2026-09-21 (**everything through `f8e7126`, plus the docs commit on top of it,
-is COMMITTED AND PUSHED**. Newest: `4a5f73e` and `f8e7126`, fixing **two rules about when a week is over** — found by the
-owner asking why `/standings` showed 2 games played on a Monday with that week's MNF unplayed.
+_Last updated: 2026-09-21 (**everything through `8b60110`, plus the docs commit on top of it,
+is COMMITTED**. Newest: `8b60110`, **`/live`'s detail page now mirrors the two rosters on a
+phone** instead of stacking them — built against an ESPN screenshot the owner supplied, with
+the layout reviewed on the actual phone as it went. Presentation only; no scoring path touched.
+That session also surfaced a live bug that is NOT fixed: **the win probability is biased
+whenever a pick is concealed** — see [Known open items](#known-open-items-honest-list), first
+entry. Before that, `4a5f73e` and `f8e7126`, fixing **two rules about when a week is over** —
+found by the owner asking why `/standings` showed 2 games played on a Monday with that week's
+MNF unplayed.
 `4a5f73e`: a stale `STATUS_SCHEDULED` no longer vetoes the kickoff fallback, which had frozen
 `weekIsFinal` at false for **the entire 2026 season** and silently disabled missed-lineup
 derivation. `f8e7126`: a regular-season week now counts toward W/L only once it is **settled**,
@@ -455,6 +461,31 @@ Sleeper PPR as a free proxy).
   `src/lib/utils.ts`. `src/lib/standings/` stays pure (no DB imports).
 
 ## Recent work (newest first)
+
+- **`/live` mirrors the rosters on a phone** (`8b60110`, 2026-09-21). The detail page stacked
+  the two lineups below `sm`; it now mirrors them around the same slot rail desktop uses, built
+  against an ESPN screenshot and reviewed on the owner's phone as it went.
+  - **The header said this "CANNOT work"** on a phone, with a width calculation — three columns
+    at 390px leave each player ~70px. That was true of the **desktop cell**, and the mistake was
+    assuming the same cell. Both of its figures are **columns**, and a column is charged against
+    every line: the points column moved **inboard** against the rail and narrowed to 40px, and
+    the team logo now rides the **name line** (~17px of one line instead of its width on three).
+    That leaves ~115px of text, ~98px for a name. Measured: `D. Henry` ~54px, `P. Mahomes` ~68px,
+    `T. Lawrence` ~74px; only long hyphenated names truncate, as on ESPN.
+  - **The mirror paid for itself.** Stacking had to label every row with its owner — two owners
+    routinely start the same player (week 2: `C. Hubbard` on both sides of one matchup, rendering
+    as two identical rows). Position answers that for free, so the label is gone and the pixels
+    went to the stat line.
+  - Nav below `sm` is the whole week as a **scrollable strip of chips** (both logos, both live
+    scores, current one scrolled into view), replacing arrows + dropdown — stepping through 16
+    siblings cost up to eight taps and a page load each.
+  - **Declined on purpose, both asked about:** a projection column (DK strips `pregameProjection`
+    once a game ends, so only ~31% of slots carry one — 355 of 1,152 in week 1 — and a column
+    blank two rows in three is worse than none) and ESPN's win-probability bar.
+  - **The difference-maker is gone from mobile entirely**, number and tint. A bare `+19.00` under
+    `TE` reads as a stat belonging to that position; removing only the number left a tinted row
+    with nothing to explain it, which drew the same question one step quieter. Desktop has room
+    for the label and keeps both.
 
 - **Two rules about when a week is over — one of which had been broken all season**
   (`4a5f73e`, `f8e7126`, + this docs commit, **pushed**, 2026-09-21). Started as a question about the
@@ -1133,6 +1164,29 @@ Nothing here blocks a deploy. Each is a real, specific gap — not a vague "coul
   `hydrateStoredSlot` / `hydrateStoredSlots` (`src/lib/lineups/normalize.ts`), with `== null`
   guards in `projection.ts` as belt and braces, and three regression tests. **Generalise it: any
   field added to that jsonb later is `undefined` on older rows — hydrate, never cast.**
+- **⚠️ Win probability is BIASED, not merely uncertain, whenever a slot is concealed.** Found
+  2026-09-21 by the owner asking the right question: *"isn't the probability incorrect if you
+  can't see the player?"* A concealed slot is treated asymmetrically by the two inputs —
+  `lineupMinutes` credits it a full **60 minutes** (`minutes.ts`, and correctly: DK conceals
+  until kickoff), while `projectLineup` contributes **0 points** for it (no `dkProjection`,
+  `points` null). `margin = homeProjected − awayProjected` is the **centre** of the
+  distribution, so every concealed pick drags its own side's projection down by a player's
+  worth (~8–20 pts). Widening the spread does not fix a displaced centre.
+  - Worked on the real matchup 8161: rendered **65%**, and the honest range is **38%–86%**
+    depending on what the two unseen players do. Symmetric concealment (one each) largely
+    cancels in the margin; **asymmetry is the defect** — two concealed against none understates
+    by ~25 pts against an sd of ~19, enough to invert who is favoured.
+  - Second failure mode: `concealed ⇒ 60 minutes left` is true at *capture* time. On a stale
+    capture whose players' games have since finished, it credits a full game still to play.
+  - **The inconsistency to fix:** the running total, the projection and the roster line all mark
+    this honestly (`+`, `N unknown`, the re-sync banner). The probability derived from those
+    marked floors prints a clean unqualified "65% Greg Lehr" — the one number on the page
+    hiding its own uncertainty.
+  - **Fix direction: suppress or qualify the probability when either side has concealed slots**,
+    consistent with the page's rule that a number we do not have is never rendered as one.
+    Imputing a projection for a concealed pick would violate it outright — it invents a number
+    for a player we cannot identify, and would have made the week-2 22.40 gap look closed.
+  - Pre-existing and equally wrong on desktop; **not** introduced by the mobile layout work.
 - **Win probability is calibrated by assumption.** `LINEUP_SD_FULL_SLATE = 40` in
   `src/lib/live/projection.ts` is a rough industry figure for a Classic lineup's spread, never
   fitted to this league. The *projection* it feeds is DraftKings' own formula and is exact; the
