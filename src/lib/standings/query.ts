@@ -37,6 +37,7 @@ import { getSeasonRules, type SeasonRules } from '@/lib/rules/schema';
 import {
   buildTiebreakerContext,
   computeConferenceSeeds,
+  computeConferenceSeedsFull,
   computeDivisionStandings,
   computeStandings,
   rankStandings,
@@ -48,6 +49,7 @@ import {
   type RankingOptions,
   type SeededOwner,
   type StandingRow,
+  type TiebreakerReason,
 } from '@/lib/standings';
 
 /** Map a season's `playoffs` rules to the engine's {@link PlayoffConfig}. */
@@ -700,9 +702,21 @@ export interface PlayoffSeedRow {
   losses: number;
   ties: number;
   pointsFor: number;
+  /** Win percentage — the EXACT key tied owners are grouped by (not wins/losses, which can
+   *  differ at equal win% when bye weeks stagger game counts). Used to group tied owners for
+   *  the "why is this team ranked here" explanation on the playoffs page. */
+  winPct: number;
+  /** Which rule decided this owner's place among others tied with them on win% — see
+   *  {@link TiebreakerReason}. `'none'` when they weren't tied with anyone. */
+  tieReason: TiebreakerReason;
 }
 
-/** The playoff picture (7 seeds per conference, in order) for the season. */
+/**
+ * The playoff picture for the season: every conference owner in order, seeds
+ * 1..`teamsPerConference` first (`kind` is `division_winner`/`wild_card`), then everyone
+ * else continuing the same numbering with `kind: 'out_of_field'` — still mathematically
+ * alive this early in the season, just not in the field today.
+ */
 export interface PlayoffPictureView {
   hasData: boolean;
   byConference: Record<Conference, PlayoffSeedRow[]>;
@@ -710,8 +724,9 @@ export interface PlayoffPictureView {
 
 /**
  * The "as if the season ended today" playoff picture for the public
- * `/playoffs` page: the 7 seeds per conference in seed order, enriched with
- * each owner's identity and record.
+ * `/playoffs` page: every owner in a conference, seed order, enriched with
+ * each owner's identity and record. The page itself splits the field (seeds
+ * 1..N) from everyone else — see `kind`.
  */
 export async function getPlayoffPicture(seasonId: number): Promise<PlayoffPictureView> {
   const { entries, results, brandingById, playoffConfig, rankingOptions } =
@@ -726,7 +741,7 @@ export async function getPlayoffPicture(seasonId: number): Promise<PlayoffPictur
     return { hasData: false, byConference: { AFC: [], NFC: [] } };
   }
   const entryById = new Map(entries.map((e) => [e.ownerSeasonId, e]));
-  const seeds = computeConferenceSeeds(entries, results, playoffConfig, rankingOptions);
+  const seeds = computeConferenceSeedsFull(entries, results, playoffConfig, rankingOptions);
   const byConference = { AFC: [], NFC: [] } as Record<Conference, PlayoffSeedRow[]>;
   for (const conf of CONFERENCES) {
     byConference[conf] = seeds[conf].map((s) => {
@@ -747,6 +762,8 @@ export async function getPlayoffPicture(seasonId: number): Promise<PlayoffPictur
         losses: s.losses,
         ties: s.ties,
         pointsFor: s.pointsFor,
+        winPct: s.winPct,
+        tieReason: s.tieReason,
       };
     });
   }

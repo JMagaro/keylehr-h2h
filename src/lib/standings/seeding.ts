@@ -14,7 +14,12 @@
  * Pure: no DB, no I/O.
  */
 import { computeStandings } from './standings';
-import { buildTiebreakerContext, rankStandings, type TiebreakerContext } from './tiebreakers';
+import {
+  buildTiebreakerContext,
+  rankStandings,
+  rankStandingsWithReasons,
+  type TiebreakerContext,
+} from './tiebreakers';
 import {
   DEFAULT_PLAYOFF_CONFIG,
   DEFAULT_TIEBREAKERS,
@@ -28,6 +33,7 @@ import {
   type SeededOwner,
   type StandingRow,
   type TiebreakerKey,
+  type TiebreakerReason,
 } from './types';
 
 const CONFERENCES: Conference[] = ['AFC', 'NFC'];
@@ -118,6 +124,27 @@ export function computeConferenceSeeds(
   config: PlayoffConfig = DEFAULT_PLAYOFF_CONFIG,
   opts: RankingOptions = {},
 ): Record<Conference, SeededOwner[]> {
+  const full = computeConferenceSeedsFull(entries, results, config, opts);
+  const out = {} as Record<Conference, SeededOwner[]>;
+  for (const conf of CONFERENCES) {
+    out[conf] = full[conf].slice(0, config.teamsPerConference);
+  }
+  return out;
+}
+
+/**
+ * Like {@link computeConferenceSeeds}, but returns EVERY owner in the conference, continuing
+ * the same order and numbering past the playoff cutoff — seeds 1..`teamsPerConference` carry
+ * `kind: 'division_winner' | 'wild_card'`, everyone after is `kind: 'out_of_field'`. Powers
+ * the playoffs page's "also in the picture" list; `computeConferenceSeeds` stays the
+ * field-only view every other caller expects.
+ */
+export function computeConferenceSeedsFull(
+  entries: OwnerEntry[],
+  results: MatchupResult[],
+  config: PlayoffConfig = DEFAULT_PLAYOFF_CONFIG,
+  opts: RankingOptions = {},
+): Record<Conference, SeededOwner[]> {
   const c = compute(entries, results, opts);
   const out = {} as Record<Conference, SeededOwner[]>;
   for (const conf of CONFERENCES) {
@@ -144,13 +171,17 @@ function seedConference(
   // 2. Order the division leaders, then take the configured number as the
   //    division-winner seeds. Any extra leaders (config < 4 winners) drop back
   //    into the wild-card pool and compete on record like everyone else.
-  const orderedLeaders = rankStandings(leaderRows, c.ctx, c.order);
+  const { rows: orderedLeaders, reasons: leaderReasons } = rankStandingsWithReasons(
+    leaderRows,
+    c.ctx,
+    c.order,
+  );
   const divisionWinners = orderedLeaders.slice(0, config.divisionWinnersPerConference);
   const winnerIds = new Set(divisionWinners.map((r) => r.ownerSeasonId));
 
-  // 3. Wild cards: the best remaining non-winners in the conference fill the
-  //    rest of the field up to the configured wild-card count (and never beyond
-  //    the total field size).
+  // 3. Everyone else in the conference, ordered the same way — wild cards fill the rest of
+  //    the field up to the configured count, and whoever is left keeps going as
+  //    `out_of_field`, still in the real tiebreaker order.
   const totalSeeds = config.teamsPerConference;
   const wildCardSlots = Math.min(
     config.wildCardsPerConference,
@@ -159,14 +190,30 @@ function seedConference(
   const nonWinnerRows = entries
     .filter((e) => e.conference === conference && !winnerIds.has(e.ownerSeasonId))
     .map((e) => c.rowById.get(e.ownerSeasonId)!);
-  const orderedWildCards = rankStandings(nonWinnerRows, c.ctx, c.order).slice(0, wildCardSlots);
+  const { rows: orderedNonWinners, reasons: nonWinnerReasons } = rankStandingsWithReasons(
+    nonWinnerRows,
+    c.ctx,
+    c.order,
+  );
 
   const seeds: SeededOwner[] = [];
   divisionWinners.forEach((row, idx) => {
-    seeds.push(makeSeed(row, idx + 1, 'division_winner', config, c));
+    seeds.push(
+      makeSeed(row, idx + 1, 'division_winner', config, c, leaderReasons.get(row.ownerSeasonId)),
+    );
   });
-  orderedWildCards.forEach((row, idx) => {
-    seeds.push(makeSeed(row, divisionWinners.length + idx + 1, 'wild_card', config, c));
+  orderedNonWinners.forEach((row, idx) => {
+    const kind = idx < wildCardSlots ? 'wild_card' : 'out_of_field';
+    seeds.push(
+      makeSeed(
+        row,
+        divisionWinners.length + idx + 1,
+        kind,
+        config,
+        c,
+        nonWinnerReasons.get(row.ownerSeasonId),
+      ),
+    );
   });
   return seeds;
 }
@@ -177,6 +224,7 @@ function makeSeed(
   kind: SeededOwner['kind'],
   config: PlayoffConfig,
   c: ComputedContext,
+  tieReason: TiebreakerReason | undefined,
 ): SeededOwner {
   const entry = c.entryById.get(row.ownerSeasonId)!;
   return {
@@ -187,5 +235,6 @@ function makeSeed(
     division: entry.division,
     // A top-N seed gets a first-round bye (N = config.topSeedByes).
     isBye: seed <= config.topSeedByes,
+    tieReason: tieReason ?? 'none',
   };
 }

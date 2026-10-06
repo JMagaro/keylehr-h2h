@@ -11,7 +11,7 @@
  * total is forced via explicit `winnerOwnerSeasonId`, so assertions are precise.
  */
 import { describe, it, expect } from 'vitest';
-import { computeConferenceSeeds, computeDivisionStandings } from './seeding';
+import { computeConferenceSeeds, computeConferenceSeedsFull, computeDivisionStandings } from './seeding';
 import type { Conference, Division, MatchupResult, OwnerEntry, PlayoffConfig } from './types';
 
 const DIVS: Division[] = ['East', 'North', 'South', 'West'];
@@ -202,6 +202,49 @@ describe('computeConferenceSeeds — division winners & wild cards', () => {
     // Exactly one bye per conference, on seed 1.
     expect(seeds.AFC.filter((x) => x.isBye).map((x) => x.seed)).toEqual([1]);
     expect(seeds.NFC.filter((x) => x.isBye).map((x) => x.seed)).toEqual([1]);
+  });
+});
+
+describe('computeConferenceSeedsFull — everyone past the playoff cutline', () => {
+  it('continues the same order and numbering as out_of_field, doormats last', () => {
+    // Identical fixture to "seeds 4 division winners 1-4 and 3 wild cards 5-7" above, so
+    // seeds 1-7 are already proven correct there; this test is about what comes after.
+    const entries = buildEntries();
+    const s = new Schedule();
+    s.beatsDoormat(1, 200, 12);
+    s.beatsDoormat(5, 201, 11);
+    s.beatsDoormat(9, 202, 10);
+    s.beatsDoormat(13, 203, 9);
+    s.beatsDoormat(2, 200, 10).losesTo(2, 1, 2);
+    s.beatsDoormat(6, 201, 9).losesTo(6, 1, 2);
+    s.beatsDoormat(3, 200, 8).losesTo(3, 1, 2);
+    // Also-rans, strictly descending so their relative order is unambiguous.
+    s.beatsDoormat(10, 202, 4).losesTo(10, 1, 8); // 4-8
+    s.beatsDoormat(14, 203, 3).losesTo(14, 1, 9); // 3-9
+
+    const afc = computeConferenceSeedsFull(entries, s.build()).AFC;
+
+    // Every real contender plus all 4 doormats — nobody is dropped.
+    expect(afc).toHaveLength(20);
+    // The first 7 are unchanged from the sliced view.
+    expect(afc.slice(0, 7).map((x) => x.ownerSeasonId)).toEqual(
+      computeConferenceSeeds(entries, s.build()).AFC.map((x) => x.ownerSeasonId),
+    );
+    // Seed numbering continues past the cutoff rather than restarting.
+    expect(afc.map((x) => x.seed)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
+
+    const tenth = afc.find((x) => x.ownerSeasonId === 10)!;
+    const fourteenth = afc.find((x) => x.ownerSeasonId === 14)!;
+    expect(tenth.kind).toBe('out_of_field');
+    expect(tenth.isBye).toBe(false);
+    expect(fourteenth.kind).toBe('out_of_field');
+    // 10 (4-8) outranks 14 (3-9).
+    expect(tenth.seed).toBeLessThan(fourteenth.seed);
+    // Every out_of_field entry is tagged correctly and carries no bye.
+    for (const x of afc.slice(7)) {
+      expect(x.kind).toBe('out_of_field');
+      expect(x.isBye).toBe(false);
+    }
   });
 });
 

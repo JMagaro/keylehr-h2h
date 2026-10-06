@@ -136,6 +136,12 @@ export type TiebreakerKey = 'h2h' | 'pf' | 'pa';
 export const DEFAULT_TIEBREAKERS: readonly TiebreakerKey[] = ['h2h', 'pf', 'pa'];
 
 /**
+ * Which rule actually decided an owner's placement within a tied cohort (same win%).
+ * `'none'` when the owner was not tied with anyone, so no rule was consulted.
+ */
+export type TiebreakerReason = 'h2h' | 'pf' | 'pa' | 'none';
+
+/**
  * Rule-derived knobs that tune ranking + Points-For accumulation. Supplied by the
  * DB layer from the season's configured rules; omitting it (or any field) keeps
  * the league-default behavior so the pure engine and its tests stay unchanged.
@@ -190,12 +196,20 @@ export const DEFAULT_PLAYOFF_CONFIG: PlayoffConfig = {
   topSeedByes: 1,
 };
 
-/** Why an owner earned their playoff seed. */
-export type SeedKind = 'division_winner' | 'wild_card';
+/**
+ * Why an owner earned their playoff seed — or, for `'out_of_field'`, why they're ranked
+ * where they are without having earned a seed at all (see {@link SeededOwner.seed}).
+ */
+export type SeedKind = 'division_winner' | 'wild_card' | 'out_of_field';
 
-/** An owner placed into a conference's playoff seeding (seeds 1..7). */
+/**
+ * An owner ranked within a conference's playoff order. Seeds 1..`teamsPerConference` made
+ * the field (`kind` is `division_winner`/`wild_card`); everyone after that is `out_of_field`
+ * but still ordered by the same tiebreaker chain, continuing the same numbering (8, 9, 10…) —
+ * "what it would take to pass the team ahead of them."
+ */
 export interface SeededOwner extends StandingRow {
-  /** Conference playoff seed, 1 (best) .. 7. */
+  /** Conference rank, 1 (best) upward. Only 1..`teamsPerConference` is an actual playoff seed. */
   seed: number;
   ownerSeasonId: number;
   kind: SeedKind;
@@ -203,6 +217,12 @@ export interface SeededOwner extends StandingRow {
   division: Division;
   /** True only for the #1 seed, which receives a first-round bye. */
   isBye: boolean;
+  /**
+   * Which rule decided this owner's place relative to the others they were tied with on
+   * win% (within their division for `division_winner`, within the non-winner pool for
+   * `wild_card`/`out_of_field`). `'none'` when they weren't tied with anyone there.
+   */
+  tieReason: TiebreakerReason;
 }
 
 /**

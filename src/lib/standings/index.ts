@@ -20,6 +20,7 @@ export type {
   PlayoffGameResult,
   AdvancingOwner,
   TiebreakerKey,
+  TiebreakerReason,
   RankingOptions,
 } from './types';
 
@@ -34,6 +35,10 @@ export {
   type TiebreakerContext,
 } from './tiebreakers';
 
-export { computeDivisionStandings, computeConferenceSeeds } from './seeding';
+export {
+  computeDivisionStandings,
+  computeConferenceSeeds,
+  computeConferenceSeedsFull,
+} from './seeding';
 
 export { seedInitialBracket, advanceBracket } from './playoffs';

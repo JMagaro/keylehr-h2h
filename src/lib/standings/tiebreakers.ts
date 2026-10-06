@@ -26,7 +26,13 @@
  *
  * Pure: no DB, no I/O.
  */
-import { DEFAULT_TIEBREAKERS, type MatchupResult, type StandingRow, type TiebreakerKey } from './types';
+import {
+  DEFAULT_TIEBREAKERS,
+  type MatchupResult,
+  type StandingRow,
+  type TiebreakerKey,
+  type TiebreakerReason,
+} from './types';
 
 /**
  * Context needed to compare standings rows. Built once via
@@ -128,15 +134,36 @@ function bestByPoints(teams: StandingRow[], pointsKeys: readonly TiebreakerKey[]
 }
 
 /**
+ * Which points key actually separated `top` from the rest of its group — the first key
+ * (in configured order) where `top`'s value differs from the best of the others. Falls back
+ * to the first configured key on a true exact tie (never happens with real decimal scores).
+ */
+function pointsReason(
+  top: StandingRow,
+  rest: StandingRow[],
+  pointsKeys: readonly TiebreakerKey[],
+): TiebreakerReason {
+  if (rest.length === 0) return 'none';
+  const runnerUp = bestByPoints(rest, pointsKeys);
+  for (const k of pointsKeys) {
+    if (k === 'pf' && top.pointsFor !== runnerUp.pointsFor) return 'pf';
+    if (k === 'pa' && top.pointsAgainst !== runnerUp.pointsAgainst) return 'pa';
+  }
+  return pointsKeys[0] ?? 'pf';
+}
+
+/**
  * Pick the single top owner from a tied cohort, per the league rule: a head-to-head
  * dominant owner if one exists, otherwise the best by the configured points tiebreakers.
+ * Also reports which rule actually decided it, for the "why is this team ranked here"
+ * explanation on the playoffs page.
  */
 function pickTop(
   teams: StandingRow[],
   ctx: TiebreakerContext,
   useH2h: boolean,
   pointsKeys: readonly TiebreakerKey[],
-): StandingRow {
+): { top: StandingRow; reason: TiebreakerReason } {
   if (useH2h) {
     const ids = teams.map((t) => t.ownerSeasonId);
     const wins = new Map(teams.map((t) => [t.ownerSeasonId, seriesWinCount(ctx, t.ownerSeasonId, ids)]));
@@ -146,10 +173,17 @@ function pickTop(
     // group does not qualify.
     if (maxWins === teams.length - 1) {
       const dominant = teams.filter((t) => wins.get(t.ownerSeasonId) === maxWins);
-      return bestByPoints(dominant, pointsKeys);
+      if (dominant.length === 1) return { top: dominant[0], reason: 'h2h' };
+      // More than one owner is H2H-dominant (possible in a larger group) — points breaks
+      // the remaining tie among just the dominant ones.
+      const top = bestByPoints(dominant, pointsKeys);
+      const rest = dominant.filter((t) => t.ownerSeasonId !== top.ownerSeasonId);
+      return { top, reason: pointsReason(top, rest, pointsKeys) };
     }
   }
-  return bestByPoints(teams, pointsKeys);
+  const top = bestByPoints(teams, pointsKeys);
+  const rest = teams.filter((t) => t.ownerSeasonId !== top.ownerSeasonId);
+  return { top, reason: pointsReason(top, rest, pointsKeys) };
 }
 
 /**
@@ -163,17 +197,41 @@ export function rankCohort(
   ctx: TiebreakerContext,
   order: readonly TiebreakerKey[] = DEFAULT_TIEBREAKERS,
 ): StandingRow[] {
+  return rankCohortWithReasons(cohort, ctx, order).rows;
+}
+
+/**
+ * Same as {@link rankCohort}, but also reports which rule decided each placement — the data
+ * behind the playoffs page's "why is this team ranked here" explanation. Kept as a separate
+ * function so every other caller of `rankCohort`/`rankStandings` is unaffected.
+ */
+export function rankCohortWithReasons(
+  cohort: StandingRow[],
+  ctx: TiebreakerContext,
+  order: readonly TiebreakerKey[] = DEFAULT_TIEBREAKERS,
+): { rows: StandingRow[]; reasons: Map<number, TiebreakerReason> } {
+  const reasons = new Map<number, TiebreakerReason>();
+  if (cohort.length <= 1) {
+    for (const r of cohort) reasons.set(r.ownerSeasonId, 'none');
+    return { rows: [...cohort], reasons };
+  }
+
   const useH2h = order.includes('h2h');
   const pointsKeys = order.filter((k) => k !== 'h2h');
   const remaining = [...cohort];
-  const out: StandingRow[] = [];
+  const rows: StandingRow[] = [];
   while (remaining.length > 1) {
-    const top = pickTop(remaining, ctx, useH2h, pointsKeys);
-    out.push(top);
+    const { top, reason } = pickTop(remaining, ctx, useH2h, pointsKeys);
+    rows.push(top);
+    reasons.set(top.ownerSeasonId, reason);
     remaining.splice(remaining.indexOf(top), 1);
   }
-  if (remaining.length) out.push(remaining[0]);
-  return out;
+  if (remaining.length) {
+    rows.push(remaining[0]);
+    // Last one standing — nothing left to compare it against.
+    reasons.set(remaining[0].ownerSeasonId, 'none');
+  }
+  return { rows, reasons };
 }
 
 /**
@@ -220,12 +278,26 @@ export function rankStandings(
   ctx: TiebreakerContext,
   order: readonly TiebreakerKey[] = DEFAULT_TIEBREAKERS,
 ): StandingRow[] {
+  return rankStandingsWithReasons(rows, ctx, order).rows;
+}
+
+/**
+ * Same as {@link rankStandings}, but also reports which rule decided each tied owner's
+ * placement (see {@link rankCohortWithReasons}). Used by seeding so the playoffs page can
+ * explain itself; every other caller keeps using the plain {@link rankStandings}.
+ */
+export function rankStandingsWithReasons(
+  rows: StandingRow[],
+  ctx: TiebreakerContext,
+  order: readonly TiebreakerKey[] = DEFAULT_TIEBREAKERS,
+): { rows: StandingRow[]; reasons: Map<number, TiebreakerReason> } {
   const byRecord = [...rows].sort((a, b) => {
     if (a.winPct !== b.winPct) return b.winPct - a.winPct;
     return a.ownerSeasonId - b.ownerSeasonId;
   });
 
   const result: StandingRow[] = [];
+  const reasons = new Map<number, TiebreakerReason>();
   let i = 0;
   while (i < byRecord.length) {
     let j = i + 1;
@@ -233,9 +305,15 @@ export function rankStandings(
       j++;
     }
     const cohort = byRecord.slice(i, j);
-    if (cohort.length === 1) result.push(cohort[0]);
-    else result.push(...rankCohort(cohort, ctx, order));
+    if (cohort.length === 1) {
+      result.push(cohort[0]);
+      reasons.set(cohort[0].ownerSeasonId, 'none');
+    } else {
+      const { rows: ranked, reasons: cohortReasons } = rankCohortWithReasons(cohort, ctx, order);
+      result.push(...ranked);
+      for (const [id, reason] of cohortReasons) reasons.set(id, reason);
+    }
     i = j;
   }
-  return result;
+  return { rows: result, reasons };
 }

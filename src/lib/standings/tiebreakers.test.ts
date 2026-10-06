@@ -6,7 +6,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import { computeStandings } from './standings';
-import { buildTiebreakerContext, compareForStandings, rankStandings } from './tiebreakers';
+import {
+  buildTiebreakerContext,
+  compareForStandings,
+  rankStandings,
+  rankStandingsWithReasons,
+} from './tiebreakers';
 import type { MatchupResult, OwnerEntry } from './types';
 
 function owner(id: number): OwnerEntry {
@@ -266,5 +271,67 @@ describe('cohorts are grouped by win% alone (matching the R group_by)', () => {
     for (const shuffled of permutations) {
       expect(rankStandings(shuffled, ctx).map((r) => r.ownerSeasonId)).toEqual(baseline);
     }
+  });
+});
+
+describe('rankStandingsWithReasons — reports which rule decided each placement', () => {
+  it('reports "none" for an owner with no tie at all', () => {
+    const entries = [owner(1), owner(2)];
+    const results = [game(1, 1, 2, 100, 10)]; // 1 is 1-0, 2 is 0-1 — not tied
+    const rows = computeStandings(entries, results);
+    const ctx = buildTiebreakerContext(rows, results);
+    const { reasons } = rankStandingsWithReasons(rows, ctx);
+    expect(reasons.get(1)).toBe('none');
+    expect(reasons.get(2)).toBe('none');
+  });
+
+  it('reports "h2h" for the owner placed by head-to-head dominance', () => {
+    // 1 beats 2 head-to-head, then each takes one more loss/win against an outsider so
+    // both finish 1-1 (tied win%) — 2 ends up with the much higher PF, so a reason of
+    // "h2h" (rather than "pf") proves H2H was actually consulted, not just PF agreeing.
+    const entries = [owner(1), owner(2), owner(3), owner(4)];
+    const results: MatchupResult[] = [
+      game(1, 1, 2, 100, 90), // 1 beats 2 — the only meeting
+      game(2, 1, 3, 10, 200), // 1 loses to outsider 3 → 1: 1-1, PF 110
+      game(3, 2, 4, 200, 10), // 2 beats outsider 4 → 2: 1-1, PF 290
+    ];
+    const rows = computeStandings(entries, results);
+    const ctx = buildTiebreakerContext(rows, results);
+    const tied = rows.filter((r) => r.ownerSeasonId === 1 || r.ownerSeasonId === 2);
+    expect(tied[0].winPct).toBe(tied[1].winPct); // genuinely tied despite the PF gap
+    const { reasons } = rankStandingsWithReasons(tied, ctx);
+    expect(reasons.get(1)).toBe('h2h');
+  });
+
+  it('reports "pf" for the owner placed by Points For', () => {
+    // Same fixture as "Points For beats Points Against" above: no H2H, 1's PF is higher.
+    const entries = [owner(1), owner(2), owner(3), owner(4)];
+    const results: MatchupResult[] = [
+      game(1, 1, 3, 120, 10),
+      game(2, 1, 3, 5, 50),
+      game(1, 2, 4, 70, 10),
+      game(2, 2, 4, 5, 40),
+    ];
+    const rows = computeStandings(entries, results);
+    const ctx = buildTiebreakerContext(rows, results);
+    const tied = rows.filter((r) => r.ownerSeasonId === 1 || r.ownerSeasonId === 2);
+    const { reasons } = rankStandingsWithReasons(tied, ctx);
+    expect(reasons.get(1)).toBe('pf');
+  });
+
+  it('reports "pa" for the owner placed by Points Against once PF also ties', () => {
+    // Same fixture as "falls through to Points Against" above: PF ties at 100, PA decides.
+    const entries = [owner(1), owner(2), owner(3), owner(4)];
+    const results: MatchupResult[] = [
+      game(1, 1, 3, 60, 10),
+      game(2, 1, 3, 40, 90),
+      game(1, 2, 4, 60, 10),
+      game(2, 2, 4, 40, 70),
+    ];
+    const rows = computeStandings(entries, results);
+    const ctx = buildTiebreakerContext(rows, results);
+    const tied = rows.filter((r) => r.ownerSeasonId === 1 || r.ownerSeasonId === 2);
+    const { reasons } = rankStandingsWithReasons(tied, ctx);
+    expect(reasons.get(2)).toBe('pa');
   });
 });

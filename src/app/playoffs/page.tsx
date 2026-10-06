@@ -32,7 +32,7 @@ import {
 } from "@/lib/standings/query";
 import { getPlayoffBracket } from "@/lib/playoffs/service";
 import { getOddsTrend } from "@/lib/odds/query";
-import type { Conference } from "@/lib/standings";
+import type { Conference, TiebreakerReason } from "@/lib/standings";
 import { eq } from "drizzle-orm";
 import { db, seasons as seasonsTable } from "@/db";
 import { getSeasonRules } from "@/lib/rules/schema";
@@ -67,7 +67,128 @@ function SectionHeading({
 function SeedTag({ row }: { row: PlayoffSeedRow }) {
   if (row.isBye) return <Badge variant="bye">Bye</Badge>;
   if (row.kind === "division_winner") return <Badge variant="div">Div</Badge>;
-  return <Badge variant="wc">WC</Badge>;
+  if (row.kind === "wild_card") return <Badge variant="wc">WC</Badge>;
+  return null;
+}
+
+const REASON_LABEL: Record<Exclude<TiebreakerReason, "none">, string> = {
+  h2h: "Head-to-head record",
+  pf: "Points For",
+  pa: "Points Against",
+};
+
+interface TieGroup {
+  letter: string;
+  legend: string;
+}
+
+/**
+ * Letters consecutive runs of owners tied on win% (A, B, C…) and, for each run, names which
+ * rule(s) actually broke it — the category only, not the underlying numbers (that's the whole
+ * point: "why is this team ranked here" without re-deriving the standings by eye).
+ *
+ * Division winners and everyone else are two SEPARATE competitions — the seeding engine never
+ * compares a division winner against a non-winner, even when they happen to share a record (a
+ * 4-0 division winner and a 4-0 wild card were never tiebroken against each other; the division
+ * winner just seeds higher by rule). So each group is scanned independently, or a coincidental
+ * cross-competition record match would get lettered as if it were a real, explained tie. A tie
+ * spanning the seed cutline WITHIN one competition (e.g. the last wild card vs. the first team
+ * out) still gets one letter across both — that's a real tie, and usually the single
+ * most-asked-about one on the page.
+ */
+function buildTieGroups(rows: PlayoffSeedRow[]): {
+  letterByOwner: Map<number, string>;
+  groups: TieGroup[];
+} {
+  const letterByOwner = new Map<number, string>();
+  const groups: TieGroup[] = [];
+  const order: TiebreakerReason[] = ["h2h", "pf", "pa"];
+
+  function scan(segment: PlayoffSeedRow[]) {
+    let i = 0;
+    while (i < segment.length) {
+      let j = i + 1;
+      while (j < segment.length && segment[j].winPct === segment[i].winPct) j++;
+      const group = segment.slice(i, j);
+      if (group.length > 1) {
+        const letter = String.fromCharCode(65 + groups.length);
+        const present = order.filter((r) => group.some((g) => g.tieReason === r));
+        groups.push({
+          letter,
+          legend: present.length
+            ? present.map((r) => REASON_LABEL[r as Exclude<TiebreakerReason, "none">]).join(", then ")
+            : "Seeding tiebreaker",
+        });
+        for (const row of group) letterByOwner.set(row.ownerSeasonId, letter);
+      }
+      i = j;
+    }
+  }
+
+  scan(rows.filter((r) => r.kind === "division_winner"));
+  scan(rows.filter((r) => r.kind !== "division_winner"));
+
+  return { letterByOwner, groups };
+}
+
+function TieLetter({ letter }: { letter?: string }) {
+  if (!letter) return null;
+  return (
+    <span
+      className="inline-flex size-4 items-center justify-center rounded-full border border-border-strong text-[10px] font-bold text-muted"
+      aria-label={`Tiebreaker group ${letter}`}
+    >
+      {letter}
+    </span>
+  );
+}
+
+function SeedRow({
+  row,
+  letter,
+  variant,
+}: {
+  row: PlayoffSeedRow;
+  letter?: string;
+  variant: "field" | "bubble";
+}) {
+  return (
+    <TR className={row.isBye ? "bg-accent/5" : undefined}>
+      <TD
+        align="center"
+        className={
+          variant === "field"
+            ? "text-lg font-bold tabular-nums text-accent"
+            : "tabular-nums text-muted"
+        }
+      >
+        {row.seed}
+      </TD>
+      <TD>
+        <div className="flex items-center gap-2">
+          <TeamLogo src={row.logoEspn} alt={`${row.teamName} logo`} size={24} />
+          <div className="flex flex-col">
+            <span className="font-semibold text-foreground">
+              {row.teamKey} · {row.teamName}
+            </span>
+            <span className="text-xs text-muted">
+              {row.ownerName} · {row.conference} {row.division}
+            </span>
+          </div>
+        </div>
+      </TD>
+      <TD align="right" className="tabular-nums">
+        <span className="inline-flex items-center gap-1.5">
+          <TieLetter letter={letter} />
+          {row.wins}-{row.losses}
+          {row.ties ? `-${row.ties}` : ""}
+        </span>
+      </TD>
+      <TD align="center">
+        <SeedTag row={row} />
+      </TD>
+    </TR>
+  );
 }
 
 function ConferenceSeeds({
@@ -77,11 +198,15 @@ function ConferenceSeeds({
   conference: Conference;
   seeds: PlayoffSeedRow[];
 }) {
+  const field = seeds.filter((s) => s.kind !== "out_of_field");
+  const bubble = seeds.filter((s) => s.kind === "out_of_field");
+  const { letterByOwner, groups } = buildTieGroups(seeds);
+
   return (
     <section aria-label={`${conference} playoff seeding`} className="flex min-w-0 flex-col gap-4">
       <div className="flex items-center gap-3">
         <h3 className="text-lg font-bold tracking-tight text-foreground">{conference}</h3>
-        <Badge variant="accent">{seeds.length} Seeds</Badge>
+        <Badge variant="accent">{field.length} Seeds</Badge>
       </div>
       <Table>
         <caption className="sr-only">{conference} playoff seeding</caption>
@@ -96,38 +221,48 @@ function ConferenceSeeds({
           </TR>
         </THead>
         <TBody>
-          {seeds.map((row) => (
-            <TR
+          {field.map((row) => (
+            <SeedRow
               key={row.ownerSeasonId}
-              className={row.isBye ? "bg-accent/5" : undefined}
-            >
-              <TD align="center" className="text-lg font-bold tabular-nums text-accent">
-                {row.seed}
-              </TD>
-              <TD>
-                <div className="flex items-center gap-2">
-                  <TeamLogo src={row.logoEspn} alt={`${row.teamName} logo`} size={24} />
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-foreground">
-                      {row.teamKey} · {row.teamName}
-                    </span>
-                    <span className="text-xs text-muted">
-                      {row.ownerName} · {row.conference} {row.division}
-                    </span>
-                  </div>
-                </div>
-              </TD>
-              <TD align="right" className="tabular-nums">
-                {row.wins}-{row.losses}
-                {row.ties ? `-${row.ties}` : ""}
-              </TD>
-              <TD align="center">
-                <SeedTag row={row} />
-              </TD>
-            </TR>
+              row={row}
+              letter={letterByOwner.get(row.ownerSeasonId)}
+              variant="field"
+            />
           ))}
         </TBody>
       </Table>
+
+      {bubble.length > 0 && (
+        <details className="group">
+          <summary className="cursor-pointer text-sm font-medium text-muted hover:text-foreground">
+            Also in the picture ({bubble.length})
+          </summary>
+          <Table className="mt-3">
+            <caption className="sr-only">{conference} owners outside the playoff field</caption>
+            <TBody>
+              {bubble.map((row) => (
+                <SeedRow
+                  key={row.ownerSeasonId}
+                  row={row}
+                  letter={letterByOwner.get(row.ownerSeasonId)}
+                  variant="bubble"
+                />
+              ))}
+            </TBody>
+          </Table>
+        </details>
+      )}
+
+      {groups.length > 0 && (
+        <p className="text-xs text-muted">
+          {groups.map(({ letter, legend }, i) => (
+            <span key={letter}>
+              {i > 0 && "  ·  "}
+              <span className="font-semibold">{letter}</span> — {legend}
+            </span>
+          ))}
+        </p>
+      )}
     </section>
   );
 }

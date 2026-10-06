@@ -26,6 +26,7 @@ function seedsFor(conference: Conference, base: number): SeededOwner[] {
       pointsAgainst: 500,
       winPct: (12 - seed) / 12,
       streak: 'W1',
+      tieReason: 'none',
     });
   }
   return out;
