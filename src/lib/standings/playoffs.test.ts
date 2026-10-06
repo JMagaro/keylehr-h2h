@@ -27,6 +27,7 @@ function seedsFor(conference: Conference, base: number): SeededOwner[] {
       winPct: (12 - seed) / 12,
       streak: 'W1',
       tieReason: 'none',
+      divisionTieReason: 'none',
     });
   }
   return out;

@@ -706,9 +706,13 @@ export interface PlayoffSeedRow {
    *  differ at equal win% when bye weeks stagger game counts). Used to group tied owners for
    *  the "why is this team ranked here" explanation on the playoffs page. */
   winPct: number;
-  /** Which rule decided this owner's place among others tied with them on win% — see
-   *  {@link TiebreakerReason}. `'none'` when they weren't tied with anyone. */
+  /** Which rule decided this owner's SEED among others tied with them in the same pool — see
+   *  {@link TiebreakerReason}. `'none'` when they weren't tied with anyone there. Not about
+   *  winning the division — see `divisionTieReason`. */
   tieReason: TiebreakerReason;
+  /** Which rule decided this owner WON THEIR DIVISION over a tied division-mate. Only ever
+   *  set on a division winner; `'none'` otherwise. */
+  divisionTieReason: TiebreakerReason;
 }
 
 /**
@@ -764,6 +768,7 @@ export async function getPlayoffPicture(seasonId: number): Promise<PlayoffPictur
         pointsFor: s.pointsFor,
         winPct: s.winPct,
         tieReason: s.tieReason,
+        divisionTieReason: s.divisionTieReason,
       };
     });
   }

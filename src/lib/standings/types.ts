@@ -218,11 +218,22 @@ export interface SeededOwner extends StandingRow {
   /** True only for the #1 seed, which receives a first-round bye. */
   isBye: boolean;
   /**
-   * Which rule decided this owner's place relative to the others they were tied with on
-   * win% (within their division for `division_winner`, within the non-winner pool for
-   * `wild_card`/`out_of_field`). `'none'` when they weren't tied with anyone there.
+   * Which rule decided this owner's SEED relative to others tied with them on win% in the
+   * same pool — the four division winners among themselves for `division_winner`, or the
+   * non-winners among themselves for `wild_card`/`out_of_field`. `'none'` when they weren't
+   * tied with anyone in that pool.
+   *
+   * This is NOT about winning the division — see {@link divisionTieReason} for that.
    */
   tieReason: TiebreakerReason;
+  /**
+   * Which rule decided this owner WON THEIR DIVISION, when they were tied with a division-mate
+   * on win% — a separate question from {@link tieReason}, and the one that matters when two
+   * same-division owners have identical records but one is seeded 1-4 and the other dropped
+   * into the wild-card pool entirely. Only ever set on a `division_winner`; `'none'` otherwise,
+   * including when a division winner had no division-mate tied with them.
+   */
+  divisionTieReason: TiebreakerReason;
 }
 
 /**

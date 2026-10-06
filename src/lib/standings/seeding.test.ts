@@ -248,6 +248,40 @@ describe('computeConferenceSeedsFull — everyone past the playoff cutline', () 
   });
 });
 
+describe('computeConferenceSeedsFull — division-title ties', () => {
+  it('flags the division winner when tied with a division-mate, and nobody else', () => {
+    // East: owners 1 and 2 both go 4-0 WITHOUT playing each other (so H2H cannot apply and
+    // the fallback — identical PF/PA, ownerSeasonId ascending — picks 1). North/South/West
+    // each get a single undisputed winner, so their divisionTieReason stays 'none'.
+    const entries = buildEntries();
+    const s = new Schedule();
+    s.beatsDoormat(1, 200, 4);
+    s.beatsDoormat(2, 200, 4);
+    s.beatsDoormat(5, 201, 6);
+    s.beatsDoormat(9, 202, 5);
+    s.beatsDoormat(13, 203, 4);
+
+    const afc = computeConferenceSeedsFull(entries, s.build()).AFC;
+    const east1 = afc.find((x) => x.ownerSeasonId === 1)!;
+    const east2 = afc.find((x) => x.ownerSeasonId === 2)!;
+    const north = afc.find((x) => x.ownerSeasonId === 5)!;
+
+    expect(east1.kind).toBe('division_winner');
+    // The exact-tie fallback (identical PF/PA, ownerSeasonId ascending) reports 'pf' per
+    // pointsReason's documented behavior — see tiebreakers.ts.
+    expect(east1.divisionTieReason).toBe('pf');
+
+    // Owner 2 lost the division on the same tiebreaker but is NOT a division winner, and
+    // divisionTieReason is only ever set on the winner.
+    expect(east2.kind).not.toBe('division_winner');
+    expect(east2.divisionTieReason).toBe('none');
+
+    // An undisputed division winner has nothing to report.
+    expect(north.kind).toBe('division_winner');
+    expect(north.divisionTieReason).toBe('none');
+  });
+});
+
 describe('computeConferenceSeeds — config-driven structure', () => {
   /** A non-default format: 6 teams / 4 division winners / 2 wild cards / 2 byes. */
   const SIX_TEAM: PlayoffConfig = {

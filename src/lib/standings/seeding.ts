@@ -161,11 +161,31 @@ function seedConference(
 ): SeededOwner[] {
   // 1. Division leaders (top of each division). All four are candidates; how
   //    many actually seed AS division winners is capped by the config.
+  //
+  //    A division winner tied with a DIVISION-MATE (not just conference-wide) is its own
+  //    tiebreaker story — "why did I win the division, not just why is my seed N" — and the
+  //    two owners end up far apart once seeded (the winner at 1-4, the runner-up wherever
+  //    the wild-card pool lands them), so it has to be captured here, before that split
+  //    happens, or it's lost. Only the winner's reason is kept: everyone else in the tied
+  //    group is identifiable later purely from sharing (division, win%).
   const leaderRows: StandingRow[] = [];
+  const divisionTieReasonByOwner = new Map<number, TiebreakerReason>();
   for (const div of DIVISIONS) {
-    const ranked = rankDivision(entries, c, conference, div);
-    if (ranked.length === 0) continue;
-    leaderRows.push(c.rowById.get(ranked[0].ownerSeasonId)!);
+    const members = entries
+      .filter((e) => e.conference === conference && e.division === div)
+      .map((e) => c.rowById.get(e.ownerSeasonId)!);
+    if (members.length === 0) continue;
+    const { rows: rankedDivision, reasons: divisionReasons } = rankStandingsWithReasons(
+      members,
+      c.ctx,
+      c.order,
+    );
+    const winner = rankedDivision[0];
+    leaderRows.push(winner);
+    const tiedWithWinner = rankedDivision.filter((r) => r.winPct === winner.winPct).length;
+    if (tiedWithWinner > 1) {
+      divisionTieReasonByOwner.set(winner.ownerSeasonId, divisionReasons.get(winner.ownerSeasonId) ?? 'none');
+    }
   }
 
   // 2. Order the division leaders, then take the configured number as the
@@ -199,7 +219,15 @@ function seedConference(
   const seeds: SeededOwner[] = [];
   divisionWinners.forEach((row, idx) => {
     seeds.push(
-      makeSeed(row, idx + 1, 'division_winner', config, c, leaderReasons.get(row.ownerSeasonId)),
+      makeSeed(
+        row,
+        idx + 1,
+        'division_winner',
+        config,
+        c,
+        leaderReasons.get(row.ownerSeasonId),
+        divisionTieReasonByOwner.get(row.ownerSeasonId),
+      ),
     );
   });
   orderedNonWinners.forEach((row, idx) => {
@@ -212,6 +240,7 @@ function seedConference(
         config,
         c,
         nonWinnerReasons.get(row.ownerSeasonId),
+        undefined,
       ),
     );
   });
@@ -225,6 +254,7 @@ function makeSeed(
   config: PlayoffConfig,
   c: ComputedContext,
   tieReason: TiebreakerReason | undefined,
+  divisionTieReason: TiebreakerReason | undefined,
 ): SeededOwner {
   const entry = c.entryById.get(row.ownerSeasonId)!;
   return {
@@ -236,5 +266,6 @@ function makeSeed(
     // A top-N seed gets a first-round bye (N = config.topSeedByes).
     isBye: seed <= config.topSeedByes,
     tieReason: tieReason ?? 'none',
+    divisionTieReason: divisionTieReason ?? 'none',
   };
 }
