@@ -32,7 +32,7 @@ dev). They mirror [`.env.example`](../.env.example).
 | `ADMIN_PASSWORD_HASH` | Yes (P1 auth)   | **Bcrypt hash** of the admin password (never the plaintext). See [§5](#5-admin-password-hash).         |
 | `INGEST_TOKEN`        | **Yes, to score** | Bearer token the DK Sync Chrome extension sends to `POST /api/ingest/draftkings` (and `/api/seasons`). The same token guards `POST /api/ingest/lineups` (roster capture), `GET /api/current-week` (week detection — read-only) and `GET /api/live-status` (capture-staleness check for Live Sync — read-only). **Without it every sync 401s** — the server rejects all ingest when it's unset, the extension falls back to guessing the week, and Live Sync stops refreshing rosters. **One token, five endpoints — there is nothing new to set for any of them.** Same value in the extension's Settings screen. See [`extension/README.md`](../extension/README.md). |
 | `DK_SESSION_COOKIE`   | Unused          | Was to hold an authenticated DraftKings session for a server-side leaderboard read. **That design was rejected** — the read happens in the commissioner's browser instead, so nothing reads this variable. See [§6](#6-vercel-cron-for-the-weekly-pull--not-built). Safe to leave unset. |
-| `CRON_SECRET`         | Unused          | Was to guard a Vercel Cron score-pull endpoint. **That route was never built and won't be** — see [§6](#6-vercel-cron-for-the-weekly-pull--not-built). Safe to leave unset. |
+| `CRON_SECRET`         | **Yes, for odds** | Bearer token guarding `GET /api/cron/odds`, the weekly playoff-odds snapshot. Originally reserved for a DraftKings score-pull cron that was rejected (see [§6](#6-vercel-cron-for-the-weekly-pull--not-built)) — repurposed for the odds cron instead, which needs no DraftKings session. See [§6a](#6a-vercel-cron-for-the-weekly-odds-snapshot). Without it the cron 401s and the odds trend silently stops updating. |
 | `AUTH_URL`            | Local dev       | Base URL of the app for Auth.js v5. Set it locally (`http://localhost:3000`); **auto-detected on Vercel**, so it is optional in production. |
 
 > **Secrets:** `.env*` files are git-ignored. Never commit `DATABASE_URL`, `AUTH_SECRET`,
@@ -104,13 +104,12 @@ Additional admins can be added **without a redeploy** through the `users` table 
 
 ## 6. Vercel Cron for the weekly pull — not built
 
-> **This was designed and then rejected.** There is no `vercel.json`, no `/api/cron/pull` route,
-> and no `src/lib/dk` module in the repo, and none are planned. The weekly scoring contest is
-> **private**, so a server cannot read its leaderboard without the commissioner's authenticated
+> **This was designed and then rejected, and still is not built.** There is no `/api/cron/pull`
+> route and no `src/lib/dk` module in the repo, and none are planned. The weekly scoring contest
+> is **private**, so a server cannot read its leaderboard without the commissioner's authenticated
 > DraftKings session — which is why scoring runs through the **Chrome extension** in the
 > commissioner's own browser instead (see [`../extension/README.md`](../extension/README.md) and
-> [`DRAFTKINGS.md`](DRAFTKINGS.md)). `CRON_SECRET` and `DK_SESSION_COOKIE` are leftovers from this
-> design and are read by nothing.
+> [`DRAFTKINGS.md`](DRAFTKINGS.md)).
 >
 > **The motivating problem is solved a different way.** What a cron was wanted for — numbers that
 > move during games — is what **`/live`** now does: rosters are captured once from the
@@ -119,43 +118,54 @@ Additional admins can be added **without a redeploy** through the `users` table 
 > [`SCORING.md` §15](SCORING.md#15-live-in-progress-scoring-an-estimate-never-a-score). The
 > DraftKings leaderboard is still the only thing that writes `scores`, and it still needs a human.
 >
-> The sketch below is kept only because it remains the shape any future unattended pull would
-> take. **Do not follow it as setup instructions.**
+> `vercel.json` and `CRON_SECRET` do now exist in this repo — but for the **different**, DK-free
+> cron described next, not this one. The sketch below is kept only because it remains the shape
+> any future unattended DK pull would take. **Do not follow it as setup instructions.**
 
 The pull would run on a schedule via Vercel Cron, hitting a route handler guarded by
-`CRON_SECRET`, configured by a `vercel.json` at the repo root:
+`CRON_SECRET`:
+
+```ts
+// app/api/cron/pull/route.ts  (does not exist — illustrative only)
+export async function GET(request: Request) {
+  const auth = request.headers.get('authorization');
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+  // ... run the DraftKings pull (see docs/DRAFTKINGS.md) ...
+  return Response.json({ ok: true });
+}
+```
+
+## 6a. Vercel Cron for the weekly odds snapshot — built
+
+Unlike the DK pull above, the playoff-odds Monte-Carlo engine (`src/lib/odds/simulate.ts`) needs
+nothing but the database — no DraftKings session — so a real cron runs it. `vercel.json` at the
+repo root:
 
 ```json
 {
   "crons": [
     {
-      "path": "/api/cron/pull",
+      "path": "/api/cron/odds",
       "schedule": "0 11 * * 2"
     }
   ]
 }
 ```
 
-- `schedule` is standard cron (UTC). The example above runs **Tuesdays at 11:00 UTC** — after a
-  typical NFL week's slates have finalized. Adjust to your league's cadence.
-- Vercel Cron invokes the path on your deployment. The route handler must verify the request
-  against `CRON_SECRET` before doing any work:
-
-  ```ts
-  // app/api/cron/pull/route.ts  (does not exist — illustrative only)
-  export async function GET(request: Request) {
-    const auth = request.headers.get('authorization');
-    if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-      return new Response('Unauthorized', { status: 401 });
-    }
-    // ... run the DraftKings pull (see docs/DRAFTKINGS.md) ...
-    return Response.json({ ok: true });
-  }
-  ```
-
-  > On Vercel, cron invocations include the `CRON_SECRET` as a bearer token automatically when the
-  > env var is set, so the same check works for scheduled runs and rejects everyone else. The route
-  > must use the **Node.js runtime** (it touches the database).
+- `schedule` is standard cron (UTC): **Tuesdays at 11:00 UTC**, chosen to land after a typical
+  week's Monday-night sync (see [`RUNBOOK.md` §2](RUNBOOK.md#2-the-weekly-loop)). The engine
+  re-derives the whole trend from whatever is scored so far and upserts idempotently, so a late
+  sync just delays that week's line to the following Tuesday rather than producing a wrong one.
+- `GET /api/cron/odds` (`src/app/api/cron/odds/route.ts`) verifies `Authorization: Bearer
+  <CRON_SECRET>` before doing anything — same contract as every ingest route, just a different
+  token. **Vercel sends this bearer token automatically** on scheduled invocations once
+  `CRON_SECRET` is set in the project's environment variables; without it, the cron 401s and the
+  odds trend silently stops updating. Runs `npm run odds:compute`'s logic server-side (same
+  `writeOddsSnapshots` used by the CLI — one upsert path, two triggers).
+- To re-run by hand instead of waiting for Tuesday: `npm run odds:compute` locally, or trigger
+  the cron manually from **Vercel → Project → Cron Jobs**.
 
 ## 7. Post-deploy checklist
 
@@ -169,5 +179,7 @@ The pull would run on a schedule via Vercel Cron, hitting a route handler guarde
       Use the same value in the extension's Settings screen, and confirm with its **Test
       connection** button.
 - [ ] `npm run schedule:pull -- --year=<year>` run once the season's owners are assigned.
+- [ ] **`CRON_SECRET` set** — without it the weekly odds snapshot 401s silently; see
+      [§6a](#6a-vercel-cron-for-the-weekly-odds-snapshot--built).
 - [ ] `npm run verify` green before the push that triggered this deploy — see
       [`RUNBOOK.md` §4](RUNBOOK.md#4-verification).

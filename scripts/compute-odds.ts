@@ -12,11 +12,9 @@
  */
 import '@/load-env';
 
-import { sql } from 'drizzle-orm';
-
-import { db, playoffOddsSnapshots } from '@/db';
 import { getDefaultStandingsSeasonId } from '@/lib/standings/query';
 import { computePlayoffOddsSnapshots } from '@/lib/odds/simulate';
+import { writeOddsSnapshots } from '@/lib/odds/write';
 
 function parseArg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -44,42 +42,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  const weeks = Array.from(new Set(snapshots.map((s) => s.week))).sort((a, b) => a - b);
-  console.log(
-    `Simulated ${weeks.length} week(s) in ${elapsed}s → ${snapshots.length} snapshots. Upserting…`,
-  );
+  console.log(`Simulated in ${elapsed}s → ${snapshots.length} snapshots. Upserting…`);
 
-  // UPSERT in batches (one multi-row insert per week keeps statements small).
-  let written = 0;
-  for (const week of weeks) {
-    const rows = snapshots
-      .filter((s) => s.week === week)
-      .map((s) => ({
-        seasonId,
-        week: s.week,
-        ownerSeasonId: s.ownerSeasonId,
-        // numeric column → string with 2 decimals.
-        oddsPct: s.oddsPct.toFixed(2),
-      }));
-    if (rows.length === 0) continue;
-    await db
-      .insert(playoffOddsSnapshots)
-      .values(rows)
-      .onConflictDoUpdate({
-        target: [
-          playoffOddsSnapshots.seasonId,
-          playoffOddsSnapshots.week,
-          playoffOddsSnapshots.ownerSeasonId,
-        ],
-        set: {
-          oddsPct: sql`excluded.odds_pct`,
-          computedAt: sql`now()`,
-        },
-      });
-    written += rows.length;
-  }
-
-  console.log(`Done. Upserted ${written} snapshots for season ${seasonId}.`);
+  const { weeks, written } = await writeOddsSnapshots(seasonId, snapshots);
+  console.log(`Done. Upserted ${written} snapshots across ${weeks.length} week(s) for season ${seasonId}.`);
 }
 
 main()
