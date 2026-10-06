@@ -243,7 +243,6 @@ describe('rules are injectable', () => {
   it('ships DK Classic defaults', () => {
     expect(DK_CLASSIC_NFL.offense.reception).toBe(1);
     expect(DK_CLASSIC_NFL.offense.passYardPerPoint).toBe(0.04);
-    expect(DK_CLASSIC_NFL.dst.pointsAllowedMode).toBe('raw');
     expect(DK_CLASSIC_SLOTS).toHaveLength(9);
     expect(DK_CLASSIC_SLOTS).not.toContain('K');
   });

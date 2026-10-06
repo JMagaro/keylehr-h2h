@@ -18,29 +18,29 @@
  */
 
 /**
- * How to compute the DST's "points allowed" figure.
+ * How "points allowed" is computed (in `espn-extract.ts`, not here — this type exists so the
+ * rule is documented next to the numbers it depends on).
  *
- * DraftKings' published rule has historically read as though it carves out points the DST
- * itself was not on the field for — most visibly a pick-six thrown by *your own* offense.
- * Neither ESPN's header score nor any free feed implements that carve-out, so we shipped the
- * honest default (`raw` = the opponent's final score) and left the alternative implementable.
+ * It is NOT simply the opponent's final score. DraftKings excludes exactly the touchdown
+ * — not any PAT/2pt try that follows it — when the OPPONENT's defense scores off a turnover
+ * (an interception or fumble return) against this team's OFFENSE. A punt/kickoff return TD is
+ * not excluded: that is this team's special-teams coverage failing, which points-allowed is
+ * supposed to capture.
  *
- * SETTLED EMPIRICALLY — `raw` IS WHAT DRAFTKINGS DOES. 2026 week 1 contained the exact case
- * that separates the two modes: **Atlanta's DST conceded 20 to Pittsburgh, and 7 of those
- * points (a defensive touchdown plus the extra point) were scored by PITTSBURGH'S DEFENSE
- * against Atlanta's offense.** Under the carve-out Atlanta allows 13 and DraftKings pays the
- * `7-13 PA` tier, +4. DraftKings' own captured stat line awarded `14-20 PA`, **+1** — the raw
- * 20. Our engine scored that DST at 5.00 against DraftKings' 5.00.
+ * An earlier version of this comment claimed the opposite (`raw`, no exclusion at all) from a
+ * single 2026-week-1 case: Atlanta conceded 20 to Pittsburgh, 7 of which came from a Pittsburgh
+ * defensive TD + made PAT, and DraftKings' captured line showed `14-20 PA`. That case never
+ * actually distinguished the two theories — 20 minus just the 6-point TD is still 14, the same
+ * tier as raw 20 — so it was mistakenly read as settling on `raw`. Two more cases (weeks 3 and
+ * 4, each a different team) showed DraftKings landing one tier BELOW raw, and re-deriving the
+ * tier with the TD-only exclusion matches DraftKings exactly in all three games, including the
+ * original one. That is the rule implemented now.
  *
- * So do not "fix" this to `exclude_scores_against_offense` on the strength of the rules page.
- * The measurement disagrees with that reading, and it was taken against DK's own numbers.
- *
- * Re-checking it is cheap and does not need a hand audit any more: Admin → Scoring reconciles
- * every captured slot against DraftKings' own stat line, and a wrong mode shows up there as a
+ * Re-checking it is cheap and does not need a hand audit: Admin → Scoring reconciles every
+ * captured slot against DraftKings' own stat line, and a wrong exclusion shows up there as a
  * DST landing exactly one tier off in a game containing a defensive or return touchdown.
  * (`npm run dfs:selftest` still will NOT catch it — that compares QB/RB/WR/TE only.)
  */
-export type PointsAllowedMode = 'raw' | 'exclude_scores_against_offense';
 
 /** One row of the DST points-allowed ladder. `maxPoints` is inclusive. */
 export interface PointsAllowedTier {
@@ -93,7 +93,6 @@ export interface DkScoringRules {
     twoPointReturn: number;
     /** Ordered ascending by `maxPoints`; first match wins. */
     pointsAllowedTiers: readonly PointsAllowedTier[];
-    pointsAllowedMode: PointsAllowedMode;
   };
 }
 
@@ -141,7 +140,6 @@ export const DK_CLASSIC_NFL: DkScoringRules = Object.freeze({
       { maxPoints: 34, points: -1 },
       { maxPoints: Infinity, points: -4 },
     ] as const),
-    pointsAllowedMode: 'raw' as PointsAllowedMode,
   }),
 }) as DkScoringRules;
 

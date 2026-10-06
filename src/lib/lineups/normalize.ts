@@ -71,8 +71,9 @@ export interface LineupSlotInput {
    *
    * Also not used for scoring, and also a checkpoint — but a far sharper one than `dkScore`.
    * A matching total can hide two compensating errors; a per-stat diff cannot. This is how
-   * the ESPN extractor gets validated against DK's own account of the same game, and how
-   * `pointsAllowedMode` gets settled empirically instead of by guesswork.
+   * the ESPN extractor gets validated against DK's own account of the same game, and how the
+   * points-allowed turnover-TD exclusion in `../dfs/rules.ts` was settled empirically instead
+   * of by guesswork.
    *
    * Captured because it is available ONLY at capture time: DraftKings' authenticated roster
    * endpoint is the only place it exists, and it is gone once the contest ages out.

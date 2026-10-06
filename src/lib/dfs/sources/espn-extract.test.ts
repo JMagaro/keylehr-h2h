@@ -178,17 +178,20 @@ describe('extractGame — CHI @ MIN (2025 week 1)', () => {
     expect(scoreDst(chi!.line).points).toBe(11);
   });
 
-  it('credits MIN’s defense with the fumble CHI lost', () => {
+  it('credits MIN’s defense with the fumble CHI lost, and excludes CHI’s pick-six from points allowed', () => {
     const min = defenseFor(game, 'MIN');
     expect(min!.line).toMatchObject({
       sacks: 2,
       interceptions: 0,
       fumbleRecoveries: 1,
       defensiveTds: 0,
-      pointsAllowed: 24,
+      // CHI scored 24, but 6 of those were CHI's OWN defense returning an interception off
+      // MIN's offense (see the CHI test above) — a turnover MIN's defense had no chance to
+      // stop, which DraftKings excludes from points allowed. 24 - 6 = 18.
+      pointsAllowed: 18,
     });
-    // 2 sacks=2 | 1 fum rec=2 | 24 allowed=0  => 4
-    expect(scoreDst(min!.line).points).toBe(4);
+    // 2 sacks=2 | 1 fum rec=2 | 18 allowed=1  => 5
+    expect(scoreDst(min!.line).points).toBe(5);
   });
 });
 

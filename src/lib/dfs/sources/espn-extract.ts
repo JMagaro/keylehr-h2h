@@ -20,6 +20,7 @@
  * not separable from other return TDs in ESPN's data. Rare enough to accept.
  */
 import { normalizeTeamKey } from '@/lib/nfl/team-keys';
+import { DK_CLASSIC_NFL } from '../rules';
 import { EMPTY_DST_LINE, EMPTY_PLAYER_LINE, type DstStatLine, type PlayerStatLine } from '../stat-line';
 import type { GameState } from './espn-boxscore';
 import type {
@@ -463,6 +464,16 @@ export function extractGame(summary: EspnSummaryResponse): ExtractedGame {
     // leads and the player sum is only the fallback for a missing row.
     const sacksAllowedByOpponent = teamPairedStat(opponent, 'sacksYardsLost');
 
+    // ESPN's team-level `defensiveTouchdowns` is not limited to turnover returns — confirmed
+    // in 2026 week 3, where Minnesota's ONLY non-offensive score was a punt-return TD (no
+    // interception/fumble return at all) and the team stat still read 1. The per-player
+    // kick/punt-return-TD sum (`teamReturnTds`) is exact, so subtracting it out of the team
+    // aggregate isolates genuine turnover-return TDs.
+    const opponentTurnoverTds = Math.max(
+      0,
+      teamStat(opponent, 'defensiveTouchdowns') - (teamReturnTds.get(opponentKey) ?? 0),
+    );
+
     defenses.push({
       teamKey,
       line: {
@@ -478,7 +489,14 @@ export function extractGame(summary: EspnSummaryResponse): ExtractedGame {
         // the per-player `interceptionTouchdowns` on top would double-count.
         defensiveTds: teamStat(own, 'defensiveTouchdowns'),
         specialTeamsTds: teamReturnTds.get(teamKey) ?? 0,
-        pointsAllowed: scoreByTeamKey.get(opponentKey) ?? 0,
+        // A turnover the OPPONENT's defense returned for a TD against this team's offense
+        // does not count against this team's points allowed — DraftKings excludes exactly
+        // the touchdown, not any PAT/2pt try that follows it. A punt/kick return TD is NOT
+        // excluded (that's this team's own special-teams coverage, which points-allowed is
+        // supposed to capture). See the comment on `PointsAllowedTier` in ../rules.ts.
+        pointsAllowed:
+          (scoreByTeamKey.get(opponentKey) ?? 0) -
+          DK_CLASSIC_NFL.dst.defensiveTd * opponentTurnoverTds,
       },
     });
   }

@@ -56,7 +56,7 @@ export interface DstStatLine {
   specialTeamsTds: number;
   /** Defensive 2-point conversion or extra-point return. Extremely rare. */
   twoPointReturns: number;
-  /** Points surrendered, per the configured `pointsAllowedMode`. */
+  /** Points surrendered, net of touchdowns the OPPONENT's defense scored off a turnover. */
   pointsAllowed: number;
 }
 
