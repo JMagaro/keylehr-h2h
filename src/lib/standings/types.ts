@@ -142,6 +142,18 @@ export const DEFAULT_TIEBREAKERS: readonly TiebreakerKey[] = ['h2h', 'pf', 'pa']
 export type TiebreakerReason = 'h2h' | 'pf' | 'pa' | 'none';
 
 /**
+ * The exact head-to-head series a `'h2h'` {@link TiebreakerReason} decided, from the winning
+ * owner's perspective — only populated for a straightforward 2-owner tie, the case it can be
+ * stated precisely ("2-0") rather than vaguely ("won every matchup in a 4-way group").
+ */
+export interface TieH2hRecord {
+  opponentOwnerSeasonId: number;
+  wins: number;
+  losses: number;
+  ties: number;
+}
+
+/**
  * Rule-derived knobs that tune ranking + Points-For accumulation. Supplied by the
  * DB layer from the season's configured rules; omitting it (or any field) keeps
  * the league-default behavior so the pure engine and its tests stay unchanged.
@@ -234,6 +246,11 @@ export interface SeededOwner extends StandingRow {
    * including when a division winner had no division-mate tied with them.
    */
   divisionTieReason: TiebreakerReason;
+  /** The exact series behind `tieReason` when it is `'h2h'` and exactly one opponent was
+   *  compared. Null otherwise — including a larger group, where no single record applies. */
+  tieH2h: TieH2hRecord | null;
+  /** Same as {@link tieH2h}, for {@link divisionTieReason}. */
+  divisionTieH2h: TieH2hRecord | null;
 }
 
 /**

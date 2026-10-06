@@ -32,10 +32,11 @@ import {
 } from "@/lib/standings/query";
 import { getPlayoffBracket } from "@/lib/playoffs/service";
 import { getOddsTrend } from "@/lib/odds/query";
-import type { Conference, TiebreakerReason } from "@/lib/standings";
+import type { Conference, TieH2hRecord, TiebreakerReason } from "@/lib/standings";
 import { eq } from "drizzle-orm";
 import { db, seasons as seasonsTable } from "@/db";
 import { getSeasonRules } from "@/lib/rules/schema";
+import { formatPoints } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -82,35 +83,66 @@ interface TieGroup {
   legend: string;
 }
 
-function reasonLabel(reason: TiebreakerReason): string {
-  return reason === "none" ? "Seeding tiebreaker" : REASON_LABEL[reason];
+function teamLabel(r: PlayoffSeedRow): string {
+  return r.teamKey;
 }
 
 /**
- * Letters consecutive runs of owners tied on win% (A, B, C…) and, for each run, names which
- * rule(s) actually broke it — the category only, not the underlying numbers (that's the whole
- * point: "why is this team ranked here" without re-deriving the standings by eye). A row can
- * carry more than one letter (see below), so the result maps each owner to a LIST.
+ * The legend text for one tied group. For a straightforward 2-owner tie — the common case,
+ * and the only one precise enough to state plainly — names the actual matchup or numbers:
+ * the head-to-head record, or both owners' real Points For/Against. A larger group falls back
+ * to the bare rule name(s) that applied anywhere in its recursive resolution (`fallbackReasons`
+ * — see `rankCohortWithReasons` in tiebreakers.ts for why a 3+ group can involve more than one
+ * rule), since no single sentence states a multi-step resolution precisely.
+ */
+function describeTie(
+  group: PlayoffSeedRow[],
+  winner: PlayoffSeedRow,
+  reason: TiebreakerReason,
+  h2h: TieH2hRecord | null,
+  fallbackReasons: TiebreakerReason[],
+): string {
+  const other = group.length === 2 ? group.find((r) => r.ownerSeasonId !== winner.ownerSeasonId) : undefined;
+
+  if (other && reason === "h2h" && h2h) {
+    const record = `${h2h.wins}-${h2h.losses}${h2h.ties ? `-${h2h.ties}` : ""}`;
+    return `${REASON_LABEL.h2h}: ${teamLabel(winner)} ${record} over ${teamLabel(other)}`;
+  }
+  if (other && reason === "pf") {
+    return `${REASON_LABEL.pf}: ${teamLabel(winner)} ${formatPoints(winner.pointsFor)} vs ${teamLabel(other)} ${formatPoints(other.pointsFor)}`;
+  }
+  if (other && reason === "pa") {
+    return `${REASON_LABEL.pa}: ${teamLabel(winner)} ${formatPoints(winner.pointsAgainst)} vs ${teamLabel(other)} ${formatPoints(other.pointsAgainst)}`;
+  }
+
+  const order: Exclude<TiebreakerReason, "none">[] = ["h2h", "pf", "pa"];
+  const present = order.filter((r) => fallbackReasons.includes(r));
+  return present.length ? present.map((r) => REASON_LABEL[r]).join(", then ") : "Seeding tiebreaker";
+}
+
+/**
+ * Letters tied owners (A, B, C…) and, for each group, explains the actual matchup or numbers
+ * that decided it. A row can carry more than one letter (see below), so the result maps each
+ * owner to a LIST.
  *
- * Three separate things get explained, because they're three separate comparisons the seeding
- * engine actually makes — conflating any two of them would letter two owners together who were
- * never actually compared:
+ * Three separate things get explained, lettered in the order they are actually decided —
+ * conflating any two would letter owners together who were never actually compared:
  *
- *  1. The four division winners, ranked against EACH OTHER for seeds 1-4.
- *  2. Everyone else (wild cards + out-of-field), ranked against each other for seeds 5+.
- *  3. WITHIN one division, who wins it at all. This is the one that is easy to miss: two
- *     same-division owners can share a record where one becomes a division winner (seeded
- *     1-4) and the other drops into the wild-card pool entirely — e.g. two 4-0 teams in the
- *     same division, one seeded 1st, the other not even guaranteed a spot. That is a real,
- *     decided tiebreaker, but the two owners end up far apart in the table once seeded, so it
- *     has to be found by (division, win%) rather than by adjacency like 1 and 2 are.
+ *  1. WITHIN one division, who wins it at all — lettered FIRST, because this is logically
+ *     upstream of everything else (you cannot rank the division winners against each other,
+ *     or seed the wild-card pool, until you know who each division's winner even is). Found
+ *     by (division, win%) since the two owners end up far apart once seeded: e.g. two 4-0
+ *     owners in the same division, one seeded 1st, the other not guaranteed a spot at all.
+ *  2. The four division winners, ranked against EACH OTHER for seeds 1-4.
+ *  3. Everyone else (wild cards + out-of-field), ranked against each other for seeds 5+.
  *
- * (1) and (2) also only compare within their own competition — a division winner and a wild
- * card are never tiebroken against each other just because they share a record, since the
- * division winner outseeds every wild card by rule regardless of record. A tie spanning the
- * seed cutline WITHIN one competition (e.g. the last wild card vs. the first team out) still
- * gets one letter across both — that's a real tie, and usually the single most-asked-about one
- * on the page alongside the division case.
+ * (2) and (3) only compare within their own competition — a division winner and a wild card
+ * are never tiebroken against each other just because they share a record, since the division
+ * winner outseeds every wild card by rule regardless of record. A tie spanning the seed
+ * cutline WITHIN one competition (e.g. the last wild card vs. the first team out) still gets
+ * one letter across both — that's a real tie, and usually the single most-asked-about one on
+ * the page alongside the division case. A group entirely outside the playoff field (nobody in
+ * it made it) gets no letter at all — there's no "why them and not you" story when neither did.
  */
 function buildTieGroups(rows: PlayoffSeedRow[]): {
   letterByOwner: Map<number, string[]>;
@@ -118,7 +150,6 @@ function buildTieGroups(rows: PlayoffSeedRow[]): {
 } {
   const letterByOwner = new Map<number, string[]>();
   const groups: TieGroup[] = [];
-  const order: Exclude<TiebreakerReason, "none">[] = ["h2h", "pf", "pa"];
 
   function addLetter(ownerSeasonId: number, letter: string) {
     const existing = letterByOwner.get(ownerSeasonId);
@@ -126,15 +157,20 @@ function buildTieGroups(rows: PlayoffSeedRow[]): {
     else letterByOwner.set(ownerSeasonId, [letter]);
   }
 
-  function pickLegend(group: PlayoffSeedRow[], reasonOf: (r: PlayoffSeedRow) => TiebreakerReason): string {
-    const present = order.filter((r) => group.some((g) => reasonOf(g) === r));
-    return present.length ? present.map((r) => REASON_LABEL[r]).join(", then ") : "Seeding tiebreaker";
+  // (1): division-title ties, decided before anything else. `divisionTieReason` is only ever
+  // set on the winner, which is exactly the signal that this division's title was contested.
+  const winnersWithDivisionTie = rows.filter(
+    (r) => r.kind === "division_winner" && r.divisionTieReason !== "none",
+  );
+  for (const winner of winnersWithDivisionTie) {
+    const group = rows.filter((r) => r.division === winner.division && r.winPct === winner.winPct);
+    const letter = String.fromCharCode(65 + groups.length);
+    const legend = `Won the division — ${describeTie(group, winner, winner.divisionTieReason, winner.divisionTieH2h, [winner.divisionTieReason])}`;
+    groups.push({ letter, legend });
+    for (const row of group) addLetter(row.ownerSeasonId, letter);
   }
 
-  // (1) and (2): consecutive runs within each competition's own seed order. A group entirely
-  // outside the field (nobody in it made the playoffs) isn't worth a letter — there's no "why
-  // them and not you" story when neither made it. A group straddling the cutline still counts:
-  // that's exactly the case where it matters.
+  // (2) and (3): consecutive runs within each competition's own seed order.
   function scanPool(segment: PlayoffSeedRow[]) {
     let i = 0;
     while (i < segment.length) {
@@ -143,7 +179,15 @@ function buildTieGroups(rows: PlayoffSeedRow[]): {
       const group = segment.slice(i, j);
       if (group.length > 1 && group.some((r) => r.kind !== "out_of_field")) {
         const letter = String.fromCharCode(65 + groups.length);
-        groups.push({ letter, legend: pickLegend(group, (r) => r.tieReason) });
+        const winner = group[0]; // segment is already best-first
+        const legend = describeTie(
+          group,
+          winner,
+          winner.tieReason,
+          winner.tieH2h,
+          group.map((r) => r.tieReason),
+        );
+        groups.push({ letter, legend });
         for (const row of group) addLetter(row.ownerSeasonId, letter);
       }
       i = j;
@@ -151,19 +195,6 @@ function buildTieGroups(rows: PlayoffSeedRow[]): {
   }
   scanPool(rows.filter((r) => r.kind === "division_winner"));
   scanPool(rows.filter((r) => r.kind !== "division_winner"));
-
-  // (3): a division winner tied with a division-mate, found by (division, win%) since the two
-  // owners are not adjacent once seeded. `divisionTieReason` is only ever set on the winner,
-  // which is exactly the signal that this division's title was actually contested.
-  const winnersWithDivisionTie = rows.filter(
-    (r) => r.kind === "division_winner" && r.divisionTieReason !== "none",
-  );
-  for (const winner of winnersWithDivisionTie) {
-    const group = rows.filter((r) => r.division === winner.division && r.winPct === winner.winPct);
-    const letter = String.fromCharCode(65 + groups.length);
-    groups.push({ letter, legend: `Won the division — ${reasonLabel(winner.divisionTieReason)}` });
-    for (const row of group) addLetter(row.ownerSeasonId, letter);
-  }
 
   return { letterByOwner, groups };
 }

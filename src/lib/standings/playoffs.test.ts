@@ -28,6 +28,8 @@ function seedsFor(conference: Conference, base: number): SeededOwner[] {
       streak: 'W1',
       tieReason: 'none',
       divisionTieReason: 'none',
+      tieH2h: null,
+      divisionTieH2h: null,
     });
   }
   return out;

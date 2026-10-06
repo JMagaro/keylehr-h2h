@@ -49,6 +49,7 @@ import {
   type RankingOptions,
   type SeededOwner,
   type StandingRow,
+  type TieH2hRecord,
   type TiebreakerReason,
 } from '@/lib/standings';
 
@@ -702,6 +703,7 @@ export interface PlayoffSeedRow {
   losses: number;
   ties: number;
   pointsFor: number;
+  pointsAgainst: number;
   /** Win percentage — the EXACT key tied owners are grouped by (not wins/losses, which can
    *  differ at equal win% when bye weeks stagger game counts). Used to group tied owners for
    *  the "why is this team ranked here" explanation on the playoffs page. */
@@ -713,6 +715,11 @@ export interface PlayoffSeedRow {
   /** Which rule decided this owner WON THEIR DIVISION over a tied division-mate. Only ever
    *  set on a division winner; `'none'` otherwise. */
   divisionTieReason: TiebreakerReason;
+  /** The exact head-to-head record behind `tieReason`, when it is `'h2h'` and exactly one
+   *  opponent was compared. Null otherwise. */
+  tieH2h: TieH2hRecord | null;
+  /** Same as `tieH2h`, for `divisionTieReason`. */
+  divisionTieH2h: TieH2hRecord | null;
 }
 
 /**
@@ -766,9 +773,12 @@ export async function getPlayoffPicture(seasonId: number): Promise<PlayoffPictur
         losses: s.losses,
         ties: s.ties,
         pointsFor: s.pointsFor,
+        pointsAgainst: s.pointsAgainst,
         winPct: s.winPct,
         tieReason: s.tieReason,
         divisionTieReason: s.divisionTieReason,
+        tieH2h: s.tieH2h,
+        divisionTieH2h: s.divisionTieH2h,
       };
     });
   }

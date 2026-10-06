@@ -44,9 +44,12 @@ export interface TiebreakerContext {
   /**
    * Head-to-head per ordered pair: `h2h.get(a)?.get(b)` is the win-credit owner `a`
    * earned against owner `b` across counted regular-season games (win = 1, tie = 0.5,
-   * loss = 0), plus the game count. Owner `a` won the series vs `b` iff `credit > games/2`.
+   * loss = 0), plus the game count and the exact wins/losses/ties breakdown (kept alongside
+   * `credit`/`games` rather than reconstructed from them — summed credit is ambiguous past 2
+   * games, e.g. 1.5 over 3 games could be 3 ties or 1 win + 1 tie + 1 loss). Owner `a` won
+   * the series vs `b` iff `credit > games/2`.
    */
-  h2h: Map<number, Map<number, { credit: number; games: number }>>;
+  h2h: Map<number, Map<number, { credit: number; games: number; wins: number; losses: number; ties: number }>>;
 }
 
 /**
@@ -60,16 +63,20 @@ export function buildTiebreakerContext(
   const rowMap = new Map<number, StandingRow>();
   for (const r of rows) rowMap.set(r.ownerSeasonId, r);
 
-  const h2h = new Map<number, Map<number, { credit: number; games: number }>>();
+  const h2h: TiebreakerContext['h2h'] = new Map();
   const bump = (a: number, b: number, credit: number) => {
     let inner = h2h.get(a);
     if (!inner) {
       inner = new Map();
       h2h.set(a, inner);
     }
-    const cur = inner.get(b) ?? { credit: 0, games: 0 };
+    const cur = inner.get(b) ?? { credit: 0, games: 0, wins: 0, losses: 0, ties: 0 };
     cur.credit += credit;
     cur.games += 1;
+    // `credit` is always exactly 1, 0.5, or 0 for a single game (see the callers below).
+    if (credit === 1) cur.wins += 1;
+    else if (credit === 0) cur.losses += 1;
+    else cur.ties += 1;
     inner.set(b, cur);
   };
 
@@ -97,6 +104,22 @@ export function buildTiebreakerContext(
   }
 
   return { rows: rowMap, h2h };
+}
+
+/**
+ * The exact head-to-head series tally owner `a` holds against owner `b`, from `a`'s
+ * perspective. Null when they never played a countable game. Exported so a caller that
+ * already knows a tie was decided by `'h2h'` can explain it with the real record (e.g.
+ * "2-0") instead of just naming the rule.
+ */
+export function headToHeadRecord(
+  ctx: TiebreakerContext,
+  a: number,
+  b: number,
+): { wins: number; losses: number; ties: number } | null {
+  const rec = ctx.h2h.get(a)?.get(b);
+  if (!rec || rec.games === 0) return null;
+  return { wins: rec.wins, losses: rec.losses, ties: rec.ties };
 }
 
 /** True when owner `a` has a winning head-to-head SERIES against owner `b`. */

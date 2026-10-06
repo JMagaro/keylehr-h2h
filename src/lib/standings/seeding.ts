@@ -16,6 +16,7 @@
 import { computeStandings } from './standings';
 import {
   buildTiebreakerContext,
+  headToHeadRecord,
   rankStandings,
   rankStandingsWithReasons,
   type TiebreakerContext,
@@ -32,6 +33,7 @@ import {
   type RankingOptions,
   type SeededOwner,
   type StandingRow,
+  type TieH2hRecord,
   type TiebreakerKey,
   type TiebreakerReason,
 } from './types';
@@ -153,6 +155,52 @@ export function computeConferenceSeedsFull(
   return out;
 }
 
+/**
+ * The exact head-to-head record behind a `'h2h'`-decided tie, when the tied group is exactly
+ * two owners — the case it can be stated precisely. Null for a larger group (no single record
+ * explains a multi-way sweep) or when the two somehow never played.
+ */
+function h2hDetailFor(
+  ctx: TiebreakerContext,
+  winnerId: number,
+  group: StandingRow[],
+): TieH2hRecord | null {
+  if (group.length !== 2) return null;
+  const opponent = group.find((r) => r.ownerSeasonId !== winnerId);
+  if (!opponent) return null;
+  const record = headToHeadRecord(ctx, winnerId, opponent.ownerSeasonId);
+  return record ? { opponentOwnerSeasonId: opponent.ownerSeasonId, ...record } : null;
+}
+
+/** Consecutive runs of equal win% in an already best-first-ordered list, length 2+ only. */
+function consecutiveTieGroups(rows: StandingRow[]): StandingRow[][] {
+  const groups: StandingRow[][] = [];
+  let i = 0;
+  while (i < rows.length) {
+    let j = i + 1;
+    while (j < rows.length && rows[j].winPct === rows[i].winPct) j++;
+    if (j - i > 1) groups.push(rows.slice(i, j));
+    i = j;
+  }
+  return groups;
+}
+
+/** {@link h2hDetailFor} for every 2-owner, h2h-decided tie in an ordered pool. */
+function poolH2hDetails(
+  orderedRows: StandingRow[],
+  reasons: Map<number, TiebreakerReason>,
+  ctx: TiebreakerContext,
+): Map<number, TieH2hRecord> {
+  const out = new Map<number, TieH2hRecord>();
+  for (const group of consecutiveTieGroups(orderedRows)) {
+    const winner = group[0]; // already best-first within the group
+    if (reasons.get(winner.ownerSeasonId) !== 'h2h') continue;
+    const detail = h2hDetailFor(ctx, winner.ownerSeasonId, group);
+    if (detail) out.set(winner.ownerSeasonId, detail);
+  }
+  return out;
+}
+
 function seedConference(
   entries: OwnerEntry[],
   c: ComputedContext,
@@ -170,6 +218,7 @@ function seedConference(
   //    group is identifiable later purely from sharing (division, win%).
   const leaderRows: StandingRow[] = [];
   const divisionTieReasonByOwner = new Map<number, TiebreakerReason>();
+  const divisionTieH2hByOwner = new Map<number, TieH2hRecord>();
   for (const div of DIVISIONS) {
     const members = entries
       .filter((e) => e.conference === conference && e.division === div)
@@ -182,9 +231,14 @@ function seedConference(
     );
     const winner = rankedDivision[0];
     leaderRows.push(winner);
-    const tiedWithWinner = rankedDivision.filter((r) => r.winPct === winner.winPct).length;
-    if (tiedWithWinner > 1) {
-      divisionTieReasonByOwner.set(winner.ownerSeasonId, divisionReasons.get(winner.ownerSeasonId) ?? 'none');
+    const tiedGroup = rankedDivision.filter((r) => r.winPct === winner.winPct);
+    if (tiedGroup.length > 1) {
+      const reason = divisionReasons.get(winner.ownerSeasonId) ?? 'none';
+      divisionTieReasonByOwner.set(winner.ownerSeasonId, reason);
+      if (reason === 'h2h') {
+        const detail = h2hDetailFor(c.ctx, winner.ownerSeasonId, tiedGroup);
+        if (detail) divisionTieH2hByOwner.set(winner.ownerSeasonId, detail);
+      }
     }
   }
 
@@ -215,36 +269,39 @@ function seedConference(
     c.ctx,
     c.order,
   );
+  const leaderH2h = poolH2hDetails(orderedLeaders, leaderReasons, c.ctx);
+  const nonWinnerH2h = poolH2hDetails(orderedNonWinners, nonWinnerReasons, c.ctx);
 
   const seeds: SeededOwner[] = [];
   divisionWinners.forEach((row, idx) => {
     seeds.push(
-      makeSeed(
-        row,
-        idx + 1,
-        'division_winner',
-        config,
-        c,
-        leaderReasons.get(row.ownerSeasonId),
-        divisionTieReasonByOwner.get(row.ownerSeasonId),
-      ),
+      makeSeed(row, idx + 1, 'division_winner', config, c, {
+        tieReason: leaderReasons.get(row.ownerSeasonId),
+        tieH2h: leaderH2h.get(row.ownerSeasonId),
+        divisionTieReason: divisionTieReasonByOwner.get(row.ownerSeasonId),
+        divisionTieH2h: divisionTieH2hByOwner.get(row.ownerSeasonId),
+      }),
     );
   });
   orderedNonWinners.forEach((row, idx) => {
     const kind = idx < wildCardSlots ? 'wild_card' : 'out_of_field';
     seeds.push(
-      makeSeed(
-        row,
-        divisionWinners.length + idx + 1,
-        kind,
-        config,
-        c,
-        nonWinnerReasons.get(row.ownerSeasonId),
-        undefined,
-      ),
+      makeSeed(row, divisionWinners.length + idx + 1, kind, config, c, {
+        tieReason: nonWinnerReasons.get(row.ownerSeasonId),
+        tieH2h: nonWinnerH2h.get(row.ownerSeasonId),
+        divisionTieReason: undefined,
+        divisionTieH2h: undefined,
+      }),
     );
   });
   return seeds;
+}
+
+interface SeedTieInfo {
+  tieReason: TiebreakerReason | undefined;
+  tieH2h: TieH2hRecord | undefined;
+  divisionTieReason: TiebreakerReason | undefined;
+  divisionTieH2h: TieH2hRecord | undefined;
 }
 
 function makeSeed(
@@ -253,8 +310,7 @@ function makeSeed(
   kind: SeededOwner['kind'],
   config: PlayoffConfig,
   c: ComputedContext,
-  tieReason: TiebreakerReason | undefined,
-  divisionTieReason: TiebreakerReason | undefined,
+  tie: SeedTieInfo,
 ): SeededOwner {
   const entry = c.entryById.get(row.ownerSeasonId)!;
   return {
@@ -265,7 +321,9 @@ function makeSeed(
     division: entry.division,
     // A top-N seed gets a first-round bye (N = config.topSeedByes).
     isBye: seed <= config.topSeedByes,
-    tieReason: tieReason ?? 'none',
-    divisionTieReason: divisionTieReason ?? 'none',
+    tieReason: tie.tieReason ?? 'none',
+    divisionTieReason: tie.divisionTieReason ?? 'none',
+    tieH2h: tie.tieH2h ?? null,
+    divisionTieH2h: tie.divisionTieH2h ?? null,
   };
 }

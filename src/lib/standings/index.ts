@@ -21,6 +21,7 @@ export type {
   AdvancingOwner,
   TiebreakerKey,
   TiebreakerReason,
+  TieH2hRecord,
   RankingOptions,
 } from './types';
 
@@ -32,6 +33,7 @@ export {
   compareForStandings,
   rankStandings,
   buildTiebreakerContext,
+  headToHeadRecord,
   type TiebreakerContext,
 } from './tiebreakers';
 

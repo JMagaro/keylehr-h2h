@@ -280,6 +280,34 @@ describe('computeConferenceSeedsFull — division-title ties', () => {
     expect(north.kind).toBe('division_winner');
     expect(north.divisionTieReason).toBe('none');
   });
+
+  it('attaches the exact head-to-head record when that is what decided the division', () => {
+    // East: owners 1 and 2 meet twice, owner 1 wins both (h2h-dominant), then each pads out
+    // to an identical 2-2 overall record without meeting again. Owners 3/4 stay untouched
+    // (0-0), so they never challenge for the division.
+    const entries = buildEntries();
+    const s = new Schedule();
+    s.win(1, 2);
+    s.win(1, 2);
+    s.losesTo(1, 5, 2); // owner 1 -> 2-2
+    s.beatsDoormat(2, 200, 2); // owner 2 -> 2-2
+
+    const afc = computeConferenceSeedsFull(entries, s.build()).AFC;
+    const east1 = afc.find((x) => x.ownerSeasonId === 1)!;
+    const east2 = afc.find((x) => x.ownerSeasonId === 2)!;
+
+    expect(east1.kind).toBe('division_winner');
+    expect(east1.divisionTieReason).toBe('h2h');
+    expect(east1.divisionTieH2h).toEqual({
+      opponentOwnerSeasonId: 2,
+      wins: 2,
+      losses: 0,
+      ties: 0,
+    });
+
+    // The loser of the division carries no detail of its own.
+    expect(east2.divisionTieH2h).toBeNull();
+  });
 });
 
 describe('computeConferenceSeeds — config-driven structure', () => {
