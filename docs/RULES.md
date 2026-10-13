@@ -85,6 +85,7 @@ the per-owner bye total regardless; `query.ts` only passes it to the engine when
 | --- | ------------ | ------- | ------- | --------- |
 | `missedLineup.result` | `auto_loss` \| `none` | `auto_loss` | `assembleMatchupResults` — sets `MatchupResult.forfeitBy` only when `auto_loss` | Admin → Settings; conditionally rendered on `/rules` |
 | `missedLineup.opponentScores` | `league_average` \| `league_median` \| `zero` \| `actual` | `league_average` | `assembleMatchupResults` — sets `MatchupResult.opponentFacesPoints` | Admin → Settings; rendered as prose on `/rules` |
+| `missedLineup.excludeOpponentScore` | boolean | `false` | `assembleMatchupResults` — removes the opponent's own score from the average/median pool before computing it (`league_average` / `league_median` only; no-op under `zero`/`actual`) | Admin → Settings checkbox; stated on `/rules` when on |
 
 **`missedLineup.result`:**
 
@@ -103,6 +104,14 @@ their W/L and their Points Against:
 
 Because the opponent can *lose* to the benchmark, a single missed lineup can produce a **double
 loss**. That is the league's rule — see [`SCORING.md` §9](SCORING.md#9-standings).
+
+**`missedLineup.excludeOpponentScore`** — whether the pool above also drops the specific
+opponent's own score before averaging/taking the median. League rule, added 2026-10-12: an
+owner must not be judged against a benchmark that includes themselves — their own score should
+never be able to drag the number they're compared against toward itself. Only matters for
+`league_average`/`league_median`; `zero` and `actual` ignore it. Defaults `false` so 2023–2025
+(and 2026 before this was added) are unaffected — see the "do not fix" note just below, which
+applies to this key exactly as it does to `opponentScores`.
 
 ### The rule genuinely differs by season — do not "fix" it
 

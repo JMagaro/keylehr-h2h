@@ -15,8 +15,16 @@ import type { OwnerEntry } from './types';
 const REGULAR_WEEKS = 18;
 /** Every regular-season week settled — the steady state these cases are about. */
 const SETTLED = new Set(Array.from({ length: REGULAR_WEEKS }, (_, i) => i + 1));
-const AVG: MissedLineupRule = { result: 'auto_loss', opponentScores: 'league_average' };
-const MED: MissedLineupRule = { result: 'auto_loss', opponentScores: 'league_median' };
+const AVG: MissedLineupRule = {
+  result: 'auto_loss',
+  opponentScores: 'league_average',
+  excludeOpponentScore: false,
+};
+const MED: MissedLineupRule = {
+  result: 'auto_loss',
+  opponentScores: 'league_median',
+  excludeOpponentScore: false,
+};
 
 function score(
   ownerSeasonId: number,
@@ -107,6 +115,100 @@ describe('median vs average', () => {
   });
 });
 
+describe('excludeOpponentScore', () => {
+  // Same fixture as 'median vs average' above: forfeiter (1) scored 0, opponent (2) scored
+  // 135, and three other matchups' owners scored 100/110/120/300 (the last an outlier).
+  const scores = [
+    score(1, 1, 0), // forfeiter
+    score(2, 1, 135), // opponent
+    score(3, 1, 100),
+    score(4, 1, 110),
+    score(5, 1, 120),
+    score(6, 1, 300),
+  ];
+  const matchups = [matchup(1, 1, 2), matchup(1, 3, 4), matchup(1, 5, 6)];
+  const forfeits = new Set([ownerWeekKey(1, 1)]);
+  const EXCL_AVG: MissedLineupRule = {
+    result: 'auto_loss',
+    opponentScores: 'league_average',
+    excludeOpponentScore: true,
+  };
+  const EXCL_MED: MissedLineupRule = {
+    result: 'auto_loss',
+    opponentScores: 'league_median',
+    excludeOpponentScore: true,
+  };
+
+  it('removes the opponent\'s own 135 from the average pool: 153 (incl.) → 157.5 (excl.)', () => {
+    const withIt = assembleMatchupResults({
+      scores,
+      matchups,
+      forfeits,
+      missedLineup: EXCL_AVG,
+      regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
+    });
+    const without = assembleMatchupResults({
+      scores,
+      matchups,
+      forfeits,
+      missedLineup: AVG,
+      regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
+    });
+    const game = without.results.find((r) => r.homeOwnerSeasonId === 1)!;
+    expect(game.opponentFacesPoints).toBeCloseTo(153, 6); // pool: 135,100,110,120,300
+
+    const excludedGame = withIt.results.find((r) => r.homeOwnerSeasonId === 1)!;
+    expect(excludedGame.opponentFacesPoints).toBeCloseTo(157.5, 6); // pool: 100,110,120,300
+  });
+
+  it('removes the opponent\'s own 135 from the median pool: 120 (incl.) → 115 (excl.)', () => {
+    const withIt = assembleMatchupResults({
+      scores,
+      matchups,
+      forfeits,
+      missedLineup: EXCL_MED,
+      regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
+    });
+    const game = withIt.results.find((r) => r.homeOwnerSeasonId === 1)!;
+    expect(game.opponentFacesPoints).toBe(115); // pool: 100,110,120,300 → median of 4 = avg(110,120)
+
+    const rows = computeStandings([owner(1), owner(2)], withIt.results);
+    const opp = rows.find((r) => r.ownerSeasonId === 2)!;
+    expect(opp.wins).toBe(1); // 135 >= 115
+    expect(opp.pointsAgainst).toBe(115);
+  });
+
+  it('a double forfeit is unaffected — both sides are already excluded from the pool', () => {
+    const withIt = assembleMatchupResults({
+      scores: [score(1, 1, 0), score(2, 1, 0), score(3, 1, 110), score(4, 1, 130)],
+      matchups: [matchup(1, 1, 2), matchup(1, 3, 4)],
+      forfeits: new Set([ownerWeekKey(1, 1), ownerWeekKey(2, 1)]),
+      missedLineup: EXCL_AVG,
+      regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
+    });
+    const game = withIt.results.find((r) => r.homeOwnerSeasonId === 1)!;
+    expect(game.forfeitBy).toBe('both');
+    expect(game.opponentFacesPoints).toBeCloseTo(120, 6); // mean(110, 130) — unchanged by the flag
+  });
+
+  it('defaults to false, so existing (frozen-season) behavior is unchanged', () => {
+    const out = assembleMatchupResults({
+      scores,
+      matchups,
+      forfeits,
+      missedLineup: { result: 'auto_loss', opponentScores: 'league_average', excludeOpponentScore: false },
+      regularSeasonWeeks: REGULAR_WEEKS,
+      settledWeeks: SETTLED,
+    });
+    const game = out.results.find((r) => r.homeOwnerSeasonId === 1)!;
+    expect(game.opponentFacesPoints).toBeCloseTo(153, 6);
+  });
+});
+
 describe('a forfeiter with no score row', () => {
   const matchups = [matchup(4, 1, 2)];
 
@@ -185,7 +287,7 @@ describe('rule passthrough', () => {
       scores: [score(1, 1, 0), score(2, 1, 100)],
       matchups: [matchup(1, 1, 2)],
       forfeits: new Set([ownerWeekKey(1, 1)]),
-      missedLineup: { result: 'none', opponentScores: 'league_average' },
+      missedLineup: { result: 'none', opponentScores: 'league_average', excludeOpponentScore: false },
       regularSeasonWeeks: REGULAR_WEEKS,
       settledWeeks: SETTLED,
     });
@@ -197,7 +299,7 @@ describe('rule passthrough', () => {
       scores: [score(1, 1, 0), score(2, 1, 100)],
       matchups: [matchup(1, 1, 2)],
       forfeits: new Set([ownerWeekKey(1, 1)]),
-      missedLineup: { result: 'auto_loss', opponentScores: 'actual' },
+      missedLineup: { result: 'auto_loss', opponentScores: 'actual', excludeOpponentScore: false },
       regularSeasonWeeks: REGULAR_WEEKS,
       settledWeeks: SETTLED,
     });

@@ -307,6 +307,12 @@ async function checkEngineNoOpProofs(): Promise<CheckResult> {
         `${season.year}: opponentScores is '${data.rules.missedLineup.opponentScores}', expected 'league_average'`,
       );
     }
+
+    // PROOF 5 — history never excludes the opponent's own score from the benchmark pool
+    // (added 2026-10-12; defaults false precisely so this never needs to be true here).
+    if (data.rules.missedLineup.excludeOpponentScore !== false) {
+      problems.push(`${season.year}: excludeOpponentScore is true, expected false`);
+    }
   }
 
   return problems.length === 0

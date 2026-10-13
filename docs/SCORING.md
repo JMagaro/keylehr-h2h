@@ -363,6 +363,12 @@ order:
    - `missedLineup.opponentScores` → `opponentFacesPoints`: `league_average` → that week's mean,
      `league_median` → that week's median, `zero` → `0`, `actual` → the forfeiter's own points
      (which is the "no special handling" case and short-circuits before `forfeitBy` is set).
+   - `missedLineup.excludeOpponentScore` (default `false`) additionally drops the specific
+     opponent's own score from the average/median pool before computing it — an owner must not
+     be judged against a benchmark that includes themselves. Only meaningful for a single-sided
+     forfeit; a double forfeit already excludes both sides from the pool via the forfeit check
+     in step 3, so the flag is a no-op there. Default `false` keeps 2023–2025 (and any week
+     scored before this was added) byte-identical — see [`RULES.md` §5](RULES.md#5-missed-lineups-missedlineup).
 
 Playoff rows and non-final rows are never given forfeit fields.
 

@@ -168,6 +168,7 @@ export async function updateSeasonRules(
     missedLineup: {
       result: String(formData.get('missedResult') ?? ''),
       opponentScores: String(formData.get('missedOpponentScores') ?? ''),
+      excludeOpponentScore: checked(formData, 'missedExcludeOpponentScore'),
     },
     payouts: {
       // Entry fee is the canonical `seasons.entryFeeCents` column; preserve the

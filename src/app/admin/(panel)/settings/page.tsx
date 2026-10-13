@@ -174,6 +174,10 @@ export default async function SettingsPage() {
                   label="Opponent scores"
                   value={MISSED_OPP_LABELS[rules.missedLineup.opponentScores]}
                 />
+                <SummaryRow
+                  label="Excludes opponent's own score"
+                  value={rules.missedLineup.excludeOpponentScore ? 'Yes' : 'No'}
+                />
               </dl>
             </section>
 

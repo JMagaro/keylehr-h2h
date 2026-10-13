@@ -346,7 +346,13 @@ export default async function RulesPage() {
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted">
               Whether it&apos;s your first or second incident, your opponent scores against{" "}
-              {MISSED_OPPONENT_PROSE[rules.missedLineup.opponentScores]}.
+              {MISSED_OPPONENT_PROSE[rules.missedLineup.opponentScores]}
+              {rules.missedLineup.excludeOpponentScore &&
+              (rules.missedLineup.opponentScores === "league_average" ||
+                rules.missedLineup.opponentScores === "league_median") ? (
+                <> — not counting their own score</>
+              ) : null}
+              .
             </p>
             <div className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
               <p className="text-xs font-semibold text-foreground">1st incident</p>

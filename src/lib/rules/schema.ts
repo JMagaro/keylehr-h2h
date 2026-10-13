@@ -55,8 +55,15 @@ export const seasonRulesSchema = z.object({
       result: z.enum(['auto_loss', 'none']).default('auto_loss'),
       /** What the opponent scores that week. League rule: league average. */
       opponentScores: z.enum(['league_average', 'league_median', 'zero', 'actual']).default('league_average'),
+      /**
+       * Whether the opponent's own score is removed from the average/median pool before it is
+       * computed. Default false preserves exactly how 2023-2025 (and 2026 before this was
+       * added) were scored — do not flip the DEFAULT, only a season's stored value. See
+       * `docs/RULES.md` §5.
+       */
+      excludeOpponentScore: z.boolean().default(false),
     })
-    .default({ result: 'auto_loss', opponentScores: 'league_average' }), // 2026+ seasons should use 'league_median'
+    .default({ result: 'auto_loss', opponentScores: 'league_average', excludeOpponentScore: false }), // 2026+ seasons should use 'league_median'
 
   /** Prize structure (cents). Mirrors the league's payout table. */
   payouts: z

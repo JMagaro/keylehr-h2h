@@ -38,6 +38,8 @@ import type { MatchupResult } from './types';
 export interface MissedLineupRule {
   result: 'auto_loss' | 'none';
   opponentScores: 'league_average' | 'league_median' | 'zero' | 'actual';
+  /** Remove the opponent's own score from the average/median pool before computing it. */
+  excludeOpponentScore: boolean;
 }
 
 export interface AssembleParams {
@@ -81,6 +83,10 @@ function median(values: readonly number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
+function mean(values: readonly number[]): number {
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
 export function assembleMatchupResults(params: AssembleParams): AssembleResult {
   const { scores, matchups, forfeits, missedLineup, regularSeasonWeeks, settledWeeks } = params;
   const playing = buildPlayingSet(matchups);
@@ -115,8 +121,10 @@ export function assembleMatchupResults(params: AssembleParams): AssembleResult {
   }
 
   // 3. Per-week league scores → the average / median a forfeit's opponent faces.
-  //    Forfeits and byes are excluded so a 0 can't drag the benchmark down.
-  const weekScores = new Map<number, number[]>();
+  //    Forfeits and byes are excluded so a 0 can't drag the benchmark down. Owner id is kept
+  //    alongside each score so `facesFor` can additionally drop the specific opponent being
+  //    judged, per `excludeOpponentScore` — step 4.
+  const weekScores = new Map<number, Array<{ ownerSeasonId: number; points: number }>>();
   for (const m of matchups) {
     if (m.isPlayoff) continue;
     for (const ownerSeasonId of [m.homeOwnerSeasonId, m.awayOwnerSeasonId]) {
@@ -125,27 +133,46 @@ export function assembleMatchupResults(params: AssembleParams): AssembleResult {
       const pts = pointsByOwnerWeek.get(key);
       if (pts === null || pts === undefined) continue;
       const cur = weekScores.get(m.week) ?? [];
-      cur.push(pts);
+      cur.push({ ownerSeasonId, points: pts });
       weekScores.set(m.week, cur);
     }
   }
   const leagueAverageByWeek = new Map<number, number>();
   const leagueMedianByWeek = new Map<number, number>();
-  for (const [week, values] of weekScores) {
+  for (const [week, entries] of weekScores) {
+    const values = entries.map((e) => e.points);
     if (values.length === 0) continue;
-    leagueAverageByWeek.set(week, values.reduce((a, b) => a + b, 0) / values.length);
+    leagueAverageByWeek.set(week, mean(values));
     leagueMedianByWeek.set(week, median(values));
   }
 
   // 4. Translate the season's missedLineup rule into the engine's forfeit fields.
   const applyForfeit = missedLineup.result === 'auto_loss';
-  const { opponentScores } = missedLineup;
-  const facesFor = (week: number, forfeiterPoints: number | null): number => {
+  const { opponentScores, excludeOpponentScore } = missedLineup;
+  /**
+   * The benchmark a specific opponent faces. When `excludeOpponentScore` is on, that
+   * opponent's own score is removed from the pool first — an owner must not be graded
+   * against a standard that includes themselves. `opponentOwnerSeasonId` is only meaningful
+   * for a single-sided forfeit; the 'both forfeit' case passes none because both sides are
+   * already excluded from the pool via the forfeit check above.
+   */
+  const facesFor = (
+    week: number,
+    forfeiterPoints: number | null,
+    opponentOwnerSeasonId?: number,
+  ): number => {
     switch (opponentScores) {
       case 'league_average':
-        return leagueAverageByWeek.get(week) ?? 0;
-      case 'league_median':
-        return leagueMedianByWeek.get(week) ?? 0;
+      case 'league_median': {
+        const entries = weekScores.get(week) ?? [];
+        const pool =
+          excludeOpponentScore && opponentOwnerSeasonId !== undefined
+            ? entries.filter((e) => e.ownerSeasonId !== opponentOwnerSeasonId)
+            : entries;
+        const values = pool.map((e) => e.points);
+        if (values.length === 0) return 0;
+        return opponentScores === 'league_average' ? mean(values) : median(values);
+      }
       case 'zero':
         return 0;
       case 'actual':
@@ -181,9 +208,19 @@ export function assembleMatchupResults(params: AssembleParams): AssembleResult {
       return { ...base, forfeitBy: 'both', opponentFacesPoints: facesFor(m.week, null) };
     }
     if (homeForfeit) {
-      return { ...base, forfeitBy: 'home', opponentFacesPoints: facesFor(m.week, homePoints) };
+      // Away owner is the opponent being judged — exclude their own score from the pool.
+      return {
+        ...base,
+        forfeitBy: 'home',
+        opponentFacesPoints: facesFor(m.week, homePoints, m.awayOwnerSeasonId),
+      };
     }
-    return { ...base, forfeitBy: 'away', opponentFacesPoints: facesFor(m.week, awayPoints) };
+    // Home owner is the opponent being judged — exclude their own score from the pool.
+    return {
+      ...base,
+      forfeitBy: 'away',
+      opponentFacesPoints: facesFor(m.week, awayPoints, m.homeOwnerSeasonId),
+    };
   });
 
   return {
